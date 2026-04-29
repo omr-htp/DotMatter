@@ -1,0 +1,181 @@
+[
+  {
+    "name": "StatusIB",
+    "doc": "Status response from a device. Tag 0=Status, Tag 1=ClusterStatus.",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "Status", "type": "uint8", "optional": false },
+      { "tag": 1, "name": "ClusterStatus", "type": "uint8", "optional": true }
+    ]
+  },
+  {
+    "name": "CommandPathIB",
+    "doc": "Identifies a specific cluster command.",
+    "container": "list",
+    "fields": [
+      { "tag": 0, "name": "EndpointId", "type": "uint16", "optional": true },
+      { "tag": 1, "name": "ClusterId", "type": "uint32", "optional": false },
+      { "tag": 2, "name": "CommandId", "type": "uint32", "optional": false }
+    ]
+  },
+  {
+    "name": "AttributePathIB",
+    "doc": "Identifies a specific cluster attribute.",
+    "container": "list",
+    "fields": [
+      { "tag": 0, "name": "EnableTagCompression", "type": "bool", "optional": true },
+      { "tag": 1, "name": "NodeId", "type": "uint64", "optional": true },
+      { "tag": 2, "name": "EndpointId", "type": "uint16", "optional": true },
+      { "tag": 3, "name": "ClusterId", "type": "uint32", "optional": true },
+      { "tag": 4, "name": "AttributeId", "type": "uint32", "optional": true },
+      { "tag": 5, "name": "ListIndex", "type": "uint16", "optional": true }
+    ]
+  },
+  {
+    "name": "EventPathIB",
+    "doc": "Identifies a specific cluster event.",
+    "container": "list",
+    "fields": [
+      { "tag": 0, "name": "NodeId", "type": "uint64", "optional": true },
+      { "tag": 1, "name": "EndpointId", "type": "uint16", "optional": true },
+      { "tag": 2, "name": "ClusterId", "type": "uint32", "optional": true },
+      { "tag": 3, "name": "EventId", "type": "uint32", "optional": true },
+      { "tag": 4, "name": "IsUrgent", "type": "bool", "optional": true }
+    ]
+  },
+  {
+    "name": "DataVersionFilterIB",
+    "doc": "Pairs an attribute path with a data version for change detection.",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "Path", "type": "struct:AttributePathIB", "optional": false },
+      { "tag": 1, "name": "DataVersion", "type": "uint32", "optional": false }
+    ]
+  },
+  {
+    "name": "ClusterPathIB",
+    "doc": "Identifies a cluster on an endpoint.",
+    "container": "list",
+    "fields": [
+      { "tag": 0, "name": "NodeId", "type": "uint64", "optional": true },
+      { "tag": 1, "name": "EndpointId", "type": "uint16", "optional": false },
+      { "tag": 2, "name": "ClusterId", "type": "uint32", "optional": false }
+    ]
+  },
+  {
+    "name": "AttributeDataIB",
+    "doc": "Carries attribute data in a report.",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "DataVersion", "type": "uint32", "optional": false },
+      { "tag": 1, "name": "Path", "type": "struct:AttributePathIB", "optional": false },
+      { "tag": 2, "name": "Data", "type": "any", "optional": false }
+    ]
+  },
+  {
+    "name": "AttributeStatusIB",
+    "doc": "Reports status for a specific attribute.",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "Path", "type": "struct:AttributePathIB", "optional": false },
+      { "tag": 1, "name": "Status", "type": "struct:StatusIB", "optional": false }
+    ]
+  },
+  {
+    "name": "AttributeReportIB",
+    "doc": "Either data or status for an attribute.",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "AttributeStatus", "type": "struct:AttributeStatusIB", "optional": true },
+      { "tag": 1, "name": "AttributeData", "type": "struct:AttributeDataIB", "optional": true }
+    ]
+  },
+  {
+    "name": "EventDataIB",
+    "doc": "Carries event data.",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "Path", "type": "struct:EventPathIB", "optional": false },
+      { "tag": 1, "name": "EventNumber", "type": "uint64", "optional": false },
+      { "tag": 2, "name": "Priority", "type": "uint8", "optional": false },
+      { "tag": 3, "name": "EpochTimestamp", "type": "uint64", "optional": true },
+      { "tag": 4, "name": "SystemTimestamp", "type": "uint64", "optional": true },
+      { "tag": 5, "name": "DeltaEpochTimestamp", "type": "uint64", "optional": true },
+      { "tag": 6, "name": "DeltaSystemTimestamp", "type": "uint64", "optional": true },
+      { "tag": 7, "name": "Data", "type": "any", "optional": true }
+    ]
+  },
+  {
+    "name": "EventStatusIB",
+    "doc": "Reports status for a specific event.",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "Path", "type": "struct:EventPathIB", "optional": false },
+      { "tag": 1, "name": "Status", "type": "struct:StatusIB", "optional": false }
+    ]
+  },
+  {
+    "name": "EventReportIB",
+    "doc": "Either data or status for an event.",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "EventStatus", "type": "struct:EventStatusIB", "optional": true },
+      { "tag": 1, "name": "EventData", "type": "struct:EventDataIB", "optional": true }
+    ]
+  },
+  {
+    "name": "CommandDataIB",
+    "doc": "Carries a command invocation or response with fields.",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "CommandPath", "type": "struct:CommandPathIB", "optional": false },
+      { "tag": 1, "name": "CommandFields", "type": "any", "optional": true }
+    ]
+  },
+  {
+    "name": "CommandStatusIB",
+    "doc": "Status of a command invocation.",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "CommandPath", "type": "struct:CommandPathIB", "optional": false },
+      { "tag": 1, "name": "Status", "type": "struct:StatusIB", "optional": false }
+    ]
+  },
+  {
+    "name": "InvokeResponseIB",
+    "doc": "Either command data or status in an invoke response.",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "Command", "type": "struct:CommandDataIB", "optional": true },
+      { "tag": 1, "name": "Status", "type": "struct:CommandStatusIB", "optional": true }
+    ]
+  },
+  {
+    "name": "WriteAttributeIB",
+    "doc": "A single attribute write in a WriteRequest.",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "Path", "type": "struct:AttributePathIB", "optional": false },
+      { "tag": 1, "name": "Data", "type": "any", "optional": false },
+      { "tag": 2, "name": "DataVersion", "type": "uint32", "optional": true }
+    ]
+  },
+  {
+    "name": "WriteAttributeStatusIB",
+    "doc": "Status result for a single attribute write.",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "Path", "type": "struct:AttributePathIB", "optional": false },
+      { "tag": 1, "name": "Status", "type": "struct:StatusIB", "optional": false }
+    ]
+  },
+  {
+    "name": "EventFilterIB",
+    "doc": "Filter events by minimum event number.",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "NodeId", "type": "uint64", "optional": true },
+      { "tag": 1, "name": "MinEventNumber", "type": "uint64", "optional": false }
+    ]
+  }
+]

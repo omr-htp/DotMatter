@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "DotMatter.Controller": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:6703;http://localhost:6704"
+    }
+  }
+}

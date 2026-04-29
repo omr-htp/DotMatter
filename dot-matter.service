@@ -1,0 +1,22 @@
+[Unit]
+Description=DotMatter Controller
+After=network-online.target otbr-agent.service bluetooth.service
+Wants=network-online.target otbr-agent.service bluetooth.service
+Conflicts=dot-matter-aot.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/dot-matter
+ExecStart=/usr/bin/dotnet /opt/dot-matter/DotMatter.Controller.dll
+Restart=on-failure
+RestartSec=5
+User=dotmatter
+Group=dotmatter
+Environment=DOTNET_ENVIRONMENT=Production
+EnvironmentFile=-/etc/dotmatter/dot-matter.env
+ReadWritePaths=/var/lib/.dot-matter
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,162 @@
+[
+  {
+    "name": "SessionParameterStruct",
+    "doc": "Session parameter negotiation (used in PASE and CASE).",
+    "container": "structure",
+    "fields": [
+      { "tag": 1, "name": "SessionIdleInterval", "type": "uint32", "optional": true },
+      { "tag": 2, "name": "SessionActiveInterval", "type": "uint32", "optional": true },
+      { "tag": 3, "name": "SessionActiveThreshold", "type": "uint16", "optional": true },
+      { "tag": 4, "name": "DataModelRevision", "type": "uint16", "optional": true },
+      { "tag": 5, "name": "InteractionModelRevision", "type": "uint16", "optional": true },
+      { "tag": 6, "name": "SpecificationVersion", "type": "uint32", "optional": true },
+      { "tag": 7, "name": "MaxPathsPerInvoke", "type": "uint16", "optional": true }
+    ]
+  },
+  {
+    "name": "PBKDFParamRequest",
+    "doc": "PASE PBKDFParamRequest (first message in PASE).",
+    "container": "structure",
+    "fields": [
+      { "tag": 1, "name": "InitiatorRandom", "type": "octstr", "optional": false },
+      { "tag": 2, "name": "InitiatorSessionId", "type": "uint16", "optional": false },
+      { "tag": 3, "name": "PasscodeId", "type": "uint16", "optional": false },
+      { "tag": 4, "name": "HasPBKDFParameters", "type": "bool", "optional": false },
+      { "tag": 5, "name": "InitiatorSessionParams", "type": "struct:SessionParameterStruct", "optional": true }
+    ]
+  },
+  {
+    "name": "PBKDFParamResponse",
+    "doc": "PASE PBKDFParamResponse.",
+    "container": "structure",
+    "fields": [
+      { "tag": 1, "name": "InitiatorRandom", "type": "octstr", "optional": false },
+      { "tag": 2, "name": "ResponderRandom", "type": "octstr", "optional": false },
+      { "tag": 3, "name": "ResponderSessionId", "type": "uint16", "optional": false },
+      { "tag": 4, "name": "PBKDFParameters", "type": "struct:PBKDFParameterSet", "optional": true },
+      { "tag": 5, "name": "ResponderSessionParams", "type": "struct:SessionParameterStruct", "optional": true }
+    ]
+  },
+  {
+    "name": "PBKDFParameterSet",
+    "doc": "PBKDF parameters (iterations + salt).",
+    "container": "structure",
+    "fields": [
+      { "tag": 1, "name": "Iterations", "type": "uint32", "optional": false },
+      { "tag": 2, "name": "Salt", "type": "octstr", "optional": false }
+    ]
+  },
+  {
+    "name": "Pake1",
+    "doc": "PASE PAKE1 message.",
+    "container": "structure",
+    "fields": [
+      { "tag": 1, "name": "PA", "type": "octstr", "optional": false }
+    ]
+  },
+  {
+    "name": "Pake2",
+    "doc": "PASE PAKE2 message.",
+    "container": "structure",
+    "fields": [
+      { "tag": 1, "name": "PB", "type": "octstr", "optional": false },
+      { "tag": 2, "name": "CB", "type": "octstr", "optional": false }
+    ]
+  },
+  {
+    "name": "Pake3",
+    "doc": "PASE PAKE3 message.",
+    "container": "structure",
+    "fields": [
+      { "tag": 1, "name": "CA", "type": "octstr", "optional": false }
+    ]
+  },
+  {
+    "name": "Sigma1",
+    "doc": "CASE Sigma1 message (initiator hello).",
+    "container": "structure",
+    "fields": [
+      { "tag": 1, "name": "InitiatorRandom", "type": "octstr", "optional": false },
+      { "tag": 2, "name": "InitiatorSessionId", "type": "uint16", "optional": false },
+      { "tag": 3, "name": "DestinationId", "type": "octstr", "optional": false },
+      { "tag": 4, "name": "InitiatorEphPubKey", "type": "octstr", "optional": false },
+      { "tag": 5, "name": "InitiatorSessionParams", "type": "struct:SessionParameterStruct", "optional": true },
+      { "tag": 6, "name": "ResumptionId", "type": "octstr", "optional": true },
+      { "tag": 7, "name": "InitiatorResumeMIC", "type": "octstr", "optional": true }
+    ]
+  },
+  {
+    "name": "Sigma2",
+    "doc": "CASE Sigma2 message (responder hello).",
+    "container": "structure",
+    "fields": [
+      { "tag": 1, "name": "ResponderRandom", "type": "octstr", "optional": false },
+      { "tag": 2, "name": "ResponderSessionId", "type": "uint16", "optional": false },
+      { "tag": 3, "name": "ResponderEphPubKey", "type": "octstr", "optional": false },
+      { "tag": 4, "name": "Encrypted2", "type": "octstr", "optional": false },
+      { "tag": 5, "name": "ResponderSessionParams", "type": "struct:SessionParameterStruct", "optional": true }
+    ]
+  },
+  {
+    "name": "Sigma3",
+    "doc": "CASE Sigma3 message (initiator finish).",
+    "container": "structure",
+    "fields": [
+      { "tag": 1, "name": "Encrypted3", "type": "octstr", "optional": false }
+    ]
+  },
+  {
+    "name": "Sigma2Resume",
+    "doc": "CASE Sigma2Resume for session resumption.",
+    "container": "structure",
+    "fields": [
+      { "tag": 1, "name": "ResumptionId", "type": "octstr", "optional": false },
+      { "tag": 2, "name": "Sigma2ResumeMIC", "type": "octstr", "optional": false },
+      { "tag": 3, "name": "ResponderSessionId", "type": "uint16", "optional": false },
+      { "tag": 4, "name": "ResponderSessionParams", "type": "struct:SessionParameterStruct", "optional": true }
+    ]
+  },
+  {
+    "name": "TBSData2",
+    "doc": "To-Be-Signed data for Sigma2 (encrypted inside Encrypted2).",
+    "container": "structure",
+    "fields": [
+      { "tag": 1, "name": "ResponderNOC", "type": "octstr", "optional": false },
+      { "tag": 2, "name": "ResponderICAC", "type": "octstr", "optional": true },
+      { "tag": 3, "name": "ResponderEphPubKey", "type": "octstr", "optional": false },
+      { "tag": 4, "name": "InitiatorEphPubKey", "type": "octstr", "optional": false }
+    ]
+  },
+  {
+    "name": "TBEData2",
+    "doc": "To-Be-Encrypted data for Sigma2.",
+    "container": "structure",
+    "fields": [
+      { "tag": 1, "name": "ResponderNOC", "type": "octstr", "optional": false },
+      { "tag": 2, "name": "ResponderICAC", "type": "octstr", "optional": true },
+      { "tag": 3, "name": "Signature", "type": "octstr", "optional": false },
+      { "tag": 4, "name": "ResumptionId", "type": "octstr", "optional": false }
+    ]
+  },
+  {
+    "name": "TBSData3",
+    "doc": "To-Be-Signed data for Sigma3.",
+    "container": "structure",
+    "fields": [
+      { "tag": 1, "name": "InitiatorNOC", "type": "octstr", "optional": false },
+      { "tag": 2, "name": "InitiatorICAC", "type": "octstr", "optional": true },
+      { "tag": 3, "name": "InitiatorEphPubKey", "type": "octstr", "optional": false },
+      { "tag": 4, "name": "ResponderEphPubKey", "type": "octstr", "optional": false }
+    ]
+  },
+  {
+    "name": "TBEData3",
+    "doc": "To-Be-Encrypted data for Sigma3.",
+    "container": "structure",
+    "fields": [
+      { "tag": 1, "name": "InitiatorNOC", "type": "octstr", "optional": false },
+      { "tag": 2, "name": "InitiatorICAC", "type": "octstr", "optional": true },
+      { "tag": 3, "name": "Signature", "type": "octstr", "optional": false }
+    ]
+  }
+]

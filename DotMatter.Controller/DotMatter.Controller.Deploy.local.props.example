@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <PiHost>dotmatter@raspberrypi.local</PiHost>
+    <PiShareUser>dotmatter</PiShareUser>
+    <PiSharePassword>replace-with-samba-password</PiSharePassword>
+    <WslDistro>Debian</WslDistro>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(DeployType)' == 'Fast'">
+    <PiShare>\\raspberrypi.local\dot-matter</PiShare>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(DeployType)' == 'Aot'">
+    <PiShare>\\raspberrypi.local\dot-matter-aot</PiShare>
+  </PropertyGroup>
+</Project>
