@@ -121,7 +121,7 @@ DotMatter/
 
 ## Acknowledgements
 
-DotMatter was initially inspired by the early exploration work in [`tomasmcguinness/dotnet-matter`](https://github.com/tomasmcguinness/dotnet-matter) by Thomas McGuinness.
+DotMatter was initially inspired by the early exploration work in [`tomasmcguinness/dotnet-matter`](https://github.com/tomasmcguinness/dotnet-matter) by Tomas McGuinness.
 
 ## Getting Help
 
