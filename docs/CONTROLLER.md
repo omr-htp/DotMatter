@@ -7,6 +7,7 @@
 - **Auth enabled by default** — non-health endpoints require an API key unless the environment explicitly disables it, with CORS deny-by-default
 - **BLE commissioning** — PASE → CSR → NOC → Thread/WiFi provisioning
 - **Thread + WiFi control** — OTBR-backed Thread discovery and WiFi commissioning
+- **Switch binding** — writes Matter ACL and Binding entries so a switch OnOff client can operate a target OnOff endpoint
 - **Bounded runtime** — Owned reconnect loops, readiness/liveness health, SSE cleanup, atomic registry writes
 - **AOT-ready** — Publishes as native AOT on Linux ARM64
 - **OpenAPI + SSE** — Scalar/OpenAPI UI and server-sent events for clients
@@ -24,6 +25,7 @@
 | POST | `/api/devices/{id}/level` | Set brightness level |
 | POST | `/api/devices/{id}/color` | Set color (Hue/Saturation) |
 | POST | `/api/devices/{id}/color-xy` | Set color (CIE xy) |
+| POST | `/api/devices/{id}/bindings/onoff` | Bind switch OnOff client to a target OnOff endpoint |
 | POST | `/api/commission` | Commission Thread device |
 | POST | `/api/commission/wifi` | Commission WiFi device |
 | DELETE | `/api/devices/{id}` | Remove device |
@@ -48,6 +50,33 @@ Two services on the Pi, **only one runs at a time** (systemd `Conflicts=` auto-s
 - Runtime state lives under `/var/lib/.dot-matter`
 
 See [Deployment Guide](DEPLOYMENT.md) for local deploy props setup, Pi env files, Samba fast-loop configuration, and AOT cross-compilation.
+
+## Switch OnOff Binding
+
+`POST /api/devices/{id}/bindings/onoff` configures the source device identified by `{id}` as a switch and binds its OnOff client to a target device's OnOff server endpoint.
+
+The controller performs both required Matter writes:
+
+1. It writes the target device's AccessControl ACL on endpoint 0 so the switch node has `Operate` privilege for cluster `0x0006` on the target endpoint.
+2. It writes the source switch endpoint's Binding list so button events target the requested node, endpoint, and OnOff cluster.
+
+Existing ACL and Binding list entries are preserved. The generated cluster writers use timed writes by default, and the controller returns failure if the device rejects either write.
+
+Example request:
+
+```http
+POST /api/devices/switch-device-id/bindings/onoff
+X-API-Key: replace-with-a-long-random-value
+Content-Type: application/json
+
+{
+  "targetDeviceId": "light-device-id",
+  "sourceEndpoint": 1,
+  "targetEndpoint": 1
+}
+```
+
+Both devices must already be commissioned, reachable, and on the same controller fabric.
 
 ## Configuration
 

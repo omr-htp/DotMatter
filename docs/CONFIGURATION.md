@@ -44,6 +44,8 @@ machine-local env file.
 | `Controller__Commissioning__SharedFabricName` | `DotMatter` | Existing fabric directory whose controller fabric material is copied into newly named device directories so commissioned devices join the shared fabric. |
 | `Controller__Commissioning__FollowUpConnectTimeout` | `00:00:30` | Timeout for post-commission connect attempts. |
 
+`SharedFabricName` is important for Binding: the source switch and target device must be on the same Matter fabric before the controller can write a useful ACL entry on the target and Binding entry on the switch. The default shared fabric name is `DotMatter`.
+
 ## Persistence and recovery
 
 | Setting | Default | Purpose |
@@ -80,6 +82,7 @@ machine-local env file.
 ASPNETCORE_URLS=http://0.0.0.0:5000
 Controller__Security__ApiKey=replace-with-a-long-random-value
 Controller__Registry__BasePath=/var/lib/.dot-matter/fabrics
+Controller__Commissioning__SharedFabricName=DotMatter
 Controller__Otbr__CommandPath=ot-ctl
 Controller__Otbr__SudoCommand=sudo
 ```

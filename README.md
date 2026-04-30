@@ -48,7 +48,8 @@ The core library implements the Matter protocol from scratch in C#:
 - **UDP transport** — Operational messaging over IPv6/UDP
 - **Discovery** — mDNS service discovery and OTBR SRP/DNS-SD integration
 - **Interaction Model** — Read, Write, Invoke, Subscribe operations
-- **130+ generated clusters** — Auto-generated from official Matter XML definitions (8 tested, rest generated with correct IDs/types)
+- **Fabric ACL and Binding writes** — generated timed writers for AccessControl ACL and Binding list attributes
+- **130+ generated clusters** — Auto-generated from official Matter XML definitions (10 tested, rest generated with correct IDs/types)
 - **AOT compatible** — Fully trimming and Native AOT safe
 
 ### DotMatter.Hosting — Device Lifecycle
@@ -80,6 +81,18 @@ await level.MoveToLevelAsync(128, transitionTime: 10);
 
 var color = new ColorControlCluster(session, endpointId: 1);
 await color.MoveToHueAndSaturationAsync(hue: 180, saturation: 254, transitionTime: 10);
+```
+
+Fabric-scoped ACL and Binding attributes can be read and written through generated cluster APIs. Writes default to timed interactions because Matter devices commonly require timed writes for these list attributes.
+
+```csharp
+var accessControl = new AccessControlCluster(targetSession, endpointId: 0);
+var acl = await accessControl.ReadACLAsync() ?? [];
+var writeAcl = await accessControl.WriteACLAsync(acl);
+
+var binding = new BindingCluster(switchSession, endpointId: 1);
+var bindings = await binding.ReadBindingAsync() ?? [];
+var writeBinding = await binding.WriteBindingAsync(bindings);
 ```
 
 Commissioning is provided by `DotMatter.Core.Commissioning.MatterCommissioner`. Production-ready orchestration, persistence, and HTTP control flow live in `DotMatter.Controller` and `DotMatter.Hosting`.

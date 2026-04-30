@@ -20,6 +20,7 @@
 | BLE commissioning for current working devices | Supported | Includes PASE, CSR/NOC exchange, registry persistence, and follow-up connect. |
 | Session recovery and reconnect for commissioned devices | Supported | Bounded background work, explicit shutdown, and stale subscription recovery are part of the contract. |
 | Lighting and current device-control flows | Supported | On/Off, Level, and Color operations used by the host are in scope for v1. |
+| Switch OnOff binding flow | Supported | Writes target ACL and source Binding entries for devices on the same controller fabric. |
 | WiFi commissioning path | Supported | Requires explicit WiFi SSID and password input. |
 
 ### Controller API
@@ -27,6 +28,7 @@
 | Area | Status | Notes |
 | --- | --- | --- |
 | Authenticated LAN API | Supported | API key required by default for non-health endpoints. |
+| `POST /api/devices/{id}/bindings/onoff` | Supported | Binds a switch endpoint to a target OnOff endpoint after both devices are commissioned and reachable. |
 | Health endpoints | Supported | `/health`, `/health/live`, and `/health/ready` remain anonymous. |
 | CORS allowlist | Supported | Disabled by default unless explicit origins are configured. |
 | Query-string API key auth | Unsupported | Header-based auth is the supported path. |
@@ -37,6 +39,7 @@
 | Area | Status | Notes |
 | --- | --- | --- |
 | Generated members used by the controller product flows | Supported | Must be covered by product tests and supported docs. |
+| Generated ACL and Binding readers/writers | Supported | Required for commissioning ACL verification and switch binding. |
 | Generated APIs with missing serializer/parser support | Unsupported | They may compile, but they are not part of the product contract. |
 | Entire generated cluster surface | Unsupported | Support is narrower than the generated footprint. |
 

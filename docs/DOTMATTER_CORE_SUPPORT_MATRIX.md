@@ -26,6 +26,7 @@
 | Area | Status | Notes |
 | --- | --- | --- |
 | PASE commissioning flow | Supported | Must remain covered by protocol vectors and negative-path tests. |
+| Commissioning ACL verification | Supported | Controller Administer ACL writes must succeed or be verifiably present on readback. |
 | CASE session establishment | Supported | Includes certificate chain verification and session key derivation. |
 | Automatic reconnect with backoff | Supported | Uses bounded retries and jittered reconnect delays. |
 | Long-running session soak profile | Conditionally supported | Release requires soak validation before claiming stable support. |
@@ -43,6 +44,9 @@
 | Area | Status | Notes |
 | --- | --- | --- |
 | Working generated command/attribute paths used by current device flows | Supported | Must be covered by integration tests. |
+| AccessControl ACL read/write | Supported | Includes fabric-scoped struct decoding and timed whole-list writes through `ReadACLAsync` and `WriteACLAsync`. |
+| Binding list read/write | Supported | Includes fabric-scoped target decoding and timed whole-list writes through `ReadBindingAsync` and `WriteBindingAsync`. |
+| Interaction Model write response parsing | Supported | Empty successful write responses, attribute status lists, and status reports are distinguished for callers. |
 | Generated APIs with serializer/parser TODO behavior | Unsupported | The generator must emit explicit `NotSupportedException` paths for these members; do not patch generated files by hand. |
 | Complex generated attribute readers without verified parsers | Unsupported | These stay out of the supported surface until CodeGen emits a concrete parser. |
 | All generated artifacts by default | Unsupported | Code generation output is not equivalent to a supported contract. |
