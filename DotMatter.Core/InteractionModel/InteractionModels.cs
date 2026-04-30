@@ -19,23 +19,40 @@ public sealed class InvokeResponse(bool success, byte statusCode, MessageFrame r
 }
 
 /// <summary>Result of a WriteAttribute operation.</summary>
-public sealed class WriteResponse(bool success, IReadOnlyList<WriteAttributeStatus> attributeStatuses)
+public sealed class WriteResponse(bool success, IReadOnlyList<WriteAttributeStatus> attributeStatuses, byte? statusCode = null)
 {
     /// <summary>True if all attributes were written successfully (status 0).</summary>
     public bool Success { get; } = success;
 
     /// <summary>Per-attribute write status codes.</summary>
     public IReadOnlyList<WriteAttributeStatus> AttributeStatuses { get; } = attributeStatuses;
+
+    /// <summary>StatusResponse status code when the write interaction returned a generic status.</summary>
+    public byte? StatusCode { get; } = statusCode;
 }
 
 /// <summary>Status of a single attribute write.</summary>
-public sealed class WriteAttributeStatus(uint attributeId, byte statusCode)
+public sealed class WriteAttributeStatus(
+    uint attributeId,
+    byte statusCode,
+    ushort? endpointId = null,
+    uint? clusterId = null,
+    byte? clusterStatusCode = null)
 {
+    /// <summary>The endpoint that was written, when present in the response path.</summary>
+    public ushort? EndpointId { get; } = endpointId;
+
+    /// <summary>The cluster that was written, when present in the response path.</summary>
+    public uint? ClusterId { get; } = clusterId;
+
     /// <summary>The attribute that was written.</summary>
     public uint AttributeId { get; } = attributeId;
 
     /// <summary>Matter status code (0 = SUCCESS).</summary>
     public byte StatusCode { get; } = statusCode;
+
+    /// <summary>Optional cluster-specific status code.</summary>
+    public byte? ClusterStatusCode { get; } = clusterStatusCode;
 }
 
 /// <summary>Specifies an attribute path for batch reads. Null fields act as wildcards.</summary>

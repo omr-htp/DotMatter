@@ -969,12 +969,12 @@ public sealed class InvokeResponseIB
 /// <summary>A single attribute write in a WriteRequest.</summary>
 public sealed class WriteAttributeIB
 {
-    /// <summary>Tag 0: Path</summary>
-    public AttributePathIB Path { get; set; } = null!;
-    /// <summary>Tag 1: Data</summary>
-    public object Data { get; set; } = null!;
-    /// <summary>Tag 2: DataVersion</summary>
+    /// <summary>Tag 0: DataVersion</summary>
     public uint? DataVersion { get; set; } = null;
+    /// <summary>Tag 1: Path</summary>
+    public AttributePathIB Path { get; set; } = null!;
+    /// <summary>Tag 2: Data</summary>
+    public object Data { get; set; } = null!;
 
     /// <summary>Serialize this message into TLV.</summary>
     public void Serialize(MatterTLV writer, int? tag = null)
@@ -987,12 +987,12 @@ public sealed class WriteAttributeIB
         {
             writer.AddStructure();
         }
-        Path!.Serialize(writer, 0);
-        // Tag 1: Data is an 'any' value; caller writes raw TLV.
         if (DataVersion != null)
         {
-            writer.AddUInt32(2, DataVersion.Value);
+            writer.AddUInt32(0, DataVersion.Value);
         }
+        Path!.Serialize(writer, 1);
+        // Tag 2: Data is an 'any' value; caller writes raw TLV.
         writer.EndContainer();
     }
 
@@ -1006,17 +1006,17 @@ public sealed class WriteAttributeIB
         {
             if (reader.IsNextTag(0))
             {
-                result.Path = AttributePathIB.Deserialize(reader, 0);
+                result.DataVersion = reader.GetUnsignedInt32(0);
                 continue;
             }
             if (reader.IsNextTag(1))
             {
-                result.Data = reader.GetData(1)!;
+                result.Path = AttributePathIB.Deserialize(reader, 1);
                 continue;
             }
             if (reader.IsNextTag(2))
             {
-                result.DataVersion = reader.GetUnsignedInt32(2);
+                result.Data = reader.GetData(2)!;
                 continue;
             }
             reader.SkipElement();

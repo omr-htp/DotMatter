@@ -9,6 +9,34 @@ namespace DotMatter.Tests;
 public class MatterTLVTests
 {
     [Test]
+    public void GetUnsignedInt16_AcceptsSmallerEncodedWidth()
+    {
+        var writer = new MatterTLV();
+        writer.AddStructure();
+        writer.AddUInt8(2, 1);
+        writer.EndContainer();
+
+        var reader = new MatterTLV(writer.GetBytes());
+        reader.OpenStructure();
+
+        Assert.That(reader.GetUnsignedInt16(2), Is.EqualTo((ushort)1));
+    }
+
+    [Test]
+    public void GetUnsignedInt8_RejectsOverflow()
+    {
+        var writer = new MatterTLV();
+        writer.AddStructure();
+        writer.AddUInt16(2, 256);
+        writer.EndContainer();
+
+        var reader = new MatterTLV(writer.GetBytes());
+        reader.OpenStructure();
+
+        Assert.Throws<MatterTlvException>(() => reader.GetUnsignedInt8(2));
+    }
+
+    [Test]
     public void MessageDecode_ValidPayload_CreatesMessagePayload()
     {
         var payload = "01-00-00-00-5A-D2-F8-02-00-00-00-00-00-00-00-00-04-21-E8-EF-00-00-15-30-01-20-A3-74-0F-F2-CD-24-67-C3-75-66-EA-7C-A3-B1-D0-04-3B-C8-88-F1-E7-2F-54-EB-A7-2B-54-58-D8-75-9D-10-30-02-20-AC-66-29-AC-EC-48-40-76-79-30-E5-FC-48-9B-75-E5-D2-93-2A-61-1C-6E-C9-C0-50-9E-1A-5A-D7-41-DA-C7-25-03-A2-35-35-04-25-01-E8-03-30-02-20-32-7F-9E-4B-E6-66-63-23-1B-FD-68-F1-7B-62-9B-43-E2-3B-22-D4-CF-32-2B-BF-5F-21-09-B3-F1-71-6A-60-18-35-05-25-01-F4-01-25-02-2C-01-25-03-A0-0F-24-04-13-24-05-0C-26-06-00-00-05-01-24-07-01-18-18";

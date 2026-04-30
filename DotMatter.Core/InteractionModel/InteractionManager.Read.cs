@@ -56,6 +56,56 @@ internal static partial class InteractionManager
         }
     }
 
+    internal static async Task<MatterTLV?> ReadAttributeTlvAsync(
+        ISession session,
+        ushort endpointId,
+        uint clusterId,
+        uint attributeId,
+        CancellationToken ct = default)
+    {
+        var exchange = session.CreateExchange();
+        try
+        {
+            var tlv = new MatterTLV();
+            tlv.AddStructure();
+            tlv.AddArray(tagNumber: 0);
+            tlv.AddList();
+            tlv.AddUInt16(tagNumber: 2, endpointId);
+            tlv.AddUInt32(tagNumber: 3, clusterId);
+            tlv.AddUInt32(tagNumber: 4, attributeId);
+            tlv.EndContainer();
+            tlv.EndContainer();
+            tlv.AddBool(3, false);
+            tlv.AddUInt8(255, IMRevision);
+            tlv.EndContainer();
+
+            var response = await SendAndReceiveAsync(
+                exchange,
+                CreateSecuredFrame(CreatePayload(tlv, OpReadRequest)),
+                ct);
+
+            if (response.MessagePayload.ProtocolOpCode != OpReportData)
+            {
+                return null;
+            }
+
+            var report = new ReportDataAction(response.MessagePayload.ApplicationPayload!);
+            foreach (var attributeReport in report.AttributeReports)
+            {
+                if (attributeReport.AttributeData?.RawData is { } rawData)
+                {
+                    return rawData;
+                }
+            }
+
+            return null;
+        }
+        finally
+        {
+            exchange.Close();
+        }
+    }
+
     internal static async Task<IReadOnlyList<AttributeReport>> ReadAttributesAsync(
         ISession session,
         IReadOnlyList<AttributePath> paths,

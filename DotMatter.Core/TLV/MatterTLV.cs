@@ -772,62 +772,42 @@ public class MatterTLV
     /// <summary>GetUnsignedInt8.</summary>
     public byte GetUnsignedInt8(int tag)
     {
-        if ((0x1F & ReadByte("uint8 control")) != 0x04)
+        var value = GetUnsignedInt(tag);
+        if (value > byte.MaxValue)
         {
-            throw TlvError("Expected Unsigned Integer, 1-octet value not found");
+            throw TlvError($"Unsigned integer at tag {tag} does not fit in UInt8");
         }
 
-        ReadExpectedContextTag(tag);
-
-        byte value = ReadByte("uint8 value");
-
-        return value;
+        return (byte)value;
     }
 
     /// <summary>GetUnsignedInt16.</summary>
     public ushort GetUnsignedInt16(int tag)
     {
-        if ((0x1F & ReadByte("uint16 control")) != 0x05)
+        var value = GetUnsignedInt(tag);
+        if (value > ushort.MaxValue)
         {
-            throw TlvError("Expected Unsigned Integer, 2-octet value");
+            throw TlvError($"Unsigned integer at tag {tag} does not fit in UInt16");
         }
 
-        ReadExpectedContextTag(tag);
-
-        var value = ReadUInt16Checked("uint16 value");
-
-        return value;
+        return (ushort)value;
     }
 
     /// <summary>GetUnsignedInt32.</summary>
     public uint GetUnsignedInt32(int tag)
     {
-        if ((0x1F & ReadByte("uint32 control")) != 0x06)
+        var value = GetUnsignedInt(tag);
+        if (value > uint.MaxValue)
         {
-            throw TlvError("Expected Unsigned Integer, 4-octet value");
+            throw TlvError($"Unsigned integer at tag {tag} does not fit in UInt32");
         }
 
-        ReadExpectedContextTag(tag);
-
-        var value = ReadUInt32Checked("uint32 value");
-
-        return value;
+        return (uint)value;
     }
 
     /// <summary>GetUnsignedInt64.</summary>
     public ulong GetUnsignedInt64(int tag)
-    {
-        if ((0x1F & ReadByte("uint64 control")) != 0x07)
-        {
-            throw TlvError("Expected Unsigned Integer, 8-octet value");
-        }
-
-        ReadExpectedContextTag(tag);
-
-        var value = ReadUInt64Checked("uint64 value");
-
-        return value;
-    }
+        => GetUnsignedInt(tag);
 
     /// <summary>
     /// Reads an unsigned integer of any width (UInt8/16/32/64) and returns it as uint.
@@ -835,24 +815,13 @@ public class MatterTLV
     /// </summary>
     public uint GetUnsignedIntAny(int tag)
     {
-        byte elementType = (byte)(0x1F & ReadByte("unsigned integer control"));
-
-        ReadExpectedContextTag(tag);
-
-        switch (elementType)
+        var value = GetUnsignedInt(tag);
+        if (value > uint.MaxValue)
         {
-            case 0x04: // UInt8
-                return ReadByte("uint8 value");
-            case 0x05: // UInt16
-                return ReadUInt16Checked("uint16 value");
-            case 0x06: // UInt32
-                return ReadUInt32Checked("uint32 value");
-            case 0x07: // UInt64
-                var v64 = ReadUInt64Checked("uint64 value");
-                return (uint)v64;
-            default:
-                throw TlvError($"Expected unsigned integer at tag {tag}, got element type 0x{elementType:X2}");
+            throw TlvError($"Unsigned integer at tag {tag} does not fit in UInt32");
         }
+
+        return (uint)value;
     }
 
     /// <summary>CloseContainer.</summary>

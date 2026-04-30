@@ -155,9 +155,9 @@
     "doc": "A single attribute write in a WriteRequest.",
     "container": "structure",
     "fields": [
-      { "tag": 0, "name": "Path", "type": "struct:AttributePathIB", "optional": false },
-      { "tag": 1, "name": "Data", "type": "any", "optional": false },
-      { "tag": 2, "name": "DataVersion", "type": "uint32", "optional": true }
+      { "tag": 0, "name": "DataVersion", "type": "uint32", "optional": true },
+      { "tag": 1, "name": "Path", "type": "struct:AttributePathIB", "optional": false },
+      { "tag": 2, "name": "Data", "type": "any", "optional": false }
     ]
   },
   {

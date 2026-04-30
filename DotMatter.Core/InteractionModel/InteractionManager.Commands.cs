@@ -18,10 +18,14 @@ internal static partial class InteractionManager
         var exchange = session.CreateExchange();
         try
         {
-            if (timedRequest && !await PerformTimedRequestAsync(exchange, timedTimeoutMs, ct))
+            if (timedRequest)
             {
-                var failedFrame = CreateSecuredFrame(CreatePayload(new MatterTLV(), OpStatusResponse));
-                return new InvokeResponse(false, 0x01, failedFrame, null);
+                var timedStatus = await PerformTimedRequestForStatusAsync(exchange, timedTimeoutMs, ct);
+                if (timedStatus != (byte)MatterStatusCode.Success)
+                {
+                    var failedFrame = CreateSecuredFrame(CreatePayload(new MatterTLV(), OpStatusResponse));
+                    return new InvokeResponse(false, timedStatus, failedFrame, null);
+                }
             }
 
             var tlv = new MatterTLV();

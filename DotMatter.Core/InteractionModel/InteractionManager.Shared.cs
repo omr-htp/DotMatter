@@ -58,6 +58,12 @@ internal static partial class InteractionManager
         MessageExchange exchange,
         ushort timedTimeoutMs,
         CancellationToken ct)
+        => await PerformTimedRequestForStatusAsync(exchange, timedTimeoutMs, ct) == (byte)MatterStatusCode.Success;
+
+    private static async Task<byte> PerformTimedRequestForStatusAsync(
+        MessageExchange exchange,
+        ushort timedTimeoutMs,
+        CancellationToken ct)
     {
         var timedTlv = new MatterTLV();
         timedTlv.AddStructure();
@@ -68,9 +74,32 @@ internal static partial class InteractionManager
         var timedResponse = await SendAndReceiveAsync(
             exchange,
             CreateSecuredFrame(CreatePayload(timedTlv, OpTimedRequest)),
-            ct);
+            ct,
+            acknowledge: false);
 
-        return timedResponse.MessagePayload.ProtocolOpCode == OpStatusResponse;
+        if (timedResponse.MessagePayload.ProtocolOpCode != OpStatusResponse)
+        {
+            await exchange.AcknowledgeMessageAsync(timedResponse.MessageCounter);
+            return (byte)MatterStatusCode.Failure;
+        }
+
+        var status = ParseStatusResponse(timedResponse.MessagePayload.ApplicationPayload);
+        if (status != (byte)MatterStatusCode.Success)
+        {
+            await exchange.AcknowledgeMessageAsync(timedResponse.MessageCounter);
+        }
+
+        return status;
+    }
+
+    internal static byte ParseStatusResponse(MatterTLV? appTlv)
+    {
+        if (appTlv is null)
+        {
+            return (byte)MatterStatusCode.Failure;
+        }
+
+        return global::DotMatter.Core.Protocol.StatusResponseMessage.Deserialize(appTlv).Status;
     }
 
     private static MessageFrame CreateStatusResponseFrame(byte statusCode)

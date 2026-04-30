@@ -14,7 +14,9 @@ public class AttributeDataIB
 
         Path = new AttributePathIB(1, payload);
 
+        var dataStart = payload.Position;
         Data = payload.GetData(2)!;
+        RawData = new MatterTLV(payload.AsSpan()[dataStart..payload.Position]);
 
         payload.CloseContainer();
     }
@@ -30,4 +32,7 @@ public class AttributeDataIB
     /// <summary>Data.</summary>
     /// <summary>Gets or sets the Data value.</summary>
     public object Data { get; } = default!;
+
+    /// <summary>Raw TLV element for the Data field, including its context tag.</summary>
+    public MatterTLV RawData { get; } = default!;
 }
