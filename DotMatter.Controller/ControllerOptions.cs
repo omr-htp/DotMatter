@@ -41,6 +41,8 @@ public sealed class CommissioningOptions
 {
     /// <summary>Gets or sets the default prefix used when generating fabric names.</summary>
     public string DefaultFabricNamePrefix { get; set; } = "device";
+    /// <summary>Gets or sets the controller fabric material copied for newly named device directories.</summary>
+    public string SharedFabricName { get; set; } = "DotMatter";
     /// <summary>Gets or sets the timeout for connecting to a newly commissioned device.</summary>
     public TimeSpan FollowUpConnectTimeout { get; set; } = TimeSpan.FromSeconds(30);
 }

@@ -101,6 +101,7 @@ public class CommissioningService(
                 ? $"{_options.DefaultFabricNamePrefix}-{DateTime.UtcNow:yyyyMMdd-HHmmss}"
                 : fabricName;
 
+            EnsureSharedFabricMaterial(fabricName);
             IFabricStorageProvider fabricStorage = new FabricDiskStorage(_registry.BasePath);
             var fabricManager = new FabricManager(fabricStorage);
             var fabric = await fabricManager.GetAsync(fabricName);
@@ -208,6 +209,50 @@ public class CommissioningService(
 
     /// <summary>Creates the BLE transport used for commissioning.</summary>
     protected virtual LinuxBTPConnection CreateBleConnection() => new();
+
+    private void EnsureSharedFabricMaterial(string fabricName)
+    {
+        if (string.Equals(fabricName, _options.SharedFabricName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var targetDir = Path.Combine(_registry.BasePath, fabricName);
+        if (File.Exists(Path.Combine(targetDir, "fabric.json")))
+        {
+            return;
+        }
+
+        var sharedDir = Path.Combine(_registry.BasePath, _options.SharedFabricName);
+        if (!File.Exists(Path.Combine(sharedDir, "fabric.json")))
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(targetDir);
+        foreach (var fileName in new[]
+        {
+            "fabric.json",
+            "rootCertificate.pem",
+            "rootKeyPair.pem",
+            "operationalCertificate.pem",
+            "operationalKeyPair.pem",
+        })
+        {
+            var source = Path.Combine(sharedDir, fileName);
+            if (!File.Exists(source))
+            {
+                throw new FileNotFoundException($"Shared fabric file '{fileName}' was not found in {sharedDir}", source);
+            }
+
+            File.Copy(source, Path.Combine(targetDir, fileName), overwrite: false);
+        }
+
+        _log.LogInformation(
+            "Copied shared fabric material from {SharedFabric} to {FabricName}",
+            _options.SharedFabricName,
+            fabricName);
+    }
 
     /// <summary>Executes the Matter commissioning protocol over an established BLE connection.</summary>
     protected virtual Task<CommissioningResult> ExecuteCommissioningAsync(

@@ -3,6 +3,7 @@ using DotMatter.Core.Clusters;
 using DotMatter.Core.Cryptography;
 using DotMatter.Core.Discovery;
 using DotMatter.Core.Fabrics;
+using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
 using Microsoft.Extensions.Logging;
@@ -195,22 +196,45 @@ public class MatterCommissioner
             // ── Write ACL entry granting controller Administer privilege ──
             Report(progress, "ACL", 60, "Setting up access control...");
             var controllerNodeId = BitConverter.ToUInt64(fabric.RootNodeId.ToByteArrayUnsigned());
-            await InteractionModel.InteractionManager.WriteAttributeAsync(paseSession, endpointId: 0, clusterId: AccessControlCluster.ClusterId, attributeId: AccessControlCluster.Attributes.ACL, writeValue: tlv =>
+            var adminAclEntry = new AccessControlCluster.AccessControlEntryStruct
+            {
+                Privilege = AccessControlCluster.AccessControlEntryPrivilegeEnum.Administer,
+                AuthMode = AccessControlCluster.AccessControlEntryAuthModeEnum.CASE,
+                Subjects = [controllerNodeId],
+                Targets = null,
+            };
+
+            var aclResult = await WriteAndVerifyCommissioningAclAsync(
+                new AccessControlCluster(paseSession, endpointId: 0),
+                [adminAclEntry],
+                controllerNodeId,
+                "PASE",
+                ct);
+            if (!aclResult.Success)
+            {
+                _log.LogWarning("ACL write over PASE was not verified ({Reason}); retrying over CASE", aclResult.Error);
+                try
                 {
-                    // Data tag 1 — array of ACL entries
-                    tlv.AddArray(tagNumber: 1);
-                    tlv.AddStructure();
-                    tlv.AddUInt8(1, (byte)AccessControlCluster.AccessControlEntryPrivilegeEnum.Administer);
-                    tlv.AddUInt8(2, (byte)AccessControlCluster.AccessControlEntryAuthModeEnum.CASE);
-                    tlv.AddArray(tagNumber: 3); // Subjects
-                    tlv.AddUInt64(controllerNodeId);
-                    tlv.EndContainer();
-                    // Targets = null (all endpoints/clusters)
-                    tlv.AddNull(4);
-                    tlv.EndContainer();
-                    tlv.EndContainer();
-                }, ct: ct);
-            _log.LogInformation("ACL write OK — controller granted Administer privilege");
+                    var caseOverBle = await new CASEClient(node, fabric, new UnsecureSession(connection)).EstablishSessionAsync();
+                    aclResult = await WriteAndVerifyCommissioningAclAsync(
+                        new AccessControlCluster(caseOverBle, endpointId: 0),
+                        [adminAclEntry],
+                        controllerNodeId,
+                        "CASE",
+                        ct);
+                }
+                catch (Exception ex)
+                {
+                    aclResult = new(false, $"CASE ACL verification failed: {ex.Message}");
+                }
+            }
+
+            if (!aclResult.Success)
+            {
+                return Fail($"Commissioning ACL write was not verified: {aclResult.Error}");
+            }
+
+            _log.LogInformation("ACL write verified — controller granted Administer privilege");
 
             // ── Network provisioning ──
             IPAddress? operationalAddress = null;
@@ -718,4 +742,60 @@ public class MatterCommissioner
 
     private static CommissioningResult Fail(string error) =>
         new(false, null, null, error);
+
+    private async Task<(bool Success, string? Error)> WriteAndVerifyCommissioningAclAsync(
+        AccessControlCluster accessControl,
+        AccessControlCluster.AccessControlEntryStruct[] acl,
+        ulong controllerNodeId,
+        string sessionType,
+        CancellationToken ct)
+    {
+        var aclWrite = await accessControl.WriteACLAsync(acl, ct: ct);
+        if (!aclWrite.Success)
+        {
+            var existingAcl = await accessControl.ReadACLAsync(ct);
+            if (HasControllerAdminAclEntry(existingAcl, controllerNodeId))
+            {
+                _log.LogInformation(
+                    "ACL write over {SessionType} was rejected ({Reason}), but controller Administer privilege is present",
+                    sessionType,
+                    FormatWriteResponse(aclWrite));
+                return (true, null);
+            }
+
+            return (false, $"{sessionType} write rejected: {FormatWriteResponse(aclWrite)}");
+        }
+
+        var aclReadback = await accessControl.ReadACLAsync(ct);
+        if (!HasControllerAdminAclEntry(aclReadback, controllerNodeId))
+        {
+            return (false, $"{sessionType} readback did not include controller Administer entry");
+        }
+
+        return (true, null);
+    }
+
+    private static bool HasControllerAdminAclEntry(
+        AccessControlCluster.AccessControlEntryStruct[]? acl,
+        ulong controllerNodeId)
+        => acl is not null && acl.Any(entry =>
+            entry.Privilege == AccessControlCluster.AccessControlEntryPrivilegeEnum.Administer
+            && entry.AuthMode == AccessControlCluster.AccessControlEntryAuthModeEnum.CASE
+            && entry.Subjects?.Contains(controllerNodeId) == true);
+
+    private static string FormatWriteResponse(WriteResponse response)
+    {
+        if (response.StatusCode is { } status)
+        {
+            return $"status=0x{status:X2}";
+        }
+
+        if (response.AttributeStatuses.Count == 0)
+        {
+            return "no write status returned";
+        }
+
+        return string.Join(", ", response.AttributeStatuses.Select(
+            status => $"attr=0x{status.AttributeId:X4} status=0x{status.StatusCode:X2}"));
+    }
 }

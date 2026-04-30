@@ -41,6 +41,7 @@ machine-local env file.
 | Setting | Default | Purpose |
 | --- | --- | --- |
 | `Controller__Commissioning__DefaultFabricNamePrefix` | `device` | Prefix used when naming new device fabrics. |
+| `Controller__Commissioning__SharedFabricName` | `DotMatter` | Existing fabric directory whose controller fabric material is copied into newly named device directories so commissioned devices join the shared fabric. |
 | `Controller__Commissioning__FollowUpConnectTimeout` | `00:00:30` | Timeout for post-commission connect attempts. |
 
 ## Persistence and recovery
