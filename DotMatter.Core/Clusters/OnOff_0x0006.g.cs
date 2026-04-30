@@ -178,4 +178,40 @@ public class OnOffCluster : ClusterBase
     /// <summary>Read StartUpOnOff attribute (0x4003).</summary>
     public Task<StartUpOnOffEnum> ReadStartUpOnOffAsync(CancellationToken ct = default)
         => ReadAttributeAsync<StartUpOnOffEnum>(0x4003, ct);
+
+    // Attribute writers
+
+    /// <summary>Write OnTime attribute (0x4001).</summary>
+    public Task<WriteResponse> WriteOnTimeAsync(
+        ushort onTime,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x4001, tlv =>
+        {
+            tlv.AddUInt16(2, onTime);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write OffWaitTime attribute (0x4002).</summary>
+    public Task<WriteResponse> WriteOffWaitTimeAsync(
+        ushort offWaitTime,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x4002, tlv =>
+        {
+            tlv.AddUInt16(2, offWaitTime);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write StartUpOnOff attribute (0x4003).</summary>
+    public Task<WriteResponse> WriteStartUpOnOffAsync(
+        StartUpOnOffEnum startUpOnOff,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x4003, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(startUpOnOff);
+            tlv.AddUInt8(2, (byte)startUpOnOff);
+        }, timedRequest, timedTimeoutMs, ct);
 }

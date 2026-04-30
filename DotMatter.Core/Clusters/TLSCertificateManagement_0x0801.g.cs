@@ -32,6 +32,8 @@ public class TLSCertificateManagementCluster : ClusterBase
         public ushort CAID { get; set; }
         /// <summary>Gets or sets Certificate.</summary>
         public byte[]? Certificate { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     /// <summary>TLSClientCertificateDetailStruct struct.</summary>
@@ -43,6 +45,8 @@ public class TLSCertificateManagementCluster : ClusterBase
         public byte[]? ClientCertificate { get; set; }
         /// <summary>Gets or sets IntermediateCertificates.</summary>
         public byte[][]? IntermediateCertificates { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     // TLV struct serializers
@@ -138,14 +142,14 @@ public class TLSCertificateManagementCluster : ClusterBase
         => InvokeCommandAsync(0x0000, tlv =>
         {
             tlv.AddOctetString(0, certificate);
-            if (cAID != null) tlv.AddUInt16(1, cAID.Value);
+            if (cAID != null) { tlv.AddUInt16(1, cAID.Value); } else { tlv.AddNull(1); }
         }, ct);
 
     /// <summary>Send FindRootCertificate command (0x0002).</summary>
     public Task<InvokeResponse> FindRootCertificateAsync(
         ushort? cAID,
         CancellationToken ct = default)
-        => InvokeCommandAsync(0x0002, tlv => { if (cAID != null) tlv.AddUInt16(0, cAID.Value); }, ct);
+        => InvokeCommandAsync(0x0002, tlv => { if (cAID != null) { tlv.AddUInt16(0, cAID.Value); } else { tlv.AddNull(0); } }, ct);
 
     /// <summary>Send LookupRootCertificate command (0x0004).</summary>
     public Task<InvokeResponse> LookupRootCertificateAsync(
@@ -167,7 +171,7 @@ public class TLSCertificateManagementCluster : ClusterBase
         => InvokeCommandAsync(0x0007, tlv =>
         {
             tlv.AddOctetString(0, nonce);
-            if (cCDID != null) tlv.AddUInt16(1, cCDID.Value);
+            if (cCDID != null) { tlv.AddUInt16(1, cCDID.Value); } else { tlv.AddNull(1); }
         }, ct);
 
     /// <summary>Send ProvisionClientCertificate command (0x0009).</summary>
@@ -187,7 +191,7 @@ public class TLSCertificateManagementCluster : ClusterBase
     public Task<InvokeResponse> FindClientCertificateAsync(
         ushort? cCDID,
         CancellationToken ct = default)
-        => InvokeCommandAsync(0x000A, tlv => { if (cCDID != null) tlv.AddUInt16(0, cCDID.Value); }, ct);
+        => InvokeCommandAsync(0x000A, tlv => { if (cCDID != null) { tlv.AddUInt16(0, cCDID.Value); } else { tlv.AddNull(0); } }, ct);
 
     /// <summary>Send LookupClientCertificate command (0x000C).</summary>
     public Task<InvokeResponse> LookupClientCertificateAsync(

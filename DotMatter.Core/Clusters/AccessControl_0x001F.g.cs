@@ -120,6 +120,8 @@ public class AccessControlCluster : ClusterBase
         public AccessControlTargetStruct[]? Targets { get; set; }
         /// <summary>Gets or sets AuxiliaryType.</summary>
         public AccessControlAuxiliaryTypeEnum? AuxiliaryType { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     /// <summary>AccessControlExtensionStruct struct.</summary>
@@ -127,6 +129,8 @@ public class AccessControlCluster : ClusterBase
     {
         /// <summary>Gets or sets Data.</summary>
         public byte[] Data { get; set; } = default!;
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     /// <summary>AccessRestrictionEntryStruct struct.</summary>
@@ -138,6 +142,8 @@ public class AccessControlCluster : ClusterBase
         public uint Cluster { get; set; }
         /// <summary>Gets or sets Restrictions.</summary>
         public AccessRestrictionStruct[] Restrictions { get; set; } = default!;
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     /// <summary>AccessRestrictionStruct struct.</summary>
@@ -180,9 +186,9 @@ public class AccessControlCluster : ClusterBase
 
     private static void WriteAccessControlTargetStructFields(MatterTLV tlv, AccessControlTargetStruct value)
     {
-        if (value.Cluster != null) tlv.AddUInt32(0, value.Cluster.Value);
-        if (value.Endpoint != null) tlv.AddUInt16(1, value.Endpoint.Value);
-        if (value.DeviceType != null) tlv.AddUInt32(2, value.DeviceType.Value);
+        if (value.Cluster != null) { tlv.AddUInt32(0, value.Cluster.Value); } else { tlv.AddNull(0); }
+        if (value.Endpoint != null) { tlv.AddUInt16(1, value.Endpoint.Value); } else { tlv.AddNull(1); }
+        if (value.DeviceType != null) { tlv.AddUInt32(2, value.DeviceType.Value); } else { tlv.AddNull(2); }
     }
 
     private static void WriteAccessControlEntryStruct(MatterTLV tlv, byte tag, AccessControlEntryStruct value)
@@ -205,8 +211,8 @@ public class AccessControlCluster : ClusterBase
     {
         tlv.AddUInt8(1, (byte)value.Privilege);
         tlv.AddUInt8(2, (byte)value.AuthMode);
-        if (value.Subjects != null) { tlv.AddArray(3); foreach (var item in value.Subjects) { tlv.AddUInt64(item); } tlv.EndContainer(); }
-        if (value.Targets != null) { tlv.AddArray(4); foreach (var item in value.Targets) { WriteAccessControlTargetStruct(tlv, item); } tlv.EndContainer(); }
+        if (value.Subjects != null) { tlv.AddArray(3); foreach (var item in value.Subjects) { tlv.AddUInt64(item); } tlv.EndContainer(); } else { tlv.AddNull(3); }
+        if (value.Targets != null) { tlv.AddArray(4); foreach (var item in value.Targets) { WriteAccessControlTargetStruct(tlv, item); } tlv.EndContainer(); } else { tlv.AddNull(4); }
         if (value.AuxiliaryType != null) tlv.AddUInt8(5, (byte)value.AuxiliaryType);
     }
 
@@ -273,7 +279,7 @@ public class AccessControlCluster : ClusterBase
     private static void WriteAccessRestrictionStructFields(MatterTLV tlv, AccessRestrictionStruct value)
     {
         tlv.AddUInt8(0, (byte)value.Type);
-        if (value.ID != null) tlv.AddUInt32(1, value.ID.Value);
+        if (value.ID != null) { tlv.AddUInt32(1, value.ID.Value); } else { tlv.AddNull(1); }
     }
 
     private static void WriteCommissioningAccessRestrictionEntryStruct(MatterTLV tlv, byte tag, CommissioningAccessRestrictionEntryStruct value)
@@ -297,6 +303,206 @@ public class AccessControlCluster : ClusterBase
         tlv.AddUInt16(0, value.Endpoint);
         tlv.AddUInt32(1, value.Cluster);
         if (value.Restrictions != null) { tlv.AddArray(2); foreach (var item in value.Restrictions) { WriteAccessRestrictionStruct(tlv, item); } tlv.EndContainer(); }
+    }
+
+    // TLV struct deserializers
+
+    private static AccessControlTargetStruct ReadAccessControlTargetStruct(MatterTLV tlv)
+    {
+        var value = new AccessControlTargetStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.Cluster = tlv.GetUnsignedIntAny(0); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Endpoint = (ushort)tlv.GetUnsignedIntAny(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.DeviceType = tlv.GetUnsignedIntAny(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static AccessControlEntryStruct ReadAccessControlEntryStruct(MatterTLV tlv)
+    {
+        var value = new AccessControlEntryStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 1:
+                    value.Privilege = (AccessControlEntryPrivilegeEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.AuthMode = (AccessControlEntryAuthModeEnum)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); value.Subjects = null; break; }
+                    var items3 = new List<ulong>();
+                    tlv.OpenArray(3);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items3.Add(tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Subjects = [.. items3];
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); value.Targets = null; break; }
+                    var items4 = new List<AccessControlTargetStruct>();
+                    tlv.OpenArray(4);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items4.Add(ReadAccessControlTargetStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.Targets = [.. items4];
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.AuxiliaryType = (AccessControlAuxiliaryTypeEnum)tlv.GetUnsignedIntAny(5); }
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static AccessControlExtensionStruct ReadAccessControlExtensionStruct(MatterTLV tlv)
+    {
+        var value = new AccessControlExtensionStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 1:
+                    value.Data = tlv.GetOctetString(1);
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static AccessRestrictionEntryStruct ReadAccessRestrictionEntryStruct(MatterTLV tlv)
+    {
+        var value = new AccessRestrictionEntryStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Endpoint = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Cluster = tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    var items2 = new List<AccessRestrictionStruct>();
+                    tlv.OpenArray(2);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items2.Add(ReadAccessRestrictionStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.Restrictions = [.. items2];
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static AccessRestrictionStruct ReadAccessRestrictionStruct(MatterTLV tlv)
+    {
+        var value = new AccessRestrictionStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Type = (AccessRestrictionTypeEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.ID = tlv.GetUnsignedIntAny(1); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static CommissioningAccessRestrictionEntryStruct ReadCommissioningAccessRestrictionEntryStruct(MatterTLV tlv)
+    {
+        var value = new CommissioningAccessRestrictionEntryStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Endpoint = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Cluster = tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    var items2 = new List<AccessRestrictionStruct>();
+                    tlv.OpenArray(2);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items2.Add(ReadAccessRestrictionStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.Restrictions = [.. items2];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>
@@ -352,11 +558,11 @@ public class AccessControlCluster : ClusterBase
 
     /// <summary>Read ACL attribute (0x0000).</summary>
     public Task<AccessControlEntryStruct[]?> ReadACLAsync(CancellationToken ct = default)
-        => ReadRefAttributeAsync<AccessControlEntryStruct[]>(0x0000, ct);
+        => ReadArrayAttributeAsync(0x0000, ReadAccessControlEntryStruct, ct);
 
     /// <summary>Read Extension attribute (0x0001).</summary>
     public Task<AccessControlExtensionStruct[]?> ReadExtensionAsync(CancellationToken ct = default)
-        => ReadRefAttributeAsync<AccessControlExtensionStruct[]>(0x0001, ct);
+        => ReadArrayAttributeAsync(0x0001, ReadAccessControlExtensionStruct, ct);
 
     /// <summary>Read SubjectsPerAccessControlEntry attribute (0x0002).</summary>
     public Task<ushort> ReadSubjectsPerAccessControlEntryAsync(CancellationToken ct = default)
@@ -372,13 +578,39 @@ public class AccessControlCluster : ClusterBase
 
     /// <summary>Read CommissioningARL attribute (0x0005).</summary>
     public Task<CommissioningAccessRestrictionEntryStruct[]?> ReadCommissioningARLAsync(CancellationToken ct = default)
-        => ReadRefAttributeAsync<CommissioningAccessRestrictionEntryStruct[]>(0x0005, ct);
+        => ReadArrayAttributeAsync(0x0005, ReadCommissioningAccessRestrictionEntryStruct, ct);
 
     /// <summary>Read ARL attribute (0x0006).</summary>
     public Task<AccessRestrictionEntryStruct[]?> ReadARLAsync(CancellationToken ct = default)
-        => ReadRefAttributeAsync<AccessRestrictionEntryStruct[]>(0x0006, ct);
+        => ReadArrayAttributeAsync(0x0006, ReadAccessRestrictionEntryStruct, ct);
 
     /// <summary>Read AuxiliaryACL attribute (0x0007).</summary>
     public Task<AccessControlEntryStruct[]?> ReadAuxiliaryACLAsync(CancellationToken ct = default)
-        => ReadRefAttributeAsync<AccessControlEntryStruct[]>(0x0007, ct);
+        => ReadArrayAttributeAsync(0x0007, ReadAccessControlEntryStruct, ct);
+
+    // Attribute writers
+
+    /// <summary>Write ACL attribute (0x0000).</summary>
+    public Task<WriteResponse> WriteACLAsync(
+        AccessControlEntryStruct[] aCL,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0000, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(aCL);
+            if (aCL != null) { tlv.AddArray(2); foreach (var item in aCL) { WriteAccessControlEntryStruct(tlv, item); } tlv.EndContainer(); }
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write Extension attribute (0x0001).</summary>
+    public Task<WriteResponse> WriteExtensionAsync(
+        AccessControlExtensionStruct[] extension,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0001, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(extension);
+            if (extension != null) { tlv.AddArray(2); foreach (var item in extension) { WriteAccessControlExtensionStruct(tlv, item); } tlv.EndContainer(); }
+        }, timedRequest, timedTimeoutMs, ct);
 }

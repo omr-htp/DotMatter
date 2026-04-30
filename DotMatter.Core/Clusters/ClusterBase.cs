@@ -120,36 +120,60 @@ public abstract class ClusterBase(ISession session, ushort endpointId)
         uint attributeId,
         Action<MatterTLV> writeValue,
         bool timedRequest = false,
+        ushort timedTimeoutMs = 5000,
         CancellationToken ct = default)
-        => InteractionManager.WriteAttributeAsync(Session, EndpointId, GetClusterId(), attributeId, writeValue, timedRequest, ct: ct);
+        => InteractionManager.WriteAttributeAsync(Session, EndpointId, GetClusterId(), attributeId, writeValue, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Read a typed array attribute from its raw TLV value.</summary>
+    protected async Task<T[]?> ReadArrayAttributeAsync<T>(
+        uint attributeId,
+        Func<MatterTLV, T> readItem,
+        CancellationToken ct = default)
+    {
+        var raw = await InteractionManager.ReadAttributeTlvAsync(Session, EndpointId, GetClusterId(), attributeId, ct);
+        if (raw is null)
+        {
+            return null;
+        }
+
+        var items = new List<T>();
+        raw.OpenArray(2);
+        while (!raw.IsEndContainerNext())
+        {
+            items.Add(readItem(raw));
+        }
+
+        raw.CloseContainer();
+        return [.. items];
+    }
 
     /// <summary>Write a bool attribute.</summary>
     protected Task<WriteResponse> WriteAttributeAsync(uint attributeId, bool value, CancellationToken ct = default)
-        => WriteAttributeAsync(attributeId, tlv => tlv.AddBool(1, value), ct: ct);
+        => WriteAttributeAsync(attributeId, tlv => tlv.AddBool(2, value), ct: ct);
 
     /// <summary>Write a byte attribute.</summary>
     protected Task<WriteResponse> WriteAttributeAsync(uint attributeId, byte value, CancellationToken ct = default)
-        => WriteAttributeAsync(attributeId, tlv => tlv.AddUInt8(1, value), ct: ct);
+        => WriteAttributeAsync(attributeId, tlv => tlv.AddUInt8(2, value), ct: ct);
 
     /// <summary>Write a ushort attribute.</summary>
     protected Task<WriteResponse> WriteAttributeAsync(uint attributeId, ushort value, CancellationToken ct = default)
-        => WriteAttributeAsync(attributeId, tlv => tlv.AddUInt16(1, value), ct: ct);
+        => WriteAttributeAsync(attributeId, tlv => tlv.AddUInt16(2, value), ct: ct);
 
     /// <summary>Write a uint attribute.</summary>
     protected Task<WriteResponse> WriteAttributeAsync(uint attributeId, uint value, CancellationToken ct = default)
-        => WriteAttributeAsync(attributeId, tlv => tlv.AddUInt32(1, value), ct: ct);
+        => WriteAttributeAsync(attributeId, tlv => tlv.AddUInt32(2, value), ct: ct);
 
     /// <summary>Write a ulong attribute.</summary>
     protected Task<WriteResponse> WriteAttributeAsync(uint attributeId, ulong value, CancellationToken ct = default)
-        => WriteAttributeAsync(attributeId, tlv => tlv.AddUInt64(1, value), ct: ct);
+        => WriteAttributeAsync(attributeId, tlv => tlv.AddUInt64(2, value), ct: ct);
 
     /// <summary>Write a string attribute.</summary>
     protected Task<WriteResponse> WriteAttributeAsync(uint attributeId, string value, CancellationToken ct = default)
-        => WriteAttributeAsync(attributeId, tlv => tlv.AddUTF8String(1, value), ct: ct);
+        => WriteAttributeAsync(attributeId, tlv => tlv.AddUTF8String(2, value), ct: ct);
 
     /// <summary>Write a byte[] attribute.</summary>
     protected Task<WriteResponse> WriteAttributeAsync(uint attributeId, byte[] value, CancellationToken ct = default)
-        => WriteAttributeAsync(attributeId, tlv => tlv.AddOctetString(1, value), ct: ct);
+        => WriteAttributeAsync(attributeId, tlv => tlv.AddOctetString(2, value), ct: ct);
 
     /// <summary>Subscribe to attribute changes on this cluster.</summary>
     protected Task<Subscription> SubscribeAsync(

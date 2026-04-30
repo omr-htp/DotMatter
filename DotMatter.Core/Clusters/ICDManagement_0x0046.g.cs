@@ -106,6 +106,8 @@ public class ICDManagementCluster : ClusterBase
         public ulong MonitoredSubject { get; set; }
         /// <summary>Gets or sets ClientType.</summary>
         public ClientTypeEnum ClientType { get; set; } = default!;
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     // TLV struct serializers

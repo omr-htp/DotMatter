@@ -56,4 +56,18 @@ public class LaundryDryerControlsCluster : ClusterBase
     /// <summary>Read SelectedDrynessLevel attribute (0x0001).</summary>
     public Task<DrynessLevelEnum> ReadSelectedDrynessLevelAsync(CancellationToken ct = default)
         => ReadAttributeAsync<DrynessLevelEnum>(0x0001, ct);
+
+    // Attribute writers
+
+    /// <summary>Write SelectedDrynessLevel attribute (0x0001).</summary>
+    public Task<WriteResponse> WriteSelectedDrynessLevelAsync(
+        DrynessLevelEnum selectedDrynessLevel,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0001, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(selectedDrynessLevel);
+            tlv.AddUInt8(2, (byte)selectedDrynessLevel);
+        }, timedRequest, timedTimeoutMs, ct);
 }

@@ -336,7 +336,7 @@ public class DeviceEnergyManagementCluster : ClusterBase
 
     private static void WritePowerAdjustCapabilityStructFields(MatterTLV tlv, PowerAdjustCapabilityStruct value)
     {
-        if (value.PowerAdjustCapability != null) { tlv.AddArray(0); foreach (var item in value.PowerAdjustCapability) { WritePowerAdjustStruct(tlv, item); } tlv.EndContainer(); }
+        if (value.PowerAdjustCapability != null) { tlv.AddArray(0); foreach (var item in value.PowerAdjustCapability) { WritePowerAdjustStruct(tlv, item); } tlv.EndContainer(); } else { tlv.AddNull(0); }
         tlv.AddUInt8(1, (byte)value.Cause);
     }
 
@@ -383,7 +383,7 @@ public class DeviceEnergyManagementCluster : ClusterBase
     private static void WriteForecastStructFields(MatterTLV tlv, ForecastStruct value)
     {
         tlv.AddUInt32(0, value.ForecastID);
-        if (value.ActiveSlotNumber != null) tlv.AddUInt16(1, value.ActiveSlotNumber.Value);
+        if (value.ActiveSlotNumber != null) { tlv.AddUInt16(1, value.ActiveSlotNumber.Value); } else { tlv.AddNull(1); }
         tlv.AddUInt32(2, value.StartTime);
         tlv.AddUInt32(3, value.EndTime);
         if (value.EarliestStartTime != null) tlv.AddUInt32(4, value.EarliestStartTime.Value);

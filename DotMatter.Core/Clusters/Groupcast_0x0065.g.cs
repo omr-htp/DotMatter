@@ -48,6 +48,8 @@ public class GroupcastCluster : ClusterBase
         public bool HasAuxiliaryACL { get; set; }
         /// <summary>Gets or sets ExpiringKeyID.</summary>
         public uint? ExpiringKeyID { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     // TLV struct serializers

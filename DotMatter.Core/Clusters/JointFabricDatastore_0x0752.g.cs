@@ -303,8 +303,8 @@ public class JointFabricDatastoreCluster : ClusterBase
     {
         tlv.AddUInt8(1, (byte)value.Privilege);
         tlv.AddUInt8(2, (byte)value.AuthMode);
-        if (value.Subjects != null) { tlv.AddArray(3); foreach (var item in value.Subjects) { tlv.AddUInt64(item); } tlv.EndContainer(); }
-        if (value.Targets != null) { tlv.AddArray(4); foreach (var item in value.Targets) { WriteDatastoreAccessControlTargetStruct(tlv, item); } tlv.EndContainer(); }
+        if (value.Subjects != null) { tlv.AddArray(3); foreach (var item in value.Subjects) { tlv.AddUInt64(item); } tlv.EndContainer(); } else { tlv.AddNull(3); }
+        if (value.Targets != null) { tlv.AddArray(4); foreach (var item in value.Targets) { WriteDatastoreAccessControlTargetStruct(tlv, item); } tlv.EndContainer(); } else { tlv.AddNull(4); }
     }
 
     private static void WriteDatastoreAccessControlTargetStruct(MatterTLV tlv, byte tag, DatastoreAccessControlTargetStruct value)
@@ -325,9 +325,9 @@ public class JointFabricDatastoreCluster : ClusterBase
 
     private static void WriteDatastoreAccessControlTargetStructFields(MatterTLV tlv, DatastoreAccessControlTargetStruct value)
     {
-        if (value.Cluster != null) tlv.AddUInt32(0, value.Cluster.Value);
-        if (value.Endpoint != null) tlv.AddUInt16(1, value.Endpoint.Value);
-        if (value.DeviceType != null) tlv.AddUInt32(2, value.DeviceType.Value);
+        if (value.Cluster != null) { tlv.AddUInt32(0, value.Cluster.Value); } else { tlv.AddNull(0); }
+        if (value.Endpoint != null) { tlv.AddUInt16(1, value.Endpoint.Value); } else { tlv.AddNull(1); }
+        if (value.DeviceType != null) { tlv.AddUInt32(2, value.DeviceType.Value); } else { tlv.AddNull(2); }
     }
 
     private static void WriteDatastoreAdministratorInformationEntryStruct(MatterTLV tlv, byte tag, DatastoreAdministratorInformationEntryStruct value)
@@ -471,9 +471,9 @@ public class JointFabricDatastoreCluster : ClusterBase
     {
         tlv.AddUInt64(0, value.GroupID);
         tlv.AddUTF8String(1, value.FriendlyName);
-        if (value.GroupKeySetID != null) tlv.AddUInt16(2, value.GroupKeySetID.Value);
-        if (value.GroupCAT != null) tlv.AddUInt16(3, value.GroupCAT.Value);
-        if (value.GroupCATVersion != null) tlv.AddUInt16(4, value.GroupCATVersion.Value);
+        if (value.GroupKeySetID != null) { tlv.AddUInt16(2, value.GroupKeySetID.Value); } else { tlv.AddNull(2); }
+        if (value.GroupCAT != null) { tlv.AddUInt16(3, value.GroupCAT.Value); } else { tlv.AddNull(3); }
+        if (value.GroupCATVersion != null) { tlv.AddUInt16(4, value.GroupCATVersion.Value); } else { tlv.AddNull(4); }
         tlv.AddUInt8(5, (byte)value.GroupPermission);
     }
 
@@ -498,11 +498,11 @@ public class JointFabricDatastoreCluster : ClusterBase
         tlv.AddUInt16(0, value.GroupKeySetID);
         tlv.AddUInt8(1, (byte)value.GroupKeySecurityPolicy);
         tlv.AddOctetString(2, value.EpochKey0);
-        if (value.EpochStartTime0 != null) tlv.AddUInt64(3, value.EpochStartTime0.Value);
+        if (value.EpochStartTime0 != null) { tlv.AddUInt64(3, value.EpochStartTime0.Value); } else { tlv.AddNull(3); }
         tlv.AddOctetString(4, value.EpochKey1);
-        if (value.EpochStartTime1 != null) tlv.AddUInt64(5, value.EpochStartTime1.Value);
+        if (value.EpochStartTime1 != null) { tlv.AddUInt64(5, value.EpochStartTime1.Value); } else { tlv.AddNull(5); }
         tlv.AddOctetString(6, value.EpochKey2);
-        if (value.EpochStartTime2 != null) tlv.AddUInt64(7, value.EpochStartTime2.Value);
+        if (value.EpochStartTime2 != null) { tlv.AddUInt64(7, value.EpochStartTime2.Value); } else { tlv.AddNull(7); }
         tlv.AddUInt8(8, (byte)value.GroupKeyMulticastPolicy);
     }
 
@@ -686,9 +686,9 @@ public class JointFabricDatastoreCluster : ClusterBase
         {
             tlv.AddUInt16(0, groupID);
             tlv.AddUTF8String(1, friendlyName);
-            if (groupKeySetID != null) tlv.AddUInt16(2, groupKeySetID.Value);
-            if (groupCAT != null) tlv.AddUInt16(3, groupCAT.Value);
-            if (groupCATVersion != null) tlv.AddUInt16(4, groupCATVersion.Value);
+            if (groupKeySetID != null) { tlv.AddUInt16(2, groupKeySetID.Value); } else { tlv.AddNull(2); }
+            if (groupCAT != null) { tlv.AddUInt16(3, groupCAT.Value); } else { tlv.AddNull(3); }
+            if (groupCATVersion != null) { tlv.AddUInt16(4, groupCATVersion.Value); } else { tlv.AddNull(4); }
             tlv.AddUInt8(5, (byte)groupPermission);
         }, ct);
 
@@ -705,9 +705,9 @@ public class JointFabricDatastoreCluster : ClusterBase
         {
             tlv.AddUInt16(0, groupID);
             tlv.AddUTF8String(1, friendlyName);
-            if (groupKeySetID != null) tlv.AddUInt16(2, groupKeySetID.Value);
-            if (groupCAT != null) tlv.AddUInt16(3, groupCAT.Value);
-            if (groupCATVersion != null) tlv.AddUInt16(4, groupCATVersion.Value);
+            if (groupKeySetID != null) { tlv.AddUInt16(2, groupKeySetID.Value); } else { tlv.AddNull(2); }
+            if (groupCAT != null) { tlv.AddUInt16(3, groupCAT.Value); } else { tlv.AddNull(3); }
+            if (groupCATVersion != null) { tlv.AddUInt16(4, groupCATVersion.Value); } else { tlv.AddNull(4); }
             tlv.AddUInt8(5, (byte)groupPermission);
         }, ct);
 
@@ -740,7 +740,7 @@ public class JointFabricDatastoreCluster : ClusterBase
         CancellationToken ct = default)
         => InvokeCommandAsync(0x0007, tlv =>
         {
-            if (nodeID != null) tlv.AddUInt64(0, nodeID.Value);
+            if (nodeID != null) { tlv.AddUInt64(0, nodeID.Value); } else { tlv.AddNull(0); }
             tlv.AddUTF8String(1, friendlyName);
             tlv.AddOctetString(2, iCAC);
         }, ct);

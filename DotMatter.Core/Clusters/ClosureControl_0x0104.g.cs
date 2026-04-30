@@ -187,7 +187,7 @@ public class ClosureControlCluster : ClusterBase
         if (value.Position != null) tlv.AddUInt8(0, (byte)value.Position);
         if (value.Latch != null) tlv.AddBool(1, value.Latch.Value);
         if (value.Speed != null) tlv.AddUInt8(2, (byte)value.Speed);
-        if (value.SecureState != null) tlv.AddBool(3, value.SecureState.Value);
+        if (value.SecureState != null) { tlv.AddBool(3, value.SecureState.Value); } else { tlv.AddNull(3); }
     }
 
     private static void WriteOverallTargetStateStruct(MatterTLV tlv, byte tag, OverallTargetStateStruct value)

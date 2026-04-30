@@ -309,7 +309,7 @@ public class EnergyEVSECluster : ClusterBase
         CancellationToken ct = default)
         => InvokeCommandAsync(0x0002, tlv =>
         {
-            if (chargingEnabledUntil != null) tlv.AddUInt32(0, chargingEnabledUntil.Value);
+            if (chargingEnabledUntil != null) { tlv.AddUInt32(0, chargingEnabledUntil.Value); } else { tlv.AddNull(0); }
             tlv.AddUInt64(1, minimumChargeCurrent);
             tlv.AddUInt64(2, maximumChargeCurrent);
         }, ct);
@@ -321,7 +321,7 @@ public class EnergyEVSECluster : ClusterBase
         CancellationToken ct = default)
         => InvokeCommandAsync(0x0003, tlv =>
         {
-            if (dischargingEnabledUntil != null) tlv.AddUInt32(0, dischargingEnabledUntil.Value);
+            if (dischargingEnabledUntil != null) { tlv.AddUInt32(0, dischargingEnabledUntil.Value); } else { tlv.AddNull(0); }
             tlv.AddUInt64(1, maximumDischargeCurrent);
         }, ct);
 

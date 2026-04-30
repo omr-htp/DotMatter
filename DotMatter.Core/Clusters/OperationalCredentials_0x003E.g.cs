@@ -74,6 +74,8 @@ public class OperationalCredentialsCluster : ClusterBase
         public string Label { get; set; } = default!;
         /// <summary>Gets or sets VIDVerificationStatement.</summary>
         public byte[]? VIDVerificationStatement { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     /// <summary>NOCStruct struct.</summary>
@@ -85,6 +87,8 @@ public class OperationalCredentialsCluster : ClusterBase
         public byte[] ICAC { get; set; } = default!;
         /// <summary>Gets or sets VVSC.</summary>
         public byte[]? VVSC { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     // TLV struct serializers

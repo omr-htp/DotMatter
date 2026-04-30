@@ -112,4 +112,17 @@ public class IdentifyCluster : ClusterBase
     /// <summary>Read IdentifyType attribute (0x0001).</summary>
     public Task<IdentifyTypeEnum> ReadIdentifyTypeAsync(CancellationToken ct = default)
         => ReadAttributeAsync<IdentifyTypeEnum>(0x0001, ct);
+
+    // Attribute writers
+
+    /// <summary>Write IdentifyTime attribute (0x0000).</summary>
+    public Task<WriteResponse> WriteIdentifyTimeAsync(
+        ushort identifyTime,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0000, tlv =>
+        {
+            tlv.AddUInt16(2, identifyTime);
+        }, timedRequest, timedTimeoutMs, ct);
 }

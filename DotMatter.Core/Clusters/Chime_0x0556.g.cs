@@ -104,4 +104,28 @@ public class ChimeCluster : ClusterBase
     /// <summary>Read Enabled attribute (0x0002).</summary>
     public Task<bool> ReadEnabledAsync(CancellationToken ct = default)
         => ReadAttributeAsync<bool>(0x0002, ct);
+
+    // Attribute writers
+
+    /// <summary>Write SelectedChime attribute (0x0001).</summary>
+    public Task<WriteResponse> WriteSelectedChimeAsync(
+        byte selectedChime,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0001, tlv =>
+        {
+            tlv.AddUInt8(2, selectedChime);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write Enabled attribute (0x0002).</summary>
+    public Task<WriteResponse> WriteEnabledAsync(
+        bool enabled,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0002, tlv =>
+        {
+            tlv.AddBool(2, enabled);
+        }, timedRequest, timedTimeoutMs, ct);
 }

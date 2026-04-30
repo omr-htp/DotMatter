@@ -542,7 +542,7 @@ public class ServiceAreaCluster : ClusterBase
     private static void WriteAreaStructFields(MatterTLV tlv, AreaStruct value)
     {
         tlv.AddUInt32(0, value.AreaID);
-        if (value.MapID != null) tlv.AddUInt32(1, value.MapID.Value);
+        if (value.MapID != null) { tlv.AddUInt32(1, value.MapID.Value); } else { tlv.AddNull(1); }
         WriteAreaInfoStruct(tlv, 2, value.AreaInfo);
     }
 
@@ -589,7 +589,7 @@ public class ServiceAreaCluster : ClusterBase
     private static void WriteLocationDescriptorStructFields(MatterTLV tlv, LocationDescriptorStruct value)
     {
         tlv.AddUTF8String(0, value.LocationName);
-        if (value.FloorNumber != null) tlv.AddInt16(1, value.FloorNumber.Value);
+        if (value.FloorNumber != null) { tlv.AddInt16(1, value.FloorNumber.Value); } else { tlv.AddNull(1); }
         tlv.AddUInt8(2, (byte)value.AreaType);
     }
 

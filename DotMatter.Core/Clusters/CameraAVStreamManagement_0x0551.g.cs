@@ -761,7 +761,7 @@ public class CameraAVStreamManagementCluster : ClusterBase
         CancellationToken ct = default)
         => InvokeCommandAsync(0x000C, tlv =>
         {
-            if (snapshotStreamID != null) tlv.AddUInt16(0, snapshotStreamID.Value);
+            if (snapshotStreamID != null) { tlv.AddUInt16(0, snapshotStreamID.Value); } else { tlv.AddNull(0); }
             WriteVideoResolutionStruct(tlv, 1, requestedResolution);
         }, ct);
 
@@ -930,4 +930,208 @@ public class CameraAVStreamManagementCluster : ClusterBase
     /// <summary>Read StatusLightBrightness attribute (0x0028).</summary>
     public Task<ThreeLevelAutoEnum> ReadStatusLightBrightnessAsync(CancellationToken ct = default)
         => ReadAttributeAsync<ThreeLevelAutoEnum>(0x0028, ct);
+
+    // Attribute writers
+
+    /// <summary>Write HDRModeEnabled attribute (0x000D).</summary>
+    public Task<WriteResponse> WriteHDRModeEnabledAsync(
+        bool hDRModeEnabled,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x000D, tlv =>
+        {
+            tlv.AddBool(2, hDRModeEnabled);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write SoftRecordingPrivacyModeEnabled attribute (0x0013).</summary>
+    public Task<WriteResponse> WriteSoftRecordingPrivacyModeEnabledAsync(
+        bool softRecordingPrivacyModeEnabled,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0013, tlv =>
+        {
+            tlv.AddBool(2, softRecordingPrivacyModeEnabled);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write SoftLivestreamPrivacyModeEnabled attribute (0x0014).</summary>
+    public Task<WriteResponse> WriteSoftLivestreamPrivacyModeEnabledAsync(
+        bool softLivestreamPrivacyModeEnabled,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0014, tlv =>
+        {
+            tlv.AddBool(2, softLivestreamPrivacyModeEnabled);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write NightVision attribute (0x0016).</summary>
+    public Task<WriteResponse> WriteNightVisionAsync(
+        TriStateAutoEnum nightVision,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0016, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(nightVision);
+            tlv.AddUInt8(2, (byte)nightVision);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write NightVisionIllum attribute (0x0017).</summary>
+    public Task<WriteResponse> WriteNightVisionIllumAsync(
+        TriStateAutoEnum nightVisionIllum,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0017, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(nightVisionIllum);
+            tlv.AddUInt8(2, (byte)nightVisionIllum);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write Viewport attribute (0x0018).</summary>
+    public Task<WriteResponse> WriteViewportAsync(
+        ViewportStruct viewport,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0018, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(viewport);
+            WriteViewportStruct(tlv, 2, viewport);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write SpeakerMuted attribute (0x0019).</summary>
+    public Task<WriteResponse> WriteSpeakerMutedAsync(
+        bool speakerMuted,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0019, tlv =>
+        {
+            tlv.AddBool(2, speakerMuted);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write SpeakerVolumeLevel attribute (0x001A).</summary>
+    public Task<WriteResponse> WriteSpeakerVolumeLevelAsync(
+        byte speakerVolumeLevel,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x001A, tlv =>
+        {
+            tlv.AddUInt8(2, speakerVolumeLevel);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write MicrophoneMuted attribute (0x001D).</summary>
+    public Task<WriteResponse> WriteMicrophoneMutedAsync(
+        bool microphoneMuted,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x001D, tlv =>
+        {
+            tlv.AddBool(2, microphoneMuted);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write MicrophoneVolumeLevel attribute (0x001E).</summary>
+    public Task<WriteResponse> WriteMicrophoneVolumeLevelAsync(
+        byte microphoneVolumeLevel,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x001E, tlv =>
+        {
+            tlv.AddUInt8(2, microphoneVolumeLevel);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write MicrophoneAGCEnabled attribute (0x0021).</summary>
+    public Task<WriteResponse> WriteMicrophoneAGCEnabledAsync(
+        bool microphoneAGCEnabled,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0021, tlv =>
+        {
+            tlv.AddBool(2, microphoneAGCEnabled);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write ImageRotation attribute (0x0022).</summary>
+    public Task<WriteResponse> WriteImageRotationAsync(
+        ushort imageRotation,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0022, tlv =>
+        {
+            tlv.AddUInt16(2, imageRotation);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write ImageFlipHorizontal attribute (0x0023).</summary>
+    public Task<WriteResponse> WriteImageFlipHorizontalAsync(
+        bool imageFlipHorizontal,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0023, tlv =>
+        {
+            tlv.AddBool(2, imageFlipHorizontal);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write ImageFlipVertical attribute (0x0024).</summary>
+    public Task<WriteResponse> WriteImageFlipVerticalAsync(
+        bool imageFlipVertical,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0024, tlv =>
+        {
+            tlv.AddBool(2, imageFlipVertical);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write LocalVideoRecordingEnabled attribute (0x0025).</summary>
+    public Task<WriteResponse> WriteLocalVideoRecordingEnabledAsync(
+        bool localVideoRecordingEnabled,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0025, tlv =>
+        {
+            tlv.AddBool(2, localVideoRecordingEnabled);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write LocalSnapshotRecordingEnabled attribute (0x0026).</summary>
+    public Task<WriteResponse> WriteLocalSnapshotRecordingEnabledAsync(
+        bool localSnapshotRecordingEnabled,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0026, tlv =>
+        {
+            tlv.AddBool(2, localSnapshotRecordingEnabled);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write StatusLightEnabled attribute (0x0027).</summary>
+    public Task<WriteResponse> WriteStatusLightEnabledAsync(
+        bool statusLightEnabled,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0027, tlv =>
+        {
+            tlv.AddBool(2, statusLightEnabled);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write StatusLightBrightness attribute (0x0028).</summary>
+    public Task<WriteResponse> WriteStatusLightBrightnessAsync(
+        ThreeLevelAutoEnum statusLightBrightness,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0028, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(statusLightBrightness);
+            tlv.AddUInt8(2, (byte)statusLightBrightness);
+        }, timedRequest, timedTimeoutMs, ct);
 }

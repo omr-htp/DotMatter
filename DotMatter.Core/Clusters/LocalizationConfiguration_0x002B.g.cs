@@ -43,4 +43,18 @@ public class LocalizationConfigurationCluster : ClusterBase
     /// <summary>Read SupportedLocales attribute (0x0001).</summary>
     public Task<string[]?> ReadSupportedLocalesAsync(CancellationToken ct = default)
         => ReadRefAttributeAsync<string[]>(0x0001, ct);
+
+    // Attribute writers
+
+    /// <summary>Write ActiveLocale attribute (0x0000).</summary>
+    public Task<WriteResponse> WriteActiveLocaleAsync(
+        string activeLocale,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0000, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(activeLocale);
+            tlv.AddUTF8String(2, activeLocale);
+        }, timedRequest, timedTimeoutMs, ct);
 }

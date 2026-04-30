@@ -29,7 +29,12 @@ public class CodeGenGoldenFileTests
         var generated = ClusterCodeEmitter.Emit(cluster, "access-control-cluster.xml");
 
         Assert.That(generated, Does.Contain("public Task<AccessControlEntryStruct[]?> ReadACLAsync"));
-        Assert.That(generated, Does.Contain("=> ReadRefAttributeAsync<AccessControlEntryStruct[]>(0x0000, ct);"));
+        Assert.That(generated, Does.Contain("=> ReadArrayAttributeAsync(0x0000, ReadAccessControlEntryStruct, ct);"));
+        Assert.That(generated, Does.Contain("public Task<WriteResponse> WriteACLAsync"));
+        Assert.That(generated, Does.Contain("tlv.AddArray(2); foreach (var item in aCL)"));
+        Assert.That(generated, Does.Contain("if (value.DeviceType != null) { tlv.AddUInt32(2, value.DeviceType.Value); } else { tlv.AddNull(2); }"));
+        Assert.That(generated, Does.Contain("public byte FabricIndex { get; set; }"));
+        Assert.That(generated, Does.Contain("case 254:"));
     }
 
     private static string NormalizeLineEndings(string value)

@@ -54,6 +54,8 @@ public class ScenesManagementCluster : ClusterBase
         public bool SceneValid { get; set; }
         /// <summary>Gets or sets RemainingCapacity.</summary>
         public byte RemainingCapacity { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     /// <summary>AttributeValuePairStruct struct.</summary>

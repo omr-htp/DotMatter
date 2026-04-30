@@ -243,7 +243,7 @@ public class TimeSynchronizationCluster : ClusterBase
     {
         tlv.AddInt32(0, value.Offset);
         tlv.AddUInt64(1, value.ValidStarting);
-        if (value.ValidUntil != null) tlv.AddUInt64(2, value.ValidUntil.Value);
+        if (value.ValidUntil != null) { tlv.AddUInt64(2, value.ValidUntil.Value); } else { tlv.AddNull(2); }
     }
 
     /// <summary>Attribute identifiers.</summary>

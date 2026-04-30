@@ -50,6 +50,8 @@ public class PowerTopologyCluster : ClusterBase
         public ushort? Endpoint { get; set; }
         /// <summary>Gets or sets Label.</summary>
         public string? Label { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     // TLV struct serializers
@@ -77,6 +79,38 @@ public class PowerTopologyCluster : ClusterBase
         if (value.Label != null) tlv.AddUTF8String(3, value.Label);
     }
 
+    // TLV struct deserializers
+
+    private static CircuitNodeStruct ReadCircuitNodeStruct(MatterTLV tlv)
+    {
+        var value = new CircuitNodeStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 1:
+                    value.Node = tlv.GetUnsignedInt(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Endpoint = (ushort)tlv.GetUnsignedIntAny(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.Label = tlv.GetUTF8String(3); }
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -100,5 +134,19 @@ public class PowerTopologyCluster : ClusterBase
 
     /// <summary>Read ElectricalCircuitNodes attribute (0x0002).</summary>
     public Task<CircuitNodeStruct[]?> ReadElectricalCircuitNodesAsync(CancellationToken ct = default)
-        => ReadRefAttributeAsync<CircuitNodeStruct[]>(0x0002, ct);
+        => ReadArrayAttributeAsync(0x0002, ReadCircuitNodeStruct, ct);
+
+    // Attribute writers
+
+    /// <summary>Write ElectricalCircuitNodes attribute (0x0002).</summary>
+    public Task<WriteResponse> WriteElectricalCircuitNodesAsync(
+        CircuitNodeStruct[] electricalCircuitNodes,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0002, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(electricalCircuitNodes);
+            if (electricalCircuitNodes != null) { tlv.AddArray(2); foreach (var item in electricalCircuitNodes) { WriteCircuitNodeStruct(tlv, item); } tlv.EndContainer(); }
+        }, timedRequest, timedTimeoutMs, ct);
 }

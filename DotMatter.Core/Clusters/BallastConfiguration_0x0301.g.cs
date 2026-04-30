@@ -133,4 +133,86 @@ public class BallastConfigurationCluster : ClusterBase
     /// <summary>Read LampBurnHoursTripPoint attribute (0x0035).</summary>
     public Task<object?> ReadLampBurnHoursTripPointAsync(CancellationToken ct = default)
         => ReadAttributeAsync(0x0035, ct);
+
+    // Attribute writers
+
+    /// <summary>Write MinLevel attribute (0x0010).</summary>
+    public Task<WriteResponse> WriteMinLevelAsync(
+        byte minLevel,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0010, tlv =>
+        {
+            tlv.AddUInt8(2, minLevel);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write MaxLevel attribute (0x0011).</summary>
+    public Task<WriteResponse> WriteMaxLevelAsync(
+        byte maxLevel,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0011, tlv =>
+        {
+            tlv.AddUInt8(2, maxLevel);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write IntrinsicBallastFactor attribute (0x0014).</summary>
+    public Task<WriteResponse> WriteIntrinsicBallastFactorAsync(
+        byte? intrinsicBallastFactor,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0014, tlv =>
+        {
+            if (intrinsicBallastFactor != null) { tlv.AddUInt8(2, intrinsicBallastFactor.Value); } else { tlv.AddNull(2); }
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write BallastFactorAdjustment attribute (0x0015).</summary>
+    public Task<WriteResponse> WriteBallastFactorAdjustmentAsync(
+        byte? ballastFactorAdjustment,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0015, tlv =>
+        {
+            if (ballastFactorAdjustment != null) { tlv.AddUInt8(2, ballastFactorAdjustment.Value); } else { tlv.AddNull(2); }
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write LampType attribute (0x0030).</summary>
+    public Task<WriteResponse> WriteLampTypeAsync(
+        string lampType,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0030, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(lampType);
+            tlv.AddUTF8String(2, lampType);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write LampManufacturer attribute (0x0031).</summary>
+    public Task<WriteResponse> WriteLampManufacturerAsync(
+        string lampManufacturer,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0031, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(lampManufacturer);
+            tlv.AddUTF8String(2, lampManufacturer);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write LampAlarmMode attribute (0x0034).</summary>
+    public Task<WriteResponse> WriteLampAlarmModeAsync(
+        LampAlarmModeBitmap lampAlarmMode,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0034, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(lampAlarmMode);
+            tlv.AddUInt8(2, (byte)lampAlarmMode);
+        }, timedRequest, timedTimeoutMs, ct);
 }

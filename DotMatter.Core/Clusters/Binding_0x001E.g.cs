@@ -36,6 +36,8 @@ public class BindingCluster : ClusterBase
         public ushort? Endpoint { get; set; }
         /// <summary>Gets or sets Cluster.</summary>
         public uint? Cluster { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     // TLV struct serializers
@@ -64,6 +66,41 @@ public class BindingCluster : ClusterBase
         if (value.Cluster != null) tlv.AddUInt32(4, value.Cluster.Value);
     }
 
+    // TLV struct deserializers
+
+    private static TargetStruct ReadTargetStruct(MatterTLV tlv)
+    {
+        var value = new TargetStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Node = tlv.GetUnsignedInt(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Group = (ushort)tlv.GetUnsignedIntAny(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.Endpoint = (ushort)tlv.GetUnsignedIntAny(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.Cluster = tlv.GetUnsignedIntAny(4); }
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -75,5 +112,19 @@ public class BindingCluster : ClusterBase
 
     /// <summary>Read Binding attribute (0x0000).</summary>
     public Task<TargetStruct[]?> ReadBindingAsync(CancellationToken ct = default)
-        => ReadRefAttributeAsync<TargetStruct[]>(0x0000, ct);
+        => ReadArrayAttributeAsync(0x0000, ReadTargetStruct, ct);
+
+    // Attribute writers
+
+    /// <summary>Write Binding attribute (0x0000).</summary>
+    public Task<WriteResponse> WriteBindingAsync(
+        TargetStruct[] binding,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0000, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(binding);
+            if (binding != null) { tlv.AddArray(2); foreach (var item in binding) { WriteTargetStruct(tlv, item); } tlv.EndContainer(); }
+        }, timedRequest, timedTimeoutMs, ct);
 }

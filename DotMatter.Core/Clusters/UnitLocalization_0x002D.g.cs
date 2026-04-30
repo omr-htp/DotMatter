@@ -62,4 +62,18 @@ public class UnitLocalizationCluster : ClusterBase
     /// <summary>Read SupportedTemperatureUnits attribute (0x0001).</summary>
     public Task<TempUnitEnum[]?> ReadSupportedTemperatureUnitsAsync(CancellationToken ct = default)
         => ReadRefAttributeAsync<TempUnitEnum[]>(0x0001, ct);
+
+    // Attribute writers
+
+    /// <summary>Write TemperatureUnit attribute (0x0000).</summary>
+    public Task<WriteResponse> WriteTemperatureUnitAsync(
+        TempUnitEnum temperatureUnit,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0000, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(temperatureUnit);
+            tlv.AddUInt8(2, (byte)temperatureUnit);
+        }, timedRequest, timedTimeoutMs, ct);
 }

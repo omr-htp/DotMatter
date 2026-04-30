@@ -55,6 +55,8 @@ public class TLSClientManagementCluster : ClusterBase
         public ushort? CCDID { get; set; }
         /// <summary>Gets or sets ReferenceCount.</summary>
         public byte ReferenceCount { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     // TLV struct serializers
@@ -81,7 +83,7 @@ public class TLSClientManagementCluster : ClusterBase
         tlv.AddOctetString(1, value.Hostname);
         tlv.AddUInt16(2, value.Port);
         tlv.AddUInt16(3, value.CAID);
-        if (value.CCDID != null) tlv.AddUInt16(4, value.CCDID.Value);
+        if (value.CCDID != null) { tlv.AddUInt16(4, value.CCDID.Value); } else { tlv.AddNull(4); }
         tlv.AddUInt8(5, value.ReferenceCount);
     }
 
@@ -120,8 +122,8 @@ public class TLSClientManagementCluster : ClusterBase
             tlv.AddOctetString(0, hostname);
             tlv.AddUInt16(1, port);
             tlv.AddUInt16(2, cAID);
-            if (cCDID != null) tlv.AddUInt16(3, cCDID.Value);
-            if (endpointID != null) tlv.AddUInt16(4, endpointID.Value);
+            if (cCDID != null) { tlv.AddUInt16(3, cCDID.Value); } else { tlv.AddNull(3); }
+            if (endpointID != null) { tlv.AddUInt16(4, endpointID.Value); } else { tlv.AddNull(4); }
         }, ct);
 
     /// <summary>Send FindEndpoint command (0x0002).</summary>

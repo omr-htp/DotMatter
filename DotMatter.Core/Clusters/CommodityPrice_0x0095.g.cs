@@ -151,7 +151,7 @@ public class CommodityPriceCluster : ClusterBase
     private static void WriteCommodityPriceStructFields(MatterTLV tlv, CommodityPriceStruct value)
     {
         tlv.AddUInt32(0, value.PeriodStart);
-        if (value.PeriodEnd != null) tlv.AddUInt32(1, value.PeriodEnd.Value);
+        if (value.PeriodEnd != null) { tlv.AddUInt32(1, value.PeriodEnd.Value); } else { tlv.AddNull(1); }
         if (value.Price != null) tlv.AddInt64(2, value.Price.Value);
         if (value.PriceLevel != null) tlv.AddInt16(3, value.PriceLevel.Value);
         if (value.Description != null) tlv.AddUTF8String(4, value.Description);

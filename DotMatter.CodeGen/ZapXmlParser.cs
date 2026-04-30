@@ -481,7 +481,11 @@ static class ZapXmlParser
             return null;
         }
 
-        var model = new StructModel { Name = name };
+        var model = new StructModel
+        {
+            Name = name,
+            IsFabricScoped = el.Attribute("isFabricScoped")?.Value == "true",
+        };
         foreach (var item in el.Elements("item"))
         {
             string? iName = item.Attribute("name")?.Value;

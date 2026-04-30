@@ -192,6 +192,8 @@ public class PushAVStreamTransportCluster : ClusterBase
         public TransportStatusEnum TransportStatus { get; set; } = default!;
         /// <summary>Gets or sets TransportOptions.</summary>
         public TransportOptionsStruct? TransportOptions { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     /// <summary>TransportMotionTriggerTimeControlStruct struct.</summary>
@@ -460,7 +462,7 @@ public class PushAVStreamTransportCluster : ClusterBase
     private static void WriteTransportTriggerOptionsStructFields(MatterTLV tlv, TransportTriggerOptionsStruct value)
     {
         tlv.AddUInt8(0, (byte)value.TriggerType);
-        if (value.MotionZones != null) { tlv.AddArray(1); foreach (var item in value.MotionZones) { WriteTransportZoneOptionsStruct(tlv, item); } tlv.EndContainer(); }
+        if (value.MotionZones != null) { tlv.AddArray(1); foreach (var item in value.MotionZones) { WriteTransportZoneOptionsStruct(tlv, item); } tlv.EndContainer(); } else { tlv.AddNull(1); }
         if (value.MotionSensitivity != null) tlv.AddUInt8(2, value.MotionSensitivity.Value);
         if (value.MotionTimeControl != null) WriteTransportMotionTriggerTimeControlStruct(tlv, 3, value.MotionTimeControl);
         if (value.MaxPreRollLen != null) tlv.AddUInt16(4, value.MaxPreRollLen.Value);
@@ -484,7 +486,7 @@ public class PushAVStreamTransportCluster : ClusterBase
 
     private static void WriteTransportZoneOptionsStructFields(MatterTLV tlv, TransportZoneOptionsStruct value)
     {
-        if (value.Zone != null) tlv.AddUInt16(0, value.Zone.Value);
+        if (value.Zone != null) { tlv.AddUInt16(0, value.Zone.Value); } else { tlv.AddNull(0); }
         if (value.Sensitivity != null) tlv.AddUInt8(1, value.Sensitivity.Value);
     }
 
@@ -577,7 +579,7 @@ public class PushAVStreamTransportCluster : ClusterBase
         CancellationToken ct = default)
         => InvokeCommandAsync(0x0004, tlv =>
         {
-            if (connectionID != null) tlv.AddUInt16(0, connectionID.Value);
+            if (connectionID != null) { tlv.AddUInt16(0, connectionID.Value); } else { tlv.AddNull(0); }
             tlv.AddUInt8(1, (byte)transportStatus);
         }, ct);
 
@@ -600,7 +602,7 @@ public class PushAVStreamTransportCluster : ClusterBase
     public Task<InvokeResponse> FindTransportAsync(
         ushort? connectionID,
         CancellationToken ct = default)
-        => InvokeCommandAsync(0x0006, tlv => { if (connectionID != null) tlv.AddUInt16(0, connectionID.Value); }, ct);
+        => InvokeCommandAsync(0x0006, tlv => { if (connectionID != null) { tlv.AddUInt16(0, connectionID.Value); } else { tlv.AddNull(0); } }, ct);
 
     // Attribute readers
 

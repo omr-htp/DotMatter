@@ -189,7 +189,7 @@ public class ContentControlCluster : ClusterBase
 
     private static void WriteBlockChannelStructFields(MatterTLV tlv, BlockChannelStruct value)
     {
-        if (value.BlockChannelIndex != null) tlv.AddUInt16(0, value.BlockChannelIndex.Value);
+        if (value.BlockChannelIndex != null) { tlv.AddUInt16(0, value.BlockChannelIndex.Value); } else { tlv.AddNull(0); }
         tlv.AddUInt16(1, value.MajorNumber);
         tlv.AddUInt16(2, value.MinorNumber);
         if (value.Identifier != null) tlv.AddUTF8String(3, value.Identifier);
@@ -259,7 +259,7 @@ public class ContentControlCluster : ClusterBase
 
     private static void WriteTimeWindowStructFields(MatterTLV tlv, TimeWindowStruct value)
     {
-        if (value.TimeWindowIndex != null) tlv.AddUInt16(0, value.TimeWindowIndex.Value);
+        if (value.TimeWindowIndex != null) { tlv.AddUInt16(0, value.TimeWindowIndex.Value); } else { tlv.AddNull(0); }
         tlv.AddUInt8(1, (byte)value.DayOfWeek);
         if (value.TimePeriod != null) { tlv.AddArray(2); foreach (var item in value.TimePeriod) { WriteTimePeriodStruct(tlv, item); } tlv.EndContainer(); }
     }

@@ -143,4 +143,17 @@ public class BooleanStateConfigurationCluster : ClusterBase
     /// <summary>Read SensorFault attribute (0x0007).</summary>
     public Task<SensorFaultBitmap> ReadSensorFaultAsync(CancellationToken ct = default)
         => ReadAttributeAsync<SensorFaultBitmap>(0x0007, ct);
+
+    // Attribute writers
+
+    /// <summary>Write CurrentSensitivityLevel attribute (0x0000).</summary>
+    public Task<WriteResponse> WriteCurrentSensitivityLevelAsync(
+        byte currentSensitivityLevel,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0000, tlv =>
+        {
+            tlv.AddUInt8(2, currentSensitivityLevel);
+        }, timedRequest, timedTimeoutMs, ct);
 }

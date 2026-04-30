@@ -1030,7 +1030,7 @@ public class DoorLockCluster : ClusterBase
             tlv.AddUInt8(0, (byte)operationType);
             tlv.AddUInt16(1, userIndex);
             tlv.AddUTF8String(2, userName);
-            if (userUniqueID != null) tlv.AddUInt32(3, userUniqueID.Value);
+            if (userUniqueID != null) { tlv.AddUInt32(3, userUniqueID.Value); } else { tlv.AddNull(3); }
             tlv.AddUInt8(4, (byte)userStatus);
             tlv.AddUInt8(5, (byte)userType);
             tlv.AddUInt8(6, (byte)credentialRule);
@@ -1062,7 +1062,7 @@ public class DoorLockCluster : ClusterBase
             tlv.AddUInt8(0, (byte)operationType);
             WriteCredentialStruct(tlv, 1, credential);
             tlv.AddOctetString(2, credentialData);
-            if (userIndex != null) tlv.AddUInt16(3, userIndex.Value);
+            if (userIndex != null) { tlv.AddUInt16(3, userIndex.Value); } else { tlv.AddNull(3); }
             tlv.AddUInt8(4, (byte)userStatus);
             tlv.AddUInt8(5, (byte)userType);
         }, ct);
@@ -1285,4 +1285,207 @@ public class DoorLockCluster : ClusterBase
     /// <summary>Read NumberOfAliroEndpointKeysSupported attribute (0x0088).</summary>
     public Task<ushort> ReadNumberOfAliroEndpointKeysSupportedAsync(CancellationToken ct = default)
         => ReadAttributeAsync<ushort>(0x0088, ct);
+
+    // Attribute writers
+
+    /// <summary>Write DoorOpenEvents attribute (0x0004).</summary>
+    public Task<WriteResponse> WriteDoorOpenEventsAsync(
+        uint doorOpenEvents,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0004, tlv =>
+        {
+            tlv.AddUInt32(2, doorOpenEvents);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write DoorClosedEvents attribute (0x0005).</summary>
+    public Task<WriteResponse> WriteDoorClosedEventsAsync(
+        uint doorClosedEvents,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0005, tlv =>
+        {
+            tlv.AddUInt32(2, doorClosedEvents);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write OpenPeriod attribute (0x0006).</summary>
+    public Task<WriteResponse> WriteOpenPeriodAsync(
+        ushort openPeriod,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0006, tlv =>
+        {
+            tlv.AddUInt16(2, openPeriod);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write Language attribute (0x0021).</summary>
+    public Task<WriteResponse> WriteLanguageAsync(
+        string language,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0021, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(language);
+            tlv.AddUTF8String(2, language);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write LEDSettings attribute (0x0022).</summary>
+    public Task<WriteResponse> WriteLEDSettingsAsync(
+        byte lEDSettings,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0022, tlv =>
+        {
+            tlv.AddUInt8(2, lEDSettings);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write AutoRelockTime attribute (0x0023).</summary>
+    public Task<WriteResponse> WriteAutoRelockTimeAsync(
+        uint autoRelockTime,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0023, tlv =>
+        {
+            tlv.AddUInt32(2, autoRelockTime);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write SoundVolume attribute (0x0024).</summary>
+    public Task<WriteResponse> WriteSoundVolumeAsync(
+        byte soundVolume,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0024, tlv =>
+        {
+            tlv.AddUInt8(2, soundVolume);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write OperatingMode attribute (0x0025).</summary>
+    public Task<WriteResponse> WriteOperatingModeAsync(
+        OperatingModeEnum operatingMode,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0025, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(operatingMode);
+            tlv.AddUInt8(2, (byte)operatingMode);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write EnableLocalProgramming attribute (0x0028).</summary>
+    public Task<WriteResponse> WriteEnableLocalProgrammingAsync(
+        bool enableLocalProgramming,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0028, tlv =>
+        {
+            tlv.AddBool(2, enableLocalProgramming);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write EnableOneTouchLocking attribute (0x0029).</summary>
+    public Task<WriteResponse> WriteEnableOneTouchLockingAsync(
+        bool enableOneTouchLocking,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0029, tlv =>
+        {
+            tlv.AddBool(2, enableOneTouchLocking);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write EnableInsideStatusLED attribute (0x002A).</summary>
+    public Task<WriteResponse> WriteEnableInsideStatusLEDAsync(
+        bool enableInsideStatusLED,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x002A, tlv =>
+        {
+            tlv.AddBool(2, enableInsideStatusLED);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write EnablePrivacyModeButton attribute (0x002B).</summary>
+    public Task<WriteResponse> WriteEnablePrivacyModeButtonAsync(
+        bool enablePrivacyModeButton,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x002B, tlv =>
+        {
+            tlv.AddBool(2, enablePrivacyModeButton);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write LocalProgrammingFeatures attribute (0x002C).</summary>
+    public Task<WriteResponse> WriteLocalProgrammingFeaturesAsync(
+        DlLocalProgrammingFeatures localProgrammingFeatures,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x002C, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(localProgrammingFeatures);
+            tlv.AddUInt8(2, (byte)localProgrammingFeatures);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write WrongCodeEntryLimit attribute (0x0030).</summary>
+    public Task<WriteResponse> WriteWrongCodeEntryLimitAsync(
+        byte wrongCodeEntryLimit,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0030, tlv =>
+        {
+            tlv.AddUInt8(2, wrongCodeEntryLimit);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write UserCodeTemporaryDisableTime attribute (0x0031).</summary>
+    public Task<WriteResponse> WriteUserCodeTemporaryDisableTimeAsync(
+        byte userCodeTemporaryDisableTime,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0031, tlv =>
+        {
+            tlv.AddUInt8(2, userCodeTemporaryDisableTime);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write SendPINOverTheAir attribute (0x0032).</summary>
+    public Task<WriteResponse> WriteSendPINOverTheAirAsync(
+        bool sendPINOverTheAir,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0032, tlv =>
+        {
+            tlv.AddBool(2, sendPINOverTheAir);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write RequirePINforRemoteOperation attribute (0x0033).</summary>
+    public Task<WriteResponse> WriteRequirePINforRemoteOperationAsync(
+        bool requirePINforRemoteOperation,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0033, tlv =>
+        {
+            tlv.AddBool(2, requirePINforRemoteOperation);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write ExpiringUserTimeout attribute (0x0035).</summary>
+    public Task<WriteResponse> WriteExpiringUserTimeoutAsync(
+        ushort expiringUserTimeout,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0035, tlv =>
+        {
+            tlv.AddUInt16(2, expiringUserTimeout);
+        }, timedRequest, timedTimeoutMs, ct);
 }

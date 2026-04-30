@@ -558,8 +558,8 @@ public class ThermostatCluster : ClusterBase
     private static void WriteWeeklyScheduleTransitionStructFields(MatterTLV tlv, WeeklyScheduleTransitionStruct value)
     {
         tlv.AddUInt16(0, value.TransitionTime);
-        if (value.HeatSetpoint != null) tlv.AddInt16(1, value.HeatSetpoint.Value);
-        if (value.CoolSetpoint != null) tlv.AddInt16(2, value.CoolSetpoint.Value);
+        if (value.HeatSetpoint != null) { tlv.AddInt16(1, value.HeatSetpoint.Value); } else { tlv.AddNull(1); }
+        if (value.CoolSetpoint != null) { tlv.AddInt16(2, value.CoolSetpoint.Value); } else { tlv.AddNull(2); }
     }
 
     private static void WriteScheduleTypeStruct(MatterTLV tlv, byte tag, ScheduleTypeStruct value)
@@ -608,7 +608,7 @@ public class ThermostatCluster : ClusterBase
         if (value.Name != null) tlv.AddUTF8String(2, value.Name);
         if (value.CoolingSetpoint != null) tlv.AddInt16(3, value.CoolingSetpoint.Value);
         if (value.HeatingSetpoint != null) tlv.AddInt16(4, value.HeatingSetpoint.Value);
-        if (value.BuiltIn != null) tlv.AddBool(5, value.BuiltIn.Value);
+        if (value.BuiltIn != null) { tlv.AddBool(5, value.BuiltIn.Value); } else { tlv.AddNull(5); }
     }
 
     private static void WritePresetTypeStruct(MatterTLV tlv, byte tag, PresetTypeStruct value)
@@ -657,7 +657,7 @@ public class ThermostatCluster : ClusterBase
         if (value.Name != null) tlv.AddUTF8String(2, value.Name);
         if (value.PresetHandle != null) tlv.AddOctetString(3, value.PresetHandle);
         if (value.Transitions != null) { tlv.AddArray(4); foreach (var item in value.Transitions) { WriteScheduleTransitionStruct(tlv, item); } tlv.EndContainer(); }
-        if (value.BuiltIn != null) tlv.AddBool(5, value.BuiltIn.Value);
+        if (value.BuiltIn != null) { tlv.AddBool(5, value.BuiltIn.Value); } else { tlv.AddNull(5); }
     }
 
     private static void WriteScheduleTransitionStruct(MatterTLV tlv, byte tag, ScheduleTransitionStruct value)
@@ -706,6 +706,258 @@ public class ThermostatCluster : ClusterBase
     {
         tlv.AddUInt32(0, value.AttributeID);
         tlv.AddUInt8(1, value.StatusCode);
+    }
+
+    // TLV struct deserializers
+
+    private static ThermostatSuggestionStruct ReadThermostatSuggestionStruct(MatterTLV tlv)
+    {
+        var value = new ThermostatSuggestionStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.UniqueID = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.PresetHandle = tlv.GetOctetString(1);
+                    break;
+                case 2:
+                    value.EffectiveTime = tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.ExpirationTime = tlv.GetUnsignedIntAny(3);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static WeeklyScheduleTransitionStruct ReadWeeklyScheduleTransitionStruct(MatterTLV tlv)
+    {
+        var value = new WeeklyScheduleTransitionStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.TransitionTime = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.HeatSetpoint = (short)tlv.GetSignedInt(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.CoolSetpoint = (short)tlv.GetSignedInt(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ScheduleTypeStruct ReadScheduleTypeStruct(MatterTLV tlv)
+    {
+        var value = new ScheduleTypeStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.SystemMode = (SystemModeEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.NumberOfSchedules = (byte)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.ScheduleTypeFeatures = (ScheduleTypeFeaturesBitmap)tlv.GetUnsignedIntAny(2);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static PresetStruct ReadPresetStruct(MatterTLV tlv)
+    {
+        var value = new PresetStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.PresetHandle = tlv.GetOctetString(0); }
+                    break;
+                case 1:
+                    value.PresetScenario = (PresetScenarioEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Name = tlv.GetUTF8String(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.CoolingSetpoint = (short)tlv.GetSignedInt(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.HeatingSetpoint = (short)tlv.GetSignedInt(4); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.BuiltIn = tlv.GetBoolean(5); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static PresetTypeStruct ReadPresetTypeStruct(MatterTLV tlv)
+    {
+        var value = new PresetTypeStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.PresetScenario = (PresetScenarioEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.NumberOfPresets = (byte)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.PresetTypeFeatures = (PresetTypeFeaturesBitmap)tlv.GetUnsignedIntAny(2);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ScheduleStruct ReadScheduleStruct(MatterTLV tlv)
+    {
+        var value = new ScheduleStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.ScheduleHandle = tlv.GetOctetString(0); }
+                    break;
+                case 1:
+                    value.SystemMode = (SystemModeEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Name = tlv.GetUTF8String(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.PresetHandle = tlv.GetOctetString(3); }
+                    break;
+                case 4:
+                    var items4 = new List<ScheduleTransitionStruct>();
+                    tlv.OpenArray(4);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items4.Add(ReadScheduleTransitionStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.Transitions = [.. items4];
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.BuiltIn = tlv.GetBoolean(5); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ScheduleTransitionStruct ReadScheduleTransitionStruct(MatterTLV tlv)
+    {
+        var value = new ScheduleTransitionStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.DayOfWeek = (ScheduleDayOfWeekBitmap)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.TransitionTime = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.PresetHandle = tlv.GetOctetString(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.SystemMode = (SystemModeEnum)tlv.GetUnsignedIntAny(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.CoolingSetpoint = (short)tlv.GetSignedInt(4); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.HeatingSetpoint = (short)tlv.GetSignedInt(5); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static AtomicAttributeStatusStruct ReadAtomicAttributeStatusStruct(MatterTLV tlv)
+    {
+        var value = new AtomicAttributeStatusStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.AttributeID = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.StatusCode = (byte)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>
@@ -949,7 +1201,7 @@ public class ThermostatCluster : ClusterBase
         => InvokeCommandAsync(0x0007, tlv =>
         {
             tlv.AddOctetString(0, presetHandle);
-            if (effectiveTime != null) tlv.AddUInt32(1, effectiveTime.Value);
+            if (effectiveTime != null) { tlv.AddUInt32(1, effectiveTime.Value); } else { tlv.AddNull(1); }
             tlv.AddUInt16(2, expirationInMinutes);
         }, ct);
 
@@ -1172,11 +1424,11 @@ public class ThermostatCluster : ClusterBase
 
     /// <summary>Read PresetTypes attribute (0x0048).</summary>
     public Task<PresetTypeStruct[]?> ReadPresetTypesAsync(CancellationToken ct = default)
-        => ReadRefAttributeAsync<PresetTypeStruct[]>(0x0048, ct);
+        => ReadArrayAttributeAsync(0x0048, ReadPresetTypeStruct, ct);
 
     /// <summary>Read ScheduleTypes attribute (0x0049).</summary>
     public Task<ScheduleTypeStruct[]?> ReadScheduleTypesAsync(CancellationToken ct = default)
-        => ReadRefAttributeAsync<ScheduleTypeStruct[]>(0x0049, ct);
+        => ReadArrayAttributeAsync(0x0049, ReadScheduleTypeStruct, ct);
 
     /// <summary>Read NumberOfPresets attribute (0x004A).</summary>
     public Task<byte> ReadNumberOfPresetsAsync(CancellationToken ct = default)
@@ -1204,11 +1456,11 @@ public class ThermostatCluster : ClusterBase
 
     /// <summary>Read Presets attribute (0x0050).</summary>
     public Task<PresetStruct[]?> ReadPresetsAsync(CancellationToken ct = default)
-        => ReadRefAttributeAsync<PresetStruct[]>(0x0050, ct);
+        => ReadArrayAttributeAsync(0x0050, ReadPresetStruct, ct);
 
     /// <summary>Read Schedules attribute (0x0051).</summary>
     public Task<ScheduleStruct[]?> ReadSchedulesAsync(CancellationToken ct = default)
-        => ReadRefAttributeAsync<ScheduleStruct[]>(0x0051, ct);
+        => ReadArrayAttributeAsync(0x0051, ReadScheduleStruct, ct);
 
     /// <summary>Read SetpointHoldExpiryTimestamp attribute (0x0052).</summary>
     public Task<uint?> ReadSetpointHoldExpiryTimestampAsync(CancellationToken ct = default)
@@ -1220,7 +1472,7 @@ public class ThermostatCluster : ClusterBase
 
     /// <summary>Read ThermostatSuggestions attribute (0x0054).</summary>
     public Task<ThermostatSuggestionStruct[]?> ReadThermostatSuggestionsAsync(CancellationToken ct = default)
-        => ReadRefAttributeAsync<ThermostatSuggestionStruct[]>(0x0054, ct);
+        => ReadArrayAttributeAsync(0x0054, ReadThermostatSuggestionStruct, ct);
 
     /// <summary>Read CurrentThermostatSuggestion attribute (0x0055).</summary>
     public Task<object?> ReadCurrentThermostatSuggestionAsync(CancellationToken ct = default)
@@ -1229,4 +1481,339 @@ public class ThermostatCluster : ClusterBase
     /// <summary>Read ThermostatSuggestionNotFollowingReason attribute (0x0056).</summary>
     public Task<ThermostatSuggestionNotFollowingReasonBitmap> ReadThermostatSuggestionNotFollowingReasonAsync(CancellationToken ct = default)
         => ReadAttributeAsync<ThermostatSuggestionNotFollowingReasonBitmap>(0x0056, ct);
+
+    // Attribute writers
+
+    /// <summary>Write HVACSystemTypeConfiguration attribute (0x0009).</summary>
+    public Task<WriteResponse> WriteHVACSystemTypeConfigurationAsync(
+        HVACSystemTypeBitmap hVACSystemTypeConfiguration,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0009, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(hVACSystemTypeConfiguration);
+            tlv.AddUInt8(2, (byte)hVACSystemTypeConfiguration);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write LocalTemperatureCalibration attribute (0x0010).</summary>
+    public Task<WriteResponse> WriteLocalTemperatureCalibrationAsync(
+        sbyte localTemperatureCalibration,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0010, tlv =>
+        {
+            tlv.AddInt8(2, localTemperatureCalibration);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write OccupiedCoolingSetpoint attribute (0x0011).</summary>
+    public Task<WriteResponse> WriteOccupiedCoolingSetpointAsync(
+        short occupiedCoolingSetpoint,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0011, tlv =>
+        {
+            tlv.AddInt16(2, occupiedCoolingSetpoint);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write OccupiedHeatingSetpoint attribute (0x0012).</summary>
+    public Task<WriteResponse> WriteOccupiedHeatingSetpointAsync(
+        short occupiedHeatingSetpoint,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0012, tlv =>
+        {
+            tlv.AddInt16(2, occupiedHeatingSetpoint);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write UnoccupiedCoolingSetpoint attribute (0x0013).</summary>
+    public Task<WriteResponse> WriteUnoccupiedCoolingSetpointAsync(
+        short unoccupiedCoolingSetpoint,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0013, tlv =>
+        {
+            tlv.AddInt16(2, unoccupiedCoolingSetpoint);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write UnoccupiedHeatingSetpoint attribute (0x0014).</summary>
+    public Task<WriteResponse> WriteUnoccupiedHeatingSetpointAsync(
+        short unoccupiedHeatingSetpoint,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0014, tlv =>
+        {
+            tlv.AddInt16(2, unoccupiedHeatingSetpoint);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write MinHeatSetpointLimit attribute (0x0015).</summary>
+    public Task<WriteResponse> WriteMinHeatSetpointLimitAsync(
+        short minHeatSetpointLimit,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0015, tlv =>
+        {
+            tlv.AddInt16(2, minHeatSetpointLimit);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write MaxHeatSetpointLimit attribute (0x0016).</summary>
+    public Task<WriteResponse> WriteMaxHeatSetpointLimitAsync(
+        short maxHeatSetpointLimit,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0016, tlv =>
+        {
+            tlv.AddInt16(2, maxHeatSetpointLimit);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write MinCoolSetpointLimit attribute (0x0017).</summary>
+    public Task<WriteResponse> WriteMinCoolSetpointLimitAsync(
+        short minCoolSetpointLimit,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0017, tlv =>
+        {
+            tlv.AddInt16(2, minCoolSetpointLimit);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write MaxCoolSetpointLimit attribute (0x0018).</summary>
+    public Task<WriteResponse> WriteMaxCoolSetpointLimitAsync(
+        short maxCoolSetpointLimit,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0018, tlv =>
+        {
+            tlv.AddInt16(2, maxCoolSetpointLimit);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write MinSetpointDeadBand attribute (0x0019).</summary>
+    public Task<WriteResponse> WriteMinSetpointDeadBandAsync(
+        sbyte minSetpointDeadBand,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0019, tlv =>
+        {
+            tlv.AddInt8(2, minSetpointDeadBand);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write RemoteSensing attribute (0x001A).</summary>
+    public Task<WriteResponse> WriteRemoteSensingAsync(
+        RemoteSensingBitmap remoteSensing,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x001A, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(remoteSensing);
+            tlv.AddUInt8(2, (byte)remoteSensing);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write ControlSequenceOfOperation attribute (0x001B).</summary>
+    public Task<WriteResponse> WriteControlSequenceOfOperationAsync(
+        ControlSequenceOfOperationEnum controlSequenceOfOperation,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x001B, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(controlSequenceOfOperation);
+            tlv.AddUInt8(2, (byte)controlSequenceOfOperation);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write SystemMode attribute (0x001C).</summary>
+    public Task<WriteResponse> WriteSystemModeAsync(
+        SystemModeEnum systemMode,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x001C, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(systemMode);
+            tlv.AddUInt8(2, (byte)systemMode);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write TemperatureSetpointHold attribute (0x0023).</summary>
+    public Task<WriteResponse> WriteTemperatureSetpointHoldAsync(
+        TemperatureSetpointHoldEnum temperatureSetpointHold,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0023, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(temperatureSetpointHold);
+            tlv.AddUInt8(2, (byte)temperatureSetpointHold);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write TemperatureSetpointHoldDuration attribute (0x0024).</summary>
+    public Task<WriteResponse> WriteTemperatureSetpointHoldDurationAsync(
+        ushort? temperatureSetpointHoldDuration,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0024, tlv =>
+        {
+            if (temperatureSetpointHoldDuration != null) { tlv.AddUInt16(2, temperatureSetpointHoldDuration.Value); } else { tlv.AddNull(2); }
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write ThermostatProgrammingOperationMode attribute (0x0025).</summary>
+    public Task<WriteResponse> WriteThermostatProgrammingOperationModeAsync(
+        ProgrammingOperationModeBitmap thermostatProgrammingOperationMode,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0025, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(thermostatProgrammingOperationMode);
+            tlv.AddUInt8(2, (byte)thermostatProgrammingOperationMode);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write OccupiedSetback attribute (0x0034).</summary>
+    public Task<WriteResponse> WriteOccupiedSetbackAsync(
+        byte? occupiedSetback,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0034, tlv =>
+        {
+            if (occupiedSetback != null) { tlv.AddUInt8(2, occupiedSetback.Value); } else { tlv.AddNull(2); }
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write UnoccupiedSetback attribute (0x0037).</summary>
+    public Task<WriteResponse> WriteUnoccupiedSetbackAsync(
+        byte? unoccupiedSetback,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0037, tlv =>
+        {
+            if (unoccupiedSetback != null) { tlv.AddUInt8(2, unoccupiedSetback.Value); } else { tlv.AddNull(2); }
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write EmergencyHeatDelta attribute (0x003A).</summary>
+    public Task<WriteResponse> WriteEmergencyHeatDeltaAsync(
+        byte emergencyHeatDelta,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x003A, tlv =>
+        {
+            tlv.AddUInt8(2, emergencyHeatDelta);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write ACType attribute (0x0040).</summary>
+    public Task<WriteResponse> WriteACTypeAsync(
+        ACTypeEnum aCType,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0040, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(aCType);
+            tlv.AddUInt8(2, (byte)aCType);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write ACCapacity attribute (0x0041).</summary>
+    public Task<WriteResponse> WriteACCapacityAsync(
+        ushort aCCapacity,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0041, tlv =>
+        {
+            tlv.AddUInt16(2, aCCapacity);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write ACRefrigerantType attribute (0x0042).</summary>
+    public Task<WriteResponse> WriteACRefrigerantTypeAsync(
+        ACRefrigerantTypeEnum aCRefrigerantType,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0042, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(aCRefrigerantType);
+            tlv.AddUInt8(2, (byte)aCRefrigerantType);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write ACCompressorType attribute (0x0043).</summary>
+    public Task<WriteResponse> WriteACCompressorTypeAsync(
+        ACCompressorTypeEnum aCCompressorType,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0043, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(aCCompressorType);
+            tlv.AddUInt8(2, (byte)aCCompressorType);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write ACErrorCode attribute (0x0044).</summary>
+    public Task<WriteResponse> WriteACErrorCodeAsync(
+        ACErrorCodeBitmap aCErrorCode,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0044, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(aCErrorCode);
+            tlv.AddUInt32(2, (uint)aCErrorCode);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write ACLouverPosition attribute (0x0045).</summary>
+    public Task<WriteResponse> WriteACLouverPositionAsync(
+        ACLouverPositionEnum aCLouverPosition,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0045, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(aCLouverPosition);
+            tlv.AddUInt8(2, (byte)aCLouverPosition);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write ACCapacityformat attribute (0x0047).</summary>
+    public Task<WriteResponse> WriteACCapacityformatAsync(
+        ACCapacityFormatEnum aCCapacityformat,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0047, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(aCCapacityformat);
+            tlv.AddUInt8(2, (byte)aCCapacityformat);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write Presets attribute (0x0050).</summary>
+    public Task<WriteResponse> WritePresetsAsync(
+        PresetStruct[] presets,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0050, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(presets);
+            if (presets != null) { tlv.AddArray(2); foreach (var item in presets) { WritePresetStruct(tlv, item); } tlv.EndContainer(); }
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write Schedules attribute (0x0051).</summary>
+    public Task<WriteResponse> WriteSchedulesAsync(
+        ScheduleStruct[] schedules,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0051, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(schedules);
+            if (schedules != null) { tlv.AddArray(2); foreach (var item in schedules) { WriteScheduleStruct(tlv, item); } tlv.EndContainer(); }
+        }, timedRequest, timedTimeoutMs, ct);
 }

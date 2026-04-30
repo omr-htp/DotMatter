@@ -63,11 +63,13 @@ static class ClusterCodeEmitter
         EmitBitmaps(sb, cluster);
         EmitStructs(sb, cluster, localTypes);
         EmitStructSerializers(sb, cluster, localTypes, enumNames, structNames, enumUnderlyingTypes);
+        EmitStructDeserializers(sb, cluster, localTypes, enumNames, structNames);
         EmitAttributeConstants(sb, cluster);
         EmitCommandConstants(sb, cluster);
         EmitEventConstants(sb, cluster);
         EmitAsyncCommands(sb, cluster, localTypes, enumNames, structNames, enumUnderlyingTypes, structMap);
-        EmitAttributeReaders(sb, cluster, localTypes, enumNames);
+        EmitAttributeReaders(sb, cluster, localTypes, enumNames, structNames);
+        EmitAttributeWriters(sb, cluster, localTypes, enumNames, structNames, enumUnderlyingTypes, structMap);
 
         sb.AppendLine("}");
         return sb.ToString();
@@ -196,6 +198,11 @@ static class ClusterCodeEmitter
                 sb.AppendLine($"        /// <summary>Gets or sets {Naming.EscapeXml(f.Name)}.</summary>");
                 sb.AppendLine($"        public {csType} {fName} {{ get; set; }}{init}");
             }
+            if (s.IsFabricScoped)
+            {
+                sb.AppendLine("        /// <summary>Gets or sets FabricIndex.</summary>");
+                sb.AppendLine("        public byte FabricIndex { get; set; }");
+            }
             sb.AppendLine("    }");
         }
     }
@@ -254,6 +261,174 @@ static class ClusterCodeEmitter
             sb.AppendLine("    }");
         }
     }
+
+    static void EmitStructDeserializers(
+        StringBuilder sb,
+        ClusterModel cluster,
+        HashSet<string> localTypes,
+        HashSet<string> enumNames,
+        HashSet<string> structNames)
+    {
+        if (!HasWritableStructArrayAttribute(cluster, localTypes, structNames))
+        {
+            return;
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("    // TLV struct deserializers");
+
+        foreach (var s in cluster.Structs)
+        {
+            string name = Naming.ToPascalCase(s.Name);
+            sb.AppendLine();
+            sb.AppendLine($"    private static {name} Read{name}(MatterTLV tlv)");
+            sb.AppendLine("    {");
+            sb.AppendLine($"        var value = new {name}();");
+            sb.AppendLine("        tlv.OpenStructure();");
+            sb.AppendLine("        while (!tlv.IsEndContainerNext())");
+            sb.AppendLine("        {");
+            sb.AppendLine("            switch (tlv.PeekTag())");
+            sb.AppendLine("            {");
+
+            foreach (var f in s.Fields)
+            {
+                string csType = Naming.MapCSharpType(f.Type, f.Nullable, f.Optional, f.IsArray, f.EntryType, localTypes);
+                string property = Naming.ToPascalCase(f.Name);
+                sb.AppendLine($"                case {f.Id}:");
+                foreach (var line in EmitTlvReadLines(f, $"value.{property}", csType, enumNames, structNames))
+                {
+                    sb.AppendLine($"                    {line}");
+                }
+                sb.AppendLine("                    break;");
+            }
+            if (s.IsFabricScoped)
+            {
+                sb.AppendLine("                case 254:");
+                sb.AppendLine("                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);");
+                sb.AppendLine("                    break;");
+            }
+
+            sb.AppendLine("                default:");
+            sb.AppendLine("                    tlv.SkipElement();");
+            sb.AppendLine("                    break;");
+            sb.AppendLine("            }");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+            sb.AppendLine("        tlv.CloseContainer();");
+            sb.AppendLine("        return value;");
+            sb.AppendLine("    }");
+        }
+    }
+
+    static bool HasWritableStructArrayAttribute(
+        ClusterModel cluster,
+        HashSet<string> localTypes,
+        HashSet<string> structNames)
+        => cluster.Attributes.Any(attr => IsWritableStructArrayAttribute(attr, localTypes, structNames));
+
+    static bool IsWritableStructArrayAttribute(
+        AttributeModel attr,
+        HashSet<string> localTypes,
+        HashSet<string> structNames)
+    {
+        if (!attr.Writable || !attr.IsArray || string.IsNullOrWhiteSpace(attr.EntryType))
+        {
+            return false;
+        }
+
+        string entryType = Naming.MapCSharpType(attr.EntryType, false, false, false, null, localTypes);
+        return structNames.Contains(entryType);
+    }
+
+    static IEnumerable<string> EmitTlvReadLines(
+        FieldModel field,
+        string target,
+        string csType,
+        HashSet<string> enumNames,
+        HashSet<string> structNames)
+    {
+        uint tag = field.Id;
+        string baseType = csType.TrimEnd('?');
+        bool nullable = csType.EndsWith('?') || field.Nullable || field.Optional;
+
+        if (field.IsArray)
+        {
+            string elementType = baseType.EndsWith("[]", StringComparison.Ordinal) ? baseType[..^2] : baseType;
+            string itemVariable = $"items{field.Id}";
+            if (nullable)
+            {
+                yield return $"if (tlv.IsNextNull()) {{ tlv.GetNull({tag}); {target} = null; break; }}";
+            }
+
+            yield return $"var {itemVariable} = new List<{elementType}>();";
+            yield return $"tlv.OpenArray({tag});";
+            yield return "while (!tlv.IsEndContainerNext())";
+            yield return "{";
+            yield return $"    {itemVariable}.Add({EmitAnonymousTlvRead(elementType, enumNames, structNames)});";
+            yield return "}";
+            yield return "tlv.CloseContainer();";
+            yield return $"{target} = [.. {itemVariable}];";
+            yield break;
+        }
+
+        if (nullable)
+        {
+            yield return $"if (tlv.IsNextNull()) {{ tlv.GetNull({tag}); }} else {{ {target} = {EmitTaggedTlvRead(baseType, tag, enumNames, structNames)}; }}";
+        }
+        else
+        {
+            yield return $"{target} = {EmitTaggedTlvRead(baseType, tag, enumNames, structNames)};";
+        }
+    }
+
+    static string EmitTaggedTlvRead(
+        string baseType,
+        uint tag,
+        HashSet<string> enumNames,
+        HashSet<string> structNames)
+        => baseType switch
+        {
+            "bool" => $"tlv.GetBoolean({tag})",
+            "byte" => $"(byte)tlv.GetUnsignedIntAny({tag})",
+            "sbyte" => $"(sbyte)tlv.GetSignedInt({tag})",
+            "ushort" => $"(ushort)tlv.GetUnsignedIntAny({tag})",
+            "short" => $"(short)tlv.GetSignedInt({tag})",
+            "uint" => $"tlv.GetUnsignedIntAny({tag})",
+            "int" => $"(int)tlv.GetSignedInt({tag})",
+            "ulong" => $"tlv.GetUnsignedInt({tag})",
+            "long" => $"tlv.GetSignedInt({tag})",
+            "string" => $"tlv.GetUTF8String({tag})",
+            "byte[]" => $"tlv.GetOctetString({tag})",
+            "float" => $"tlv.GetFloat({tag})",
+            "double" => $"tlv.GetDouble({tag})",
+            _ when enumNames.Contains(baseType) => $"({baseType})tlv.GetUnsignedIntAny({tag})",
+            _ when structNames.Contains(baseType) => $"Read{baseType}(tlv)",
+            _ => $"({baseType})tlv.GetData({tag})!",
+        };
+
+    static string EmitAnonymousTlvRead(
+        string elementType,
+        HashSet<string> enumNames,
+        HashSet<string> structNames)
+        => elementType switch
+        {
+            "bool" => "(bool)tlv.GetData(null)!",
+            "byte" => "(byte)tlv.GetUnsignedInt(null)",
+            "sbyte" => "(sbyte)tlv.GetSignedInt(null)",
+            "ushort" => "(ushort)tlv.GetUnsignedInt(null)",
+            "short" => "(short)tlv.GetSignedInt(null)",
+            "uint" => "(uint)tlv.GetUnsignedInt(null)",
+            "int" => "(int)tlv.GetSignedInt(null)",
+            "ulong" => "tlv.GetUnsignedInt(null)",
+            "long" => "tlv.GetSignedInt(null)",
+            "string" => "(string)tlv.GetData(null)!",
+            "byte[]" => "(byte[])tlv.GetData(null)!",
+            "float" => "(float)tlv.GetData(null)!",
+            "double" => "(double)tlv.GetData(null)!",
+            _ when enumNames.Contains(elementType) => $"({elementType})tlv.GetUnsignedInt(null)",
+            _ when structNames.Contains(elementType) => $"Read{elementType}(tlv)",
+            _ => $"({elementType})tlv.GetData(null)!",
+        };
 
     // ── Attribute Constants (backward-compatible) ────────────────
 
@@ -422,12 +597,13 @@ static class ClusterCodeEmitter
         uint tag = field.Id;
         string baseType = csType.TrimEnd('?');
 
-        // Handle optional fields with null check
-        bool isOptional = csType.EndsWith('?') && !field.IsArray;
-        string prefix = isOptional ? $"if ({paramName} != null) " : "";
+        // Optional nullable fields are omitted when null; required nullable fields are serialized as null.
+        bool canBeNull = csType.EndsWith('?') && !field.IsArray;
+        bool writeNullWhenMissing = canBeNull && field.Nullable && !field.Optional;
+        bool omitWhenMissing = canBeNull && !writeNullWhenMissing;
 
         // Value access for nullable value types
-        string val = isOptional && Naming.IsValueType(baseType) ? $"{paramName}.Value" : paramName;
+        string val = canBeNull && Naming.IsValueType(baseType) ? $"{paramName}.Value" : paramName;
 
         if (field.IsArray)
         {
@@ -436,25 +612,32 @@ static class ClusterCodeEmitter
             return EmitArrayWrite(field, paramName, elementType, tag, enumNames, structNames, enumUnderlyingTypes);
         }
 
-        return baseType switch
+        string statement = baseType switch
         {
-            "bool" => $"{prefix}tlv.AddBool({tag}, {val});",
-            "byte" => $"{prefix}tlv.AddUInt8({tag}, {val});",
-            "sbyte" => $"{prefix}tlv.AddInt8({tag}, {val});",
-            "ushort" => $"{prefix}tlv.AddUInt16({tag}, {val});",
-            "short" => $"{prefix}tlv.AddInt16({tag}, {val});",
-            "uint" => $"{prefix}tlv.AddUInt32({tag}, {val});",
-            "int" => $"{prefix}tlv.AddInt32({tag}, {val});",
-            "ulong" => $"{prefix}tlv.AddUInt64({tag}, {val});",
-            "long" => $"{prefix}tlv.AddInt64({tag}, {val});",
-            "string" => $"{prefix}tlv.AddUTF8String({tag}, {val});",
-            "byte[]" => $"{prefix}tlv.AddOctetString({tag}, {val});",
-            "float" => $"{prefix}tlv.AddFloat({tag}, {val});",
-            "double" => $"{prefix}tlv.AddDouble({tag}, {val});",
-            _ when enumNames.Contains(baseType) => EmitEnumOrBitmapWrite(baseType, tag, prefix, val, enumUnderlyingTypes),
-            _ when structNames.Contains(baseType) => $"{prefix}Write{baseType}(tlv, {tag}, {val});",
+            "bool" => $"tlv.AddBool({tag}, {val});",
+            "byte" => $"tlv.AddUInt8({tag}, {val});",
+            "sbyte" => $"tlv.AddInt8({tag}, {val});",
+            "ushort" => $"tlv.AddUInt16({tag}, {val});",
+            "short" => $"tlv.AddInt16({tag}, {val});",
+            "uint" => $"tlv.AddUInt32({tag}, {val});",
+            "int" => $"tlv.AddInt32({tag}, {val});",
+            "ulong" => $"tlv.AddUInt64({tag}, {val});",
+            "long" => $"tlv.AddInt64({tag}, {val});",
+            "string" => $"tlv.AddUTF8String({tag}, {val});",
+            "byte[]" => $"tlv.AddOctetString({tag}, {val});",
+            "float" => $"tlv.AddFloat({tag}, {val});",
+            "double" => $"tlv.AddDouble({tag}, {val});",
+            _ when enumNames.Contains(baseType) => EmitEnumOrBitmapWrite(baseType, tag, val, enumUnderlyingTypes),
+            _ when structNames.Contains(baseType) => $"Write{baseType}(tlv, {tag}, {val});",
             _ => $"throw new NotSupportedException(\"Field {field.Name} ({csType}) is not supported by the generated TLV writer yet.\");",
         };
+
+        if (writeNullWhenMissing)
+        {
+            return $"if ({paramName} != null) {{ {statement} }} else {{ tlv.AddNull({tag}); }}";
+        }
+
+        return omitWhenMissing ? $"if ({paramName} != null) {statement}" : statement;
     }
 
     static string EmitArrayWrite(
@@ -492,13 +675,15 @@ static class ClusterCodeEmitter
             return $"throw new NotSupportedException(\"Array field {field.Name} ({elementCsType}[]) is not supported by the generated TLV writer yet.\");";
         }
 
-        return $"if ({paramName} != null) {{ tlv.AddArray({tag}); foreach (var item in {paramName}) {{ {elemWrite} }} tlv.EndContainer(); }}";
+        string arrayWrite = $"tlv.AddArray({tag}); foreach (var item in {paramName}) {{ {elemWrite} }} tlv.EndContainer();";
+        return field.Nullable
+            ? $"if ({paramName} != null) {{ {arrayWrite} }} else {{ tlv.AddNull({tag}); }}"
+            : $"if ({paramName} != null) {{ {arrayWrite} }}";
     }
 
     static string EmitEnumOrBitmapWrite(
         string baseType,
         uint tag,
-        string prefix,
         string val,
         Dictionary<string, string> enumUnderlyingTypes)
     {
@@ -506,20 +691,20 @@ static class ClusterCodeEmitter
 
         if (underlyingType == "ushort")
         {
-            return $"{prefix}tlv.AddUInt16({tag}, (ushort){val});";
+            return $"tlv.AddUInt16({tag}, (ushort){val});";
         }
 
         if (underlyingType == "uint")
         {
-            return $"{prefix}tlv.AddUInt32({tag}, (uint){val});";
+            return $"tlv.AddUInt32({tag}, (uint){val});";
         }
 
         if (underlyingType == "ulong")
         {
-            return $"{prefix}tlv.AddUInt64({tag}, (ulong){val});";
+            return $"tlv.AddUInt64({tag}, (ulong){val});";
         }
 
-        return $"{prefix}tlv.AddUInt8({tag}, (byte){val});";
+        return $"tlv.AddUInt8({tag}, (byte){val});";
     }
 
     static string EmitAnonymousEnumOrBitmapWrite(
@@ -540,7 +725,12 @@ static class ClusterCodeEmitter
 
     // ── Typed Attribute Readers ──────────────────────────────────
 
-    static void EmitAttributeReaders(StringBuilder sb, ClusterModel cluster, HashSet<string> localTypes, HashSet<string> enumNames)
+    static void EmitAttributeReaders(
+        StringBuilder sb,
+        ClusterModel cluster,
+        HashSet<string> localTypes,
+        HashSet<string> enumNames,
+        HashSet<string> structNames)
     {
         if (cluster.Attributes.Count == 0)
         {
@@ -559,7 +749,16 @@ static class ClusterCodeEmitter
             sb.AppendLine($"    /// <summary>Read {Naming.EscapeXml(attr.Name)} attribute (0x{attr.Id:X4}).</summary>");
 
             string baseCsType = csType.TrimEnd('?');
-            if (Naming.IsValueType(baseCsType) || enumNames.Contains(baseCsType))
+            if (HasWritableStructArrayAttribute(cluster, localTypes, structNames)
+                && attr.IsArray
+                && attr.EntryType is not null
+                && structNames.Contains(Naming.MapCSharpType(attr.EntryType, false, false, false, null, localTypes)))
+            {
+                string entryType = Naming.MapCSharpType(attr.EntryType, false, false, false, null, localTypes);
+                sb.AppendLine($"    public Task<{entryType}[]?> {methodName}(CancellationToken ct = default)");
+                sb.AppendLine($"        => ReadArrayAttributeAsync(0x{attr.Id:X4}, Read{entryType}, ct);");
+            }
+            else if (Naming.IsValueType(baseCsType) || enumNames.Contains(baseCsType))
             {
                 // Value types and generated enums/bitmaps use the typed reader.
                 sb.AppendLine($"    public Task<{csType}> {methodName}(CancellationToken ct = default)");
@@ -586,6 +785,70 @@ static class ClusterCodeEmitter
                 sb.AppendLine($"    public Task<object?> {methodName}(CancellationToken ct = default)");
                 sb.AppendLine($"        => ReadAttributeAsync(0x{attr.Id:X4}, ct);");
             }
+        }
+    }
+
+    static void EmitAttributeWriters(
+        StringBuilder sb,
+        ClusterModel cluster,
+        HashSet<string> localTypes,
+        HashSet<string> enumNames,
+        HashSet<string> structNames,
+        Dictionary<string, string> enumUnderlyingTypes,
+        Dictionary<string, StructModel> structMap)
+    {
+        var writableAttributes = cluster.Attributes.Where(attr => attr.Writable).ToArray();
+        if (writableAttributes.Length == 0)
+        {
+            return;
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("    // Attribute writers");
+
+        foreach (var attr in writableAttributes)
+        {
+            string csType = Naming.MapCSharpType(attr.Type, attr.Nullable, false, attr.IsArray, attr.EntryType, localTypes);
+            string paramName = Naming.ToCamelCase(attr.Name);
+            var field = new FieldModel
+            {
+                Id = 2,
+                Name = attr.Name,
+                Type = attr.Type,
+                Nullable = attr.Nullable,
+                IsArray = attr.IsArray,
+                EntryType = attr.EntryType,
+            };
+
+            if (!SupportsSerialization(field, csType, localTypes, enumNames, structNames, enumUnderlyingTypes, structMap, []))
+            {
+                continue;
+            }
+
+            string? tlvWrite = EmitTlvWrite(field, paramName, csType, localTypes, enumNames, structNames, enumUnderlyingTypes);
+            if (tlvWrite == null)
+            {
+                continue;
+            }
+
+            sb.AppendLine();
+            sb.AppendLine($"    /// <summary>Write {Naming.EscapeXml(attr.Name)} attribute (0x{attr.Id:X4}).</summary>");
+            sb.AppendLine($"    public Task<WriteResponse> Write{Naming.ToPascalCase(attr.Name)}Async(");
+            sb.AppendLine($"        {csType} {paramName},");
+            sb.AppendLine("        bool timedRequest = true,");
+            sb.AppendLine("        ushort timedTimeoutMs = 5000,");
+            sb.AppendLine("        CancellationToken ct = default)");
+            sb.AppendLine($"        => WriteAttributeAsync(0x{attr.Id:X4}, tlv =>");
+            sb.AppendLine("        {");
+
+            string baseType = csType.TrimEnd('?');
+            if (!csType.EndsWith('?') && !Naming.IsValueType(baseType))
+            {
+                sb.AppendLine($"            ArgumentNullException.ThrowIfNull({paramName});");
+            }
+
+            sb.AppendLine($"            {tlvWrite}");
+            sb.AppendLine("        }, timedRequest, timedTimeoutMs, ct);");
         }
     }
 

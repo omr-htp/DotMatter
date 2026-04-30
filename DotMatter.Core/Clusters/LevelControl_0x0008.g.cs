@@ -133,7 +133,7 @@ public class LevelControlCluster : ClusterBase
         => InvokeCommandAsync(0x0000, tlv =>
         {
             tlv.AddUInt8(0, level);
-            if (transitionTime != null) tlv.AddUInt16(1, transitionTime.Value);
+            if (transitionTime != null) { tlv.AddUInt16(1, transitionTime.Value); } else { tlv.AddNull(1); }
             tlv.AddUInt8(2, (byte)optionsMask);
             tlv.AddUInt8(3, (byte)optionsOverride);
         }, ct);
@@ -148,7 +148,7 @@ public class LevelControlCluster : ClusterBase
         => InvokeCommandAsync(0x0001, tlv =>
         {
             tlv.AddUInt8(0, (byte)moveMode);
-            if (rate != null) tlv.AddUInt8(1, rate.Value);
+            if (rate != null) { tlv.AddUInt8(1, rate.Value); } else { tlv.AddNull(1); }
             tlv.AddUInt8(2, (byte)optionsMask);
             tlv.AddUInt8(3, (byte)optionsOverride);
         }, ct);
@@ -165,7 +165,7 @@ public class LevelControlCluster : ClusterBase
         {
             tlv.AddUInt8(0, (byte)stepMode);
             tlv.AddUInt8(1, stepSize);
-            if (transitionTime != null) tlv.AddUInt16(2, transitionTime.Value);
+            if (transitionTime != null) { tlv.AddUInt16(2, transitionTime.Value); } else { tlv.AddNull(2); }
             tlv.AddUInt8(3, (byte)optionsMask);
             tlv.AddUInt8(4, (byte)optionsOverride);
         }, ct);
@@ -191,7 +191,7 @@ public class LevelControlCluster : ClusterBase
         => InvokeCommandAsync(0x0004, tlv =>
         {
             tlv.AddUInt8(0, level);
-            if (transitionTime != null) tlv.AddUInt16(1, transitionTime.Value);
+            if (transitionTime != null) { tlv.AddUInt16(1, transitionTime.Value); } else { tlv.AddNull(1); }
             tlv.AddUInt8(2, (byte)optionsMask);
             tlv.AddUInt8(3, (byte)optionsOverride);
         }, ct);
@@ -206,7 +206,7 @@ public class LevelControlCluster : ClusterBase
         => InvokeCommandAsync(0x0005, tlv =>
         {
             tlv.AddUInt8(0, (byte)moveMode);
-            if (rate != null) tlv.AddUInt8(1, rate.Value);
+            if (rate != null) { tlv.AddUInt8(1, rate.Value); } else { tlv.AddNull(1); }
             tlv.AddUInt8(2, (byte)optionsMask);
             tlv.AddUInt8(3, (byte)optionsOverride);
         }, ct);
@@ -223,7 +223,7 @@ public class LevelControlCluster : ClusterBase
         {
             tlv.AddUInt8(0, (byte)stepMode);
             tlv.AddUInt8(1, stepSize);
-            if (transitionTime != null) tlv.AddUInt16(2, transitionTime.Value);
+            if (transitionTime != null) { tlv.AddUInt16(2, transitionTime.Value); } else { tlv.AddNull(2); }
             tlv.AddUInt8(3, (byte)optionsMask);
             tlv.AddUInt8(4, (byte)optionsOverride);
         }, ct);
@@ -302,4 +302,84 @@ public class LevelControlCluster : ClusterBase
     /// <summary>Read StartUpCurrentLevel attribute (0x4000).</summary>
     public Task<byte?> ReadStartUpCurrentLevelAsync(CancellationToken ct = default)
         => ReadNullableAttributeAsync<byte>(0x4000, ct);
+
+    // Attribute writers
+
+    /// <summary>Write OnOffTransitionTime attribute (0x0010).</summary>
+    public Task<WriteResponse> WriteOnOffTransitionTimeAsync(
+        ushort onOffTransitionTime,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0010, tlv =>
+        {
+            tlv.AddUInt16(2, onOffTransitionTime);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write OnLevel attribute (0x0011).</summary>
+    public Task<WriteResponse> WriteOnLevelAsync(
+        byte? onLevel,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0011, tlv =>
+        {
+            if (onLevel != null) { tlv.AddUInt8(2, onLevel.Value); } else { tlv.AddNull(2); }
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write OnTransitionTime attribute (0x0012).</summary>
+    public Task<WriteResponse> WriteOnTransitionTimeAsync(
+        ushort? onTransitionTime,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0012, tlv =>
+        {
+            if (onTransitionTime != null) { tlv.AddUInt16(2, onTransitionTime.Value); } else { tlv.AddNull(2); }
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write OffTransitionTime attribute (0x0013).</summary>
+    public Task<WriteResponse> WriteOffTransitionTimeAsync(
+        ushort? offTransitionTime,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0013, tlv =>
+        {
+            if (offTransitionTime != null) { tlv.AddUInt16(2, offTransitionTime.Value); } else { tlv.AddNull(2); }
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write DefaultMoveRate attribute (0x0014).</summary>
+    public Task<WriteResponse> WriteDefaultMoveRateAsync(
+        byte? defaultMoveRate,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0014, tlv =>
+        {
+            if (defaultMoveRate != null) { tlv.AddUInt8(2, defaultMoveRate.Value); } else { tlv.AddNull(2); }
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write Options attribute (0x000F).</summary>
+    public Task<WriteResponse> WriteOptionsAsync(
+        OptionsBitmap options,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x000F, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(options);
+            tlv.AddUInt8(2, (byte)options);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write StartUpCurrentLevel attribute (0x4000).</summary>
+    public Task<WriteResponse> WriteStartUpCurrentLevelAsync(
+        byte? startUpCurrentLevel,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x4000, tlv =>
+        {
+            if (startUpCurrentLevel != null) { tlv.AddUInt8(2, startUpCurrentLevel.Value); } else { tlv.AddNull(2); }
+        }, timedRequest, timedTimeoutMs, ct);
 }

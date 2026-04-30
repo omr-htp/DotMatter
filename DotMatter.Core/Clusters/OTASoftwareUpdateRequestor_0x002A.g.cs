@@ -81,6 +81,8 @@ public class OTASoftwareUpdateRequestorCluster : ClusterBase
         public ulong ProviderNodeID { get; set; }
         /// <summary>Gets or sets Endpoint.</summary>
         public ushort Endpoint { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     // TLV struct serializers
@@ -105,6 +107,35 @@ public class OTASoftwareUpdateRequestorCluster : ClusterBase
     {
         tlv.AddUInt64(1, value.ProviderNodeID);
         tlv.AddUInt16(2, value.Endpoint);
+    }
+
+    // TLV struct deserializers
+
+    private static ProviderLocation ReadProviderLocation(MatterTLV tlv)
+    {
+        var value = new ProviderLocation();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 1:
+                    value.ProviderNodeID = tlv.GetUnsignedInt(1);
+                    break;
+                case 2:
+                    value.Endpoint = (ushort)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>
@@ -155,5 +186,19 @@ public class OTASoftwareUpdateRequestorCluster : ClusterBase
 
     /// <summary>Read DefaultOTAProviders attribute (0x0000).</summary>
     public Task<ProviderLocation[]?> ReadDefaultOTAProvidersAsync(CancellationToken ct = default)
-        => ReadRefAttributeAsync<ProviderLocation[]>(0x0000, ct);
+        => ReadArrayAttributeAsync(0x0000, ReadProviderLocation, ct);
+
+    // Attribute writers
+
+    /// <summary>Write DefaultOTAProviders attribute (0x0000).</summary>
+    public Task<WriteResponse> WriteDefaultOTAProvidersAsync(
+        ProviderLocation[] defaultOTAProviders,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0000, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(defaultOTAProviders);
+            if (defaultOTAProviders != null) { tlv.AddArray(2); foreach (var item in defaultOTAProviders) { WriteProviderLocation(tlv, item); } tlv.EndContainer(); }
+        }, timedRequest, timedTimeoutMs, ct);
 }

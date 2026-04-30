@@ -37,4 +37,6 @@ public class UserLabelCluster : ClusterBase
     /// <summary>Read LabelList attribute (0x0000).</summary>
     public Task<object[]?> ReadLabelListAsync(CancellationToken ct = default)
         => ReadRefAttributeAsync<object[]>(0x0000, ct);
+
+    // Attribute writers
 }

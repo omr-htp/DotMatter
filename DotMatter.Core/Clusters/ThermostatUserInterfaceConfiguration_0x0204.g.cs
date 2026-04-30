@@ -84,4 +84,42 @@ public class ThermostatUserInterfaceConfigurationCluster : ClusterBase
     /// <summary>Read ScheduleProgrammingVisibility attribute (0x0002).</summary>
     public Task<ScheduleProgrammingVisibilityEnum> ReadScheduleProgrammingVisibilityAsync(CancellationToken ct = default)
         => ReadAttributeAsync<ScheduleProgrammingVisibilityEnum>(0x0002, ct);
+
+    // Attribute writers
+
+    /// <summary>Write TemperatureDisplayMode attribute (0x0000).</summary>
+    public Task<WriteResponse> WriteTemperatureDisplayModeAsync(
+        TemperatureDisplayModeEnum temperatureDisplayMode,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0000, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(temperatureDisplayMode);
+            tlv.AddUInt8(2, (byte)temperatureDisplayMode);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write KeypadLockout attribute (0x0001).</summary>
+    public Task<WriteResponse> WriteKeypadLockoutAsync(
+        KeypadLockoutEnum keypadLockout,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0001, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(keypadLockout);
+            tlv.AddUInt8(2, (byte)keypadLockout);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write ScheduleProgrammingVisibility attribute (0x0002).</summary>
+    public Task<WriteResponse> WriteScheduleProgrammingVisibilityAsync(
+        ScheduleProgrammingVisibilityEnum scheduleProgrammingVisibility,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0002, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(scheduleProgrammingVisibility);
+            tlv.AddUInt8(2, (byte)scheduleProgrammingVisibility);
+        }, timedRequest, timedTimeoutMs, ct);
 }

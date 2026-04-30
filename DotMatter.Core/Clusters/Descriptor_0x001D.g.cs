@@ -97,7 +97,7 @@ public class DescriptorCluster : ClusterBase
 
     private static void WriteSemanticTagStructFields(MatterTLV tlv, SemanticTagStruct value)
     {
-        if (value.MfgCode != null) tlv.AddUInt16(0, value.MfgCode.Value);
+        if (value.MfgCode != null) { tlv.AddUInt16(0, value.MfgCode.Value); } else { tlv.AddNull(0); }
         tlv.AddUInt8(1, value.NamespaceID);
         tlv.AddUInt8(2, value.Tag);
         if (value.Label != null) tlv.AddUTF8String(3, value.Label);

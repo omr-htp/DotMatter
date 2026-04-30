@@ -279,4 +279,18 @@ public class BridgedDeviceBasicInformationCluster : ClusterBase
     /// <summary>Read ConfigurationVersion attribute (0x0018).</summary>
     public Task<uint> ReadConfigurationVersionAsync(CancellationToken ct = default)
         => ReadAttributeAsync<uint>(0x0018, ct);
+
+    // Attribute writers
+
+    /// <summary>Write NodeLabel attribute (0x0005).</summary>
+    public Task<WriteResponse> WriteNodeLabelAsync(
+        string nodeLabel,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0005, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(nodeLabel);
+            tlv.AddUTF8String(2, nodeLabel);
+        }, timedRequest, timedTimeoutMs, ct);
 }

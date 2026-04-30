@@ -160,4 +160,17 @@ public class HEPAFilterMonitoringCluster : ClusterBase
     /// <summary>Read ReplacementProductList attribute (0x0005).</summary>
     public Task<ReplacementProductStruct[]?> ReadReplacementProductListAsync(CancellationToken ct = default)
         => ReadRefAttributeAsync<ReplacementProductStruct[]>(0x0005, ct);
+
+    // Attribute writers
+
+    /// <summary>Write LastChangedTime attribute (0x0004).</summary>
+    public Task<WriteResponse> WriteLastChangedTimeAsync(
+        uint? lastChangedTime,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0004, tlv =>
+        {
+            if (lastChangedTime != null) { tlv.AddUInt32(2, lastChangedTime.Value); } else { tlv.AddNull(2); }
+        }, timedRequest, timedTimeoutMs, ct);
 }

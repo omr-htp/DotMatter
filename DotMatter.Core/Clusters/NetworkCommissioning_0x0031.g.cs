@@ -432,4 +432,17 @@ public class NetworkCommissioningCluster : ClusterBase
     /// <summary>Read ThreadVersion attribute (0x000A).</summary>
     public Task<ushort> ReadThreadVersionAsync(CancellationToken ct = default)
         => ReadAttributeAsync<ushort>(0x000A, ct);
+
+    // Attribute writers
+
+    /// <summary>Write InterfaceEnabled attribute (0x0004).</summary>
+    public Task<WriteResponse> WriteInterfaceEnabledAsync(
+        bool interfaceEnabled,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0004, tlv =>
+        {
+            tlv.AddBool(2, interfaceEnabled);
+        }, timedRequest, timedTimeoutMs, ct);
 }

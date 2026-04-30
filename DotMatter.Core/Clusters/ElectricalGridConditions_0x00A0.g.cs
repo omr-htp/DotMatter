@@ -82,7 +82,7 @@ public class ElectricalGridConditionsCluster : ClusterBase
     private static void WriteElectricalGridConditionsStructFields(MatterTLV tlv, ElectricalGridConditionsStruct value)
     {
         tlv.AddUInt32(0, value.PeriodStart);
-        if (value.PeriodEnd != null) tlv.AddUInt32(1, value.PeriodEnd.Value);
+        if (value.PeriodEnd != null) { tlv.AddUInt32(1, value.PeriodEnd.Value); } else { tlv.AddNull(1); }
         tlv.AddInt16(2, value.GridCarbonIntensity);
         tlv.AddUInt8(3, (byte)value.GridCarbonLevel);
         tlv.AddInt16(4, value.LocalCarbonIntensity);
@@ -120,4 +120,17 @@ public class ElectricalGridConditionsCluster : ClusterBase
     /// <summary>Read ForecastConditions attribute (0x0002).</summary>
     public Task<ElectricalGridConditionsStruct[]?> ReadForecastConditionsAsync(CancellationToken ct = default)
         => ReadRefAttributeAsync<ElectricalGridConditionsStruct[]>(0x0002, ct);
+
+    // Attribute writers
+
+    /// <summary>Write LocalGenerationAvailable attribute (0x0000).</summary>
+    public Task<WriteResponse> WriteLocalGenerationAvailableAsync(
+        bool? localGenerationAvailable,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0000, tlv =>
+        {
+            if (localGenerationAvailable != null) { tlv.AddBool(2, localGenerationAvailable.Value); } else { tlv.AddNull(2); }
+        }, timedRequest, timedTimeoutMs, ct);
 }

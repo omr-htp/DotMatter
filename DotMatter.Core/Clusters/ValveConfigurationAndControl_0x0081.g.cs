@@ -178,4 +178,28 @@ public class ValveConfigurationAndControlCluster : ClusterBase
     /// <summary>Read LevelStep attribute (0x000A).</summary>
     public Task<byte> ReadLevelStepAsync(CancellationToken ct = default)
         => ReadAttributeAsync<byte>(0x000A, ct);
+
+    // Attribute writers
+
+    /// <summary>Write DefaultOpenDuration attribute (0x0001).</summary>
+    public Task<WriteResponse> WriteDefaultOpenDurationAsync(
+        uint? defaultOpenDuration,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0001, tlv =>
+        {
+            if (defaultOpenDuration != null) { tlv.AddUInt32(2, defaultOpenDuration.Value); } else { tlv.AddNull(2); }
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write DefaultOpenLevel attribute (0x0008).</summary>
+    public Task<WriteResponse> WriteDefaultOpenLevelAsync(
+        byte defaultOpenLevel,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0008, tlv =>
+        {
+            tlv.AddUInt8(2, defaultOpenLevel);
+        }, timedRequest, timedTimeoutMs, ct);
 }

@@ -394,4 +394,18 @@ public class WindowCoveringCluster : ClusterBase
     /// <summary>Read SafetyStatus attribute (0x001A).</summary>
     public Task<SafetyStatus> ReadSafetyStatusAsync(CancellationToken ct = default)
         => ReadAttributeAsync<SafetyStatus>(0x001A, ct);
+
+    // Attribute writers
+
+    /// <summary>Write Mode attribute (0x0017).</summary>
+    public Task<WriteResponse> WriteModeAsync(
+        Mode mode,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0017, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(mode);
+            tlv.AddUInt8(2, (byte)mode);
+        }, timedRequest, timedTimeoutMs, ct);
 }

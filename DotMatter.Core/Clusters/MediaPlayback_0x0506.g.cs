@@ -204,7 +204,7 @@ public class MediaPlaybackCluster : ClusterBase
     private static void WritePlaybackPositionStructFields(MatterTLV tlv, PlaybackPositionStruct value)
     {
         tlv.AddUInt64(0, value.UpdatedAt);
-        if (value.Position != null) tlv.AddUInt64(1, value.Position.Value);
+        if (value.Position != null) { tlv.AddUInt64(1, value.Position.Value); } else { tlv.AddNull(1); }
     }
 
     /// <summary>Attribute identifiers.</summary>

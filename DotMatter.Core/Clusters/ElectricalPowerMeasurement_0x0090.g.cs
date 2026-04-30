@@ -217,7 +217,7 @@ public class ElectricalPowerMeasurementCluster : ClusterBase
     private static void WriteHarmonicMeasurementStructFields(MatterTLV tlv, HarmonicMeasurementStruct value)
     {
         tlv.AddUInt8(0, value.Order);
-        if (value.Measurement != null) tlv.AddInt64(1, value.Measurement.Value);
+        if (value.Measurement != null) { tlv.AddInt64(1, value.Measurement.Value); } else { tlv.AddNull(1); }
     }
 
     private static void WriteMeasurementAccuracyStruct(MatterTLV tlv, byte tag, MeasurementAccuracyStruct value)

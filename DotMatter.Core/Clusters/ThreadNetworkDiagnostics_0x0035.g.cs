@@ -202,8 +202,8 @@ public class ThreadNetworkDiagnosticsCluster : ClusterBase
         tlv.AddUInt32(3, value.LinkFrameCounter);
         tlv.AddUInt32(4, value.MleFrameCounter);
         tlv.AddUInt8(5, value.LQI);
-        if (value.AverageRssi != null) tlv.AddInt8(6, value.AverageRssi.Value);
-        if (value.LastRssi != null) tlv.AddInt8(7, value.LastRssi.Value);
+        if (value.AverageRssi != null) { tlv.AddInt8(6, value.AverageRssi.Value); } else { tlv.AddNull(6); }
+        if (value.LastRssi != null) { tlv.AddInt8(7, value.LastRssi.Value); } else { tlv.AddNull(7); }
         tlv.AddUInt8(8, value.FrameErrorRate);
         tlv.AddUInt8(9, value.MessageErrorRate);
         tlv.AddBool(10, value.RxOnWhenIdle);

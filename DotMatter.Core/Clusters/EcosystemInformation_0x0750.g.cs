@@ -242,6 +242,8 @@ public class EcosystemInformationCluster : ClusterBase
         public string[] UniqueLocationIDs { get; set; } = default!;
         /// <summary>Gets or sets UniqueLocationIDsLastEdit.</summary>
         public ulong UniqueLocationIDsLastEdit { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     /// <summary>EcosystemLocationStruct struct.</summary>
@@ -253,6 +255,8 @@ public class EcosystemInformationCluster : ClusterBase
         public LocationDescriptorStruct LocationDescriptor { get; set; } = default!;
         /// <summary>Gets or sets LocationDescriptorLastEdit.</summary>
         public ulong LocationDescriptorLastEdit { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     /// <summary>LocationDescriptorStruct struct.</summary>
@@ -359,7 +363,7 @@ public class EcosystemInformationCluster : ClusterBase
     private static void WriteLocationDescriptorStructFields(MatterTLV tlv, LocationDescriptorStruct value)
     {
         tlv.AddUTF8String(0, value.LocationName);
-        if (value.FloorNumber != null) tlv.AddInt16(1, value.FloorNumber.Value);
+        if (value.FloorNumber != null) { tlv.AddInt16(1, value.FloorNumber.Value); } else { tlv.AddNull(1); }
         tlv.AddUInt8(2, (byte)value.AreaType);
     }
 

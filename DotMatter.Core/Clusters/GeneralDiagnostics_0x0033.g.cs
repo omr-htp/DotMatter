@@ -169,8 +169,8 @@ public class GeneralDiagnosticsCluster : ClusterBase
     {
         tlv.AddUTF8String(0, value.Name);
         tlv.AddBool(1, value.IsOperational);
-        if (value.OffPremiseServicesReachableIPv4 != null) tlv.AddBool(2, value.OffPremiseServicesReachableIPv4.Value);
-        if (value.OffPremiseServicesReachableIPv6 != null) tlv.AddBool(3, value.OffPremiseServicesReachableIPv6.Value);
+        if (value.OffPremiseServicesReachableIPv4 != null) { tlv.AddBool(2, value.OffPremiseServicesReachableIPv4.Value); } else { tlv.AddNull(2); }
+        if (value.OffPremiseServicesReachableIPv6 != null) { tlv.AddBool(3, value.OffPremiseServicesReachableIPv6.Value); } else { tlv.AddNull(3); }
         tlv.AddOctetString(4, value.HardwareAddress);
         if (value.IPv4Addresses != null) { tlv.AddArray(5); foreach (var item in value.IPv4Addresses) { tlv.AddOctetString(item); } tlv.EndContainer(); }
         if (value.IPv6Addresses != null) { tlv.AddArray(6); foreach (var item in value.IPv6Addresses) { tlv.AddOctetString(item); } tlv.EndContainer(); }

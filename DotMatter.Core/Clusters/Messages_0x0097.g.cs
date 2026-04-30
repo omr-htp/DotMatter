@@ -134,8 +134,8 @@ public class MessagesCluster : ClusterBase
         tlv.AddOctetString(0, value.MessageID);
         tlv.AddUInt8(1, (byte)value.Priority);
         tlv.AddUInt8(2, (byte)value.MessageControl);
-        if (value.StartTime != null) tlv.AddUInt32(3, value.StartTime.Value);
-        if (value.Duration != null) tlv.AddUInt64(4, value.Duration.Value);
+        if (value.StartTime != null) { tlv.AddUInt32(3, value.StartTime.Value); } else { tlv.AddNull(3); }
+        if (value.Duration != null) { tlv.AddUInt64(4, value.Duration.Value); } else { tlv.AddNull(4); }
         tlv.AddUTF8String(5, value.MessageText);
         if (value.Responses != null) { tlv.AddArray(6); foreach (var item in value.Responses) { WriteMessageResponseOptionStruct(tlv, item); } tlv.EndContainer(); }
     }
@@ -208,8 +208,8 @@ public class MessagesCluster : ClusterBase
             tlv.AddOctetString(0, messageID);
             tlv.AddUInt8(1, (byte)priority);
             tlv.AddUInt8(2, (byte)messageControl);
-            if (startTime != null) tlv.AddUInt32(3, startTime.Value);
-            if (duration != null) tlv.AddUInt64(4, duration.Value);
+            if (startTime != null) { tlv.AddUInt32(3, startTime.Value); } else { tlv.AddNull(3); }
+            if (duration != null) { tlv.AddUInt64(4, duration.Value); } else { tlv.AddNull(4); }
             tlv.AddUTF8String(5, messageText);
             if (responses != null) { tlv.AddArray(6); foreach (var item in responses) { WriteMessageResponseOptionStruct(tlv, item); } tlv.EndContainer(); }
         }, ct);

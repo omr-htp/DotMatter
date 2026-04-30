@@ -117,4 +117,28 @@ public class EnergyPreferenceCluster : ClusterBase
     /// <summary>Read CurrentLowPowerModeSensitivity attribute (0x0004).</summary>
     public Task<byte> ReadCurrentLowPowerModeSensitivityAsync(CancellationToken ct = default)
         => ReadAttributeAsync<byte>(0x0004, ct);
+
+    // Attribute writers
+
+    /// <summary>Write CurrentEnergyBalance attribute (0x0001).</summary>
+    public Task<WriteResponse> WriteCurrentEnergyBalanceAsync(
+        byte currentEnergyBalance,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0001, tlv =>
+        {
+            tlv.AddUInt8(2, currentEnergyBalance);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write CurrentLowPowerModeSensitivity attribute (0x0004).</summary>
+    public Task<WriteResponse> WriteCurrentLowPowerModeSensitivityAsync(
+        byte currentLowPowerModeSensitivity,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0004, tlv =>
+        {
+            tlv.AddUInt8(2, currentLowPowerModeSensitivity);
+        }, timedRequest, timedTimeoutMs, ct);
 }

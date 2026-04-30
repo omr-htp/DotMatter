@@ -99,4 +99,30 @@ public class TimeFormatLocalizationCluster : ClusterBase
     /// <summary>Read SupportedCalendarTypes attribute (0x0002).</summary>
     public Task<CalendarTypeEnum[]?> ReadSupportedCalendarTypesAsync(CancellationToken ct = default)
         => ReadRefAttributeAsync<CalendarTypeEnum[]>(0x0002, ct);
+
+    // Attribute writers
+
+    /// <summary>Write HourFormat attribute (0x0000).</summary>
+    public Task<WriteResponse> WriteHourFormatAsync(
+        HourFormatEnum hourFormat,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0000, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(hourFormat);
+            tlv.AddUInt8(2, (byte)hourFormat);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write ActiveCalendarType attribute (0x0001).</summary>
+    public Task<WriteResponse> WriteActiveCalendarTypeAsync(
+        CalendarTypeEnum activeCalendarType,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0001, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(activeCalendarType);
+            tlv.AddUInt8(2, (byte)activeCalendarType);
+        }, timedRequest, timedTimeoutMs, ct);
 }

@@ -49,6 +49,8 @@ public class GroupKeyManagementCluster : ClusterBase
         public ushort GroupId { get; set; }
         /// <summary>Gets or sets GroupKeySetID.</summary>
         public ushort GroupKeySetID { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     /// <summary>GroupInfoMapStruct struct.</summary>
@@ -60,6 +62,8 @@ public class GroupKeyManagementCluster : ClusterBase
         public ushort[] Endpoints { get; set; } = default!;
         /// <summary>Gets or sets GroupName.</summary>
         public string? GroupName { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     /// <summary>GroupKeySetStruct struct.</summary>
@@ -151,11 +155,119 @@ public class GroupKeyManagementCluster : ClusterBase
         tlv.AddUInt16(0, value.GroupKeySetID);
         tlv.AddUInt8(1, (byte)value.GroupKeySecurityPolicy);
         tlv.AddOctetString(2, value.EpochKey0);
-        if (value.EpochStartTime0 != null) tlv.AddUInt64(3, value.EpochStartTime0.Value);
+        if (value.EpochStartTime0 != null) { tlv.AddUInt64(3, value.EpochStartTime0.Value); } else { tlv.AddNull(3); }
         tlv.AddOctetString(4, value.EpochKey1);
-        if (value.EpochStartTime1 != null) tlv.AddUInt64(5, value.EpochStartTime1.Value);
+        if (value.EpochStartTime1 != null) { tlv.AddUInt64(5, value.EpochStartTime1.Value); } else { tlv.AddNull(5); }
         tlv.AddOctetString(6, value.EpochKey2);
-        if (value.EpochStartTime2 != null) tlv.AddUInt64(7, value.EpochStartTime2.Value);
+        if (value.EpochStartTime2 != null) { tlv.AddUInt64(7, value.EpochStartTime2.Value); } else { tlv.AddNull(7); }
+    }
+
+    // TLV struct deserializers
+
+    private static GroupKeyMapStruct ReadGroupKeyMapStruct(MatterTLV tlv)
+    {
+        var value = new GroupKeyMapStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 1:
+                    value.GroupId = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.GroupKeySetID = (ushort)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static GroupInfoMapStruct ReadGroupInfoMapStruct(MatterTLV tlv)
+    {
+        var value = new GroupInfoMapStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 1:
+                    value.GroupId = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    var items2 = new List<ushort>();
+                    tlv.OpenArray(2);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items2.Add((ushort)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Endpoints = [.. items2];
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.GroupName = tlv.GetUTF8String(3); }
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static GroupKeySetStruct ReadGroupKeySetStruct(MatterTLV tlv)
+    {
+        var value = new GroupKeySetStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.GroupKeySetID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.GroupKeySecurityPolicy = (GroupKeySecurityPolicyEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.EpochKey0 = tlv.GetOctetString(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.EpochStartTime0 = tlv.GetUnsignedInt(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.EpochKey1 = tlv.GetOctetString(4); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.EpochStartTime1 = tlv.GetUnsignedInt(5); }
+                    break;
+                case 6:
+                    if (tlv.IsNextNull()) { tlv.GetNull(6); } else { value.EpochKey2 = tlv.GetOctetString(6); }
+                    break;
+                case 7:
+                    if (tlv.IsNextNull()) { tlv.GetNull(7); } else { value.EpochStartTime2 = tlv.GetUnsignedInt(7); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>
@@ -212,11 +324,11 @@ public class GroupKeyManagementCluster : ClusterBase
 
     /// <summary>Read GroupKeyMap attribute (0x0000).</summary>
     public Task<GroupKeyMapStruct[]?> ReadGroupKeyMapAsync(CancellationToken ct = default)
-        => ReadRefAttributeAsync<GroupKeyMapStruct[]>(0x0000, ct);
+        => ReadArrayAttributeAsync(0x0000, ReadGroupKeyMapStruct, ct);
 
     /// <summary>Read GroupTable attribute (0x0001).</summary>
     public Task<GroupInfoMapStruct[]?> ReadGroupTableAsync(CancellationToken ct = default)
-        => ReadRefAttributeAsync<GroupInfoMapStruct[]>(0x0001, ct);
+        => ReadArrayAttributeAsync(0x0001, ReadGroupInfoMapStruct, ct);
 
     /// <summary>Read MaxGroupsPerFabric attribute (0x0002).</summary>
     public Task<ushort> ReadMaxGroupsPerFabricAsync(CancellationToken ct = default)
@@ -225,4 +337,18 @@ public class GroupKeyManagementCluster : ClusterBase
     /// <summary>Read MaxGroupKeysPerFabric attribute (0x0003).</summary>
     public Task<ushort> ReadMaxGroupKeysPerFabricAsync(CancellationToken ct = default)
         => ReadAttributeAsync<ushort>(0x0003, ct);
+
+    // Attribute writers
+
+    /// <summary>Write GroupKeyMap attribute (0x0000).</summary>
+    public Task<WriteResponse> WriteGroupKeyMapAsync(
+        GroupKeyMapStruct[] groupKeyMap,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0000, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(groupKeyMap);
+            if (groupKeyMap != null) { tlv.AddArray(2); foreach (var item in groupKeyMap) { WriteGroupKeyMapStruct(tlv, item); } tlv.EndContainer(); }
+        }, timedRequest, timedTimeoutMs, ct);
 }

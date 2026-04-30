@@ -245,4 +245,17 @@ public class GeneralCommissioningCluster : ClusterBase
     /// <summary>Read IsCommissioningWithoutPower attribute (0x000C).</summary>
     public Task<bool> ReadIsCommissioningWithoutPowerAsync(CancellationToken ct = default)
         => ReadAttributeAsync<bool>(0x000C, ct);
+
+    // Attribute writers
+
+    /// <summary>Write Breadcrumb attribute (0x0000).</summary>
+    public Task<WriteResponse> WriteBreadcrumbAsync(
+        ulong breadcrumb,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0000, tlv =>
+        {
+            tlv.AddUInt64(2, breadcrumb);
+        }, timedRequest, timedTimeoutMs, ct);
 }

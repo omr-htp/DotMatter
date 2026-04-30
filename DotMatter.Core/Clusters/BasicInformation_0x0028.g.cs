@@ -329,4 +329,41 @@ public class BasicInformationCluster : ClusterBase
     /// <summary>Read ConfigurationVersion attribute (0x0018).</summary>
     public Task<uint> ReadConfigurationVersionAsync(CancellationToken ct = default)
         => ReadAttributeAsync<uint>(0x0018, ct);
+
+    // Attribute writers
+
+    /// <summary>Write NodeLabel attribute (0x0005).</summary>
+    public Task<WriteResponse> WriteNodeLabelAsync(
+        string nodeLabel,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0005, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(nodeLabel);
+            tlv.AddUTF8String(2, nodeLabel);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write Location attribute (0x0006).</summary>
+    public Task<WriteResponse> WriteLocationAsync(
+        string location,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0006, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(location);
+            tlv.AddUTF8String(2, location);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write LocalConfigDisabled attribute (0x0010).</summary>
+    public Task<WriteResponse> WriteLocalConfigDisabledAsync(
+        bool localConfigDisabled,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0010, tlv =>
+        {
+            tlv.AddBool(2, localConfigDisabled);
+        }, timedRequest, timedTimeoutMs, ct);
 }

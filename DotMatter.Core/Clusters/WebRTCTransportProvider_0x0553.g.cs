@@ -109,6 +109,8 @@ public class WebRTCTransportProviderCluster : ClusterBase
         public ushort[]? VideoStreams { get; set; }
         /// <summary>Gets or sets AudioStreams.</summary>
         public ushort[]? AudioStreams { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte FabricIndex { get; set; }
     }
 
     /// <summary>ICEServerStruct struct.</summary>
@@ -182,8 +184,8 @@ public class WebRTCTransportProviderCluster : ClusterBase
         tlv.AddUInt64(1, value.PeerNodeID);
         tlv.AddUInt16(2, value.PeerEndpointID);
         tlv.AddUInt8(3, (byte)value.StreamUsage);
-        if (value.VideoStreamID != null) tlv.AddUInt16(4, value.VideoStreamID.Value);
-        if (value.AudioStreamID != null) tlv.AddUInt16(5, value.AudioStreamID.Value);
+        if (value.VideoStreamID != null) { tlv.AddUInt16(4, value.VideoStreamID.Value); } else { tlv.AddNull(4); }
+        if (value.AudioStreamID != null) { tlv.AddUInt16(5, value.AudioStreamID.Value); } else { tlv.AddNull(5); }
         tlv.AddBool(6, value.MetadataEnabled);
         if (value.VideoStreams != null) { tlv.AddArray(7); foreach (var item in value.VideoStreams) { tlv.AddUInt16(item); } tlv.EndContainer(); }
         if (value.AudioStreams != null) { tlv.AddArray(8); foreach (var item in value.AudioStreams) { tlv.AddUInt16(item); } tlv.EndContainer(); }
@@ -233,7 +235,7 @@ public class WebRTCTransportProviderCluster : ClusterBase
     {
         tlv.AddUTF8String(0, value.Candidate);
         tlv.AddUTF8String(1, value.SDPMid);
-        if (value.SDPMLineIndex != null) tlv.AddUInt16(2, value.SDPMLineIndex.Value);
+        if (value.SDPMLineIndex != null) { tlv.AddUInt16(2, value.SDPMLineIndex.Value); } else { tlv.AddNull(2); }
     }
 
     /// <summary>Attribute identifiers.</summary>
@@ -304,7 +306,7 @@ public class WebRTCTransportProviderCluster : ClusterBase
         CancellationToken ct = default)
         => InvokeCommandAsync(0x0002, tlv =>
         {
-            if (webRTCSessionID != null) tlv.AddUInt16(0, webRTCSessionID.Value);
+            if (webRTCSessionID != null) { tlv.AddUInt16(0, webRTCSessionID.Value); } else { tlv.AddNull(0); }
             tlv.AddUTF8String(1, sDP);
             tlv.AddUInt8(2, (byte)streamUsage);
             tlv.AddUInt16(3, originatingEndpointID);

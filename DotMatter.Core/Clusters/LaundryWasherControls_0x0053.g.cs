@@ -78,4 +78,29 @@ public class LaundryWasherControlsCluster : ClusterBase
     /// <summary>Read SupportedRinses attribute (0x0003).</summary>
     public Task<NumberOfRinsesEnum[]?> ReadSupportedRinsesAsync(CancellationToken ct = default)
         => ReadRefAttributeAsync<NumberOfRinsesEnum[]>(0x0003, ct);
+
+    // Attribute writers
+
+    /// <summary>Write SpinSpeedCurrent attribute (0x0001).</summary>
+    public Task<WriteResponse> WriteSpinSpeedCurrentAsync(
+        byte? spinSpeedCurrent,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0001, tlv =>
+        {
+            if (spinSpeedCurrent != null) { tlv.AddUInt8(2, spinSpeedCurrent.Value); } else { tlv.AddNull(2); }
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write NumberOfRinses attribute (0x0002).</summary>
+    public Task<WriteResponse> WriteNumberOfRinsesAsync(
+        NumberOfRinsesEnum numberOfRinses,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0002, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(numberOfRinses);
+            tlv.AddUInt8(2, (byte)numberOfRinses);
+        }, timedRequest, timedTimeoutMs, ct);
 }

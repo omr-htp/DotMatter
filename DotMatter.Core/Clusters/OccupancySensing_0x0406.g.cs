@@ -213,4 +213,116 @@ public class OccupancySensingCluster : ClusterBase
     /// <summary>Read PhysicalContactUnoccupiedToOccupiedThreshold attribute (0x0032).</summary>
     public Task<byte> ReadPhysicalContactUnoccupiedToOccupiedThresholdAsync(CancellationToken ct = default)
         => ReadAttributeAsync<byte>(0x0032, ct);
+
+    // Attribute writers
+
+    /// <summary>Write HoldTime attribute (0x0003).</summary>
+    public Task<WriteResponse> WriteHoldTimeAsync(
+        ushort holdTime,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0003, tlv =>
+        {
+            tlv.AddUInt16(2, holdTime);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write PIROccupiedToUnoccupiedDelay attribute (0x0010).</summary>
+    public Task<WriteResponse> WritePIROccupiedToUnoccupiedDelayAsync(
+        ushort pIROccupiedToUnoccupiedDelay,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0010, tlv =>
+        {
+            tlv.AddUInt16(2, pIROccupiedToUnoccupiedDelay);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write PIRUnoccupiedToOccupiedDelay attribute (0x0011).</summary>
+    public Task<WriteResponse> WritePIRUnoccupiedToOccupiedDelayAsync(
+        ushort pIRUnoccupiedToOccupiedDelay,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0011, tlv =>
+        {
+            tlv.AddUInt16(2, pIRUnoccupiedToOccupiedDelay);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write PIRUnoccupiedToOccupiedThreshold attribute (0x0012).</summary>
+    public Task<WriteResponse> WritePIRUnoccupiedToOccupiedThresholdAsync(
+        byte pIRUnoccupiedToOccupiedThreshold,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0012, tlv =>
+        {
+            tlv.AddUInt8(2, pIRUnoccupiedToOccupiedThreshold);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write UltrasonicOccupiedToUnoccupiedDelay attribute (0x0020).</summary>
+    public Task<WriteResponse> WriteUltrasonicOccupiedToUnoccupiedDelayAsync(
+        ushort ultrasonicOccupiedToUnoccupiedDelay,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0020, tlv =>
+        {
+            tlv.AddUInt16(2, ultrasonicOccupiedToUnoccupiedDelay);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write UltrasonicUnoccupiedToOccupiedDelay attribute (0x0021).</summary>
+    public Task<WriteResponse> WriteUltrasonicUnoccupiedToOccupiedDelayAsync(
+        ushort ultrasonicUnoccupiedToOccupiedDelay,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0021, tlv =>
+        {
+            tlv.AddUInt16(2, ultrasonicUnoccupiedToOccupiedDelay);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write UltrasonicUnoccupiedToOccupiedThreshold attribute (0x0022).</summary>
+    public Task<WriteResponse> WriteUltrasonicUnoccupiedToOccupiedThresholdAsync(
+        byte ultrasonicUnoccupiedToOccupiedThreshold,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0022, tlv =>
+        {
+            tlv.AddUInt8(2, ultrasonicUnoccupiedToOccupiedThreshold);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write PhysicalContactOccupiedToUnoccupiedDelay attribute (0x0030).</summary>
+    public Task<WriteResponse> WritePhysicalContactOccupiedToUnoccupiedDelayAsync(
+        ushort physicalContactOccupiedToUnoccupiedDelay,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0030, tlv =>
+        {
+            tlv.AddUInt16(2, physicalContactOccupiedToUnoccupiedDelay);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write PhysicalContactUnoccupiedToOccupiedDelay attribute (0x0031).</summary>
+    public Task<WriteResponse> WritePhysicalContactUnoccupiedToOccupiedDelayAsync(
+        ushort physicalContactUnoccupiedToOccupiedDelay,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0031, tlv =>
+        {
+            tlv.AddUInt16(2, physicalContactUnoccupiedToOccupiedDelay);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write PhysicalContactUnoccupiedToOccupiedThreshold attribute (0x0032).</summary>
+    public Task<WriteResponse> WritePhysicalContactUnoccupiedToOccupiedThresholdAsync(
+        byte physicalContactUnoccupiedToOccupiedThreshold,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0032, tlv =>
+        {
+            tlv.AddUInt8(2, physicalContactUnoccupiedToOccupiedThreshold);
+        }, timedRequest, timedTimeoutMs, ct);
 }

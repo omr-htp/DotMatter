@@ -157,4 +157,28 @@ public class ModeSelectCluster : ClusterBase
     /// <summary>Read OnMode attribute (0x0005).</summary>
     public Task<byte?> ReadOnModeAsync(CancellationToken ct = default)
         => ReadNullableAttributeAsync<byte>(0x0005, ct);
+
+    // Attribute writers
+
+    /// <summary>Write StartUpMode attribute (0x0004).</summary>
+    public Task<WriteResponse> WriteStartUpModeAsync(
+        byte? startUpMode,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0004, tlv =>
+        {
+            if (startUpMode != null) { tlv.AddUInt8(2, startUpMode.Value); } else { tlv.AddNull(2); }
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write OnMode attribute (0x0005).</summary>
+    public Task<WriteResponse> WriteOnModeAsync(
+        byte? onMode,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0005, tlv =>
+        {
+            if (onMode != null) { tlv.AddUInt8(2, onMode.Value); } else { tlv.AddNull(2); }
+        }, timedRequest, timedTimeoutMs, ct);
 }

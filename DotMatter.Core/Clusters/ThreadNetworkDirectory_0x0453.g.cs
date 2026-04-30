@@ -119,4 +119,18 @@ public class ThreadNetworkDirectoryCluster : ClusterBase
     /// <summary>Read ThreadNetworkTableSize attribute (0x0002).</summary>
     public Task<byte> ReadThreadNetworkTableSizeAsync(CancellationToken ct = default)
         => ReadAttributeAsync<byte>(0x0002, ct);
+
+    // Attribute writers
+
+    /// <summary>Write PreferredExtendedPanID attribute (0x0000).</summary>
+    public Task<WriteResponse> WritePreferredExtendedPanIDAsync(
+        byte[] preferredExtendedPanID,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0000, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(preferredExtendedPanID);
+            tlv.AddOctetString(2, preferredExtendedPanID);
+        }, timedRequest, timedTimeoutMs, ct);
 }

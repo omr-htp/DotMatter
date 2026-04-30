@@ -345,7 +345,7 @@ public class CommodityTariffCluster : ClusterBase
 
     private static void WriteCalendarPeriodStructFields(MatterTLV tlv, CalendarPeriodStruct value)
     {
-        if (value.StartDate != null) tlv.AddUInt32(0, value.StartDate.Value);
+        if (value.StartDate != null) { tlv.AddUInt32(0, value.StartDate.Value); } else { tlv.AddNull(0); }
         if (value.DayPatternIDs != null) { tlv.AddArray(1); foreach (var item in value.DayPatternIDs) { tlv.AddUInt32(item); } tlv.EndContainer(); }
     }
 
@@ -466,7 +466,7 @@ public class CommodityTariffCluster : ClusterBase
         if (value.AuxiliaryLoad != null) WriteAuxiliaryLoadSwitchSettingsStruct(tlv, 3, value.AuxiliaryLoad);
         if (value.PeakPeriod != null) WritePeakPeriodStruct(tlv, 4, value.PeakPeriod);
         if (value.PowerThreshold != null) WritePowerThresholdStruct(tlv, 5, value.PowerThreshold);
-        if (value.Threshold != null) tlv.AddInt64(6, value.Threshold.Value);
+        if (value.Threshold != null) { tlv.AddInt64(6, value.Threshold.Value); } else { tlv.AddNull(6); }
         if (value.Label != null) tlv.AddUTF8String(7, value.Label);
         if (value.Predicted != null) tlv.AddBool(8, value.Predicted.Value);
     }

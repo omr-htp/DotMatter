@@ -235,4 +235,18 @@ public class SmokeCOAlarmCluster : ClusterBase
     /// <summary>Read ExpiryDate attribute (0x000C).</summary>
     public Task<uint> ReadExpiryDateAsync(CancellationToken ct = default)
         => ReadAttributeAsync<uint>(0x000C, ct);
+
+    // Attribute writers
+
+    /// <summary>Write SmokeSensitivityLevel attribute (0x000B).</summary>
+    public Task<WriteResponse> WriteSmokeSensitivityLevelAsync(
+        SensitivityEnum smokeSensitivityLevel,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x000B, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(smokeSensitivityLevel);
+            tlv.AddUInt8(2, (byte)smokeSensitivityLevel);
+        }, timedRequest, timedTimeoutMs, ct);
 }

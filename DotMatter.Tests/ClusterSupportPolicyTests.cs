@@ -359,11 +359,11 @@ public class ClusterSupportPolicyTests
             Assert.That(code, Does.Contain("private static void WriteAppInfoStructFields(MatterTLV tlv, AppInfoStruct value)"));
             Assert.That(code, Does.Contain("tlv.AddUInt16(0, value.CatalogVendorID);"));
             Assert.That(code, Does.Contain("tlv.AddUTF8String(1, value.ApplicationID);"));
-            Assert.That(code, Does.Contain("if (value.BlockChannelIndex != null) tlv.AddUInt16(0, value.BlockChannelIndex.Value);"));
+            Assert.That(code, Does.Contain("if (value.BlockChannelIndex != null) { tlv.AddUInt16(0, value.BlockChannelIndex.Value); } else { tlv.AddNull(0); }"));
             Assert.That(code, Does.Contain("tlv.AddUInt16(1, value.MajorNumber);"));
             Assert.That(code, Does.Contain("tlv.AddUInt16(2, value.MinorNumber);"));
             Assert.That(code, Does.Contain("if (value.Identifier != null) tlv.AddUTF8String(3, value.Identifier);"));
-            Assert.That(code, Does.Contain("if (value.TimeWindowIndex != null) tlv.AddUInt16(0, value.TimeWindowIndex.Value);"));
+            Assert.That(code, Does.Contain("if (value.TimeWindowIndex != null) { tlv.AddUInt16(0, value.TimeWindowIndex.Value); } else { tlv.AddNull(0); }"));
             Assert.That(code, Does.Contain("tlv.AddUInt8(1, (byte)value.DayOfWeek);"));
             Assert.That(code, Does.Contain("if (value.TimePeriod != null) { tlv.AddArray(2); foreach (var item in value.TimePeriod) { WriteTimePeriodStruct(tlv, item); } tlv.EndContainer(); }"));
             Assert.That(code, Does.Contain("=> ReadRefAttributeAsync<RatingNameStruct[]>(0x0001, ct);"));

@@ -282,4 +282,41 @@ public class PumpConfigurationAndControlCluster : ClusterBase
     /// <summary>Read ControlMode attribute (0x0021).</summary>
     public Task<ControlModeEnum> ReadControlModeAsync(CancellationToken ct = default)
         => ReadAttributeAsync<ControlModeEnum>(0x0021, ct);
+
+    // Attribute writers
+
+    /// <summary>Write LifetimeEnergyConsumed attribute (0x0017).</summary>
+    public Task<WriteResponse> WriteLifetimeEnergyConsumedAsync(
+        uint? lifetimeEnergyConsumed,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0017, tlv =>
+        {
+            if (lifetimeEnergyConsumed != null) { tlv.AddUInt32(2, lifetimeEnergyConsumed.Value); } else { tlv.AddNull(2); }
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write OperationMode attribute (0x0020).</summary>
+    public Task<WriteResponse> WriteOperationModeAsync(
+        OperationModeEnum operationMode,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0020, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(operationMode);
+            tlv.AddUInt8(2, (byte)operationMode);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write ControlMode attribute (0x0021).</summary>
+    public Task<WriteResponse> WriteControlModeAsync(
+        ControlModeEnum controlMode,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0021, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(controlMode);
+            tlv.AddUInt8(2, (byte)controlMode);
+        }, timedRequest, timedTimeoutMs, ct);
 }

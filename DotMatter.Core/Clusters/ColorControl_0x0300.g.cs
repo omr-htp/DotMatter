@@ -849,4 +849,29 @@ public class ColorControlCluster : ClusterBase
     /// <summary>Read ColorTempPhysicalMaxMireds attribute (0x400C).</summary>
     public Task<ushort> ReadColorTempPhysicalMaxMiredsAsync(CancellationToken ct = default)
         => ReadAttributeAsync<ushort>(0x400C, ct);
+
+    // Attribute writers
+
+    /// <summary>Write Options attribute (0x000F).</summary>
+    public Task<WriteResponse> WriteOptionsAsync(
+        OptionsBitmap options,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x000F, tlv =>
+        {
+            ArgumentNullException.ThrowIfNull(options);
+            tlv.AddUInt8(2, (byte)options);
+        }, timedRequest, timedTimeoutMs, ct);
+
+    /// <summary>Write StartUpColorTemperatureMireds attribute (0x4010).</summary>
+    public Task<WriteResponse> WriteStartUpColorTemperatureMiredsAsync(
+        ushort? startUpColorTemperatureMireds,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x4010, tlv =>
+        {
+            if (startUpColorTemperatureMireds != null) { tlv.AddUInt16(2, startUpColorTemperatureMireds.Value); } else { tlv.AddNull(2); }
+        }, timedRequest, timedTimeoutMs, ct);
 }

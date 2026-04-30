@@ -97,5 +97,6 @@ sealed class BitfieldModel
 sealed class StructModel
 {
     public string Name { get; set; } = "";
+    public bool IsFabricScoped { get; set; }
     public List<FieldModel> Fields { get; set; } = [];
 }

@@ -350,4 +350,17 @@ public class ZoneManagementCluster : ClusterBase
     /// <summary>Read TwoDCartesianMax attribute (0x0006).</summary>
     public Task<object?> ReadTwoDCartesianMaxAsync(CancellationToken ct = default)
         => ReadAttributeAsync(0x0006, ct);
+
+    // Attribute writers
+
+    /// <summary>Write Sensitivity attribute (0x0005).</summary>
+    public Task<WriteResponse> WriteSensitivityAsync(
+        byte sensitivity,
+        bool timedRequest = true,
+        ushort timedTimeoutMs = 5000,
+        CancellationToken ct = default)
+        => WriteAttributeAsync(0x0005, tlv =>
+        {
+            tlv.AddUInt8(2, sensitivity);
+        }, timedRequest, timedTimeoutMs, ct);
 }
