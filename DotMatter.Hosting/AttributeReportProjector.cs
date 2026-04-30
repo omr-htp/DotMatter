@@ -115,4 +115,5 @@ internal sealed class AttributeReportProjector(
         onStateChanged(id, endpointId, "hue", hue.ToString());
         onStateChanged(id, endpointId, "saturation", saturation.ToString());
     }
+
 }

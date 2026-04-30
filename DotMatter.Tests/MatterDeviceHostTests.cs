@@ -30,6 +30,8 @@ public class MatterDeviceHostTests
     {
         public bool ReconnectScheduled { get; private set; }
 
+        public new DeviceRegistry Registry => base.Registry;
+
         public Task TriggerSubscriptionStaleAsync(string id, CancellationToken ct = default)
             => base.OnSubscriptionStaleAsync(id, null!, null!, ct);
 
@@ -59,4 +61,5 @@ public class MatterDeviceHostTests
         public Task<string?> RunOtCtlAsync(string command, CancellationToken ct, bool firstLineOnly = true)
             => Task.FromResult<string?>(null);
     }
+
 }

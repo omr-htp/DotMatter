@@ -1,9 +1,12 @@
 using DotMatter.Core;
 using DotMatter.Core.Clusters;
+using DotMatter.Core.Fabrics;
 using DotMatter.Core.InteractionModel;
 using DotMatter.Hosting;
 using Microsoft.Extensions.Options;
+using Org.BouncyCastle.Math;
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text.Json;
 using System.Threading.Channels;
 using ISession = DotMatter.Core.Sessions.ISession;
@@ -357,6 +360,73 @@ public sealed class MatterControllerService(
             });
     }
 
+    /// <summary>Configures a switch Binding entry and grants the switch OnOff operate ACL on the target.</summary>
+    public async Task<DeviceOperationResult> BindSwitchOnOffAsync(
+        string switchId,
+        string targetId,
+        ushort sourceEndpoint = 1,
+        ushort targetEndpoint = 1)
+    {
+        if (!TryGetConnectedSession(switchId, out var switchSession))
+        {
+            return new DeviceOperationResult(false, DeviceOperationFailure.NotConnected, $"Switch {switchId} is not connected");
+        }
+
+        if (!TryGetConnectedSession(targetId, out var targetSession))
+        {
+            return new DeviceOperationResult(false, DeviceOperationFailure.NotConnected, $"Target {targetId} is not connected");
+        }
+
+        var switchDevice = Registry.Get(switchId);
+        var targetDevice = Registry.Get(targetId);
+        if (switchDevice is null || targetDevice is null)
+        {
+            return new DeviceOperationResult(false, DeviceOperationFailure.NotFound, "Switch or target device was not found");
+        }
+
+        var switchNodeId = ToOperationalNodeId(switchDevice.NodeId);
+        var targetNodeId = ToOperationalNodeId(targetDevice.NodeId);
+        var targetFabric = await new FabricDiskStorage(Registry.BasePath).LoadFabricAsync(targetDevice.FabricName);
+        var controllerNodeId = BitConverter.ToUInt64(targetFabric.RootNodeId.ToByteArrayUnsigned());
+
+        try
+        {
+            using var cts = new CancellationTokenSource(_apiOptions.CommandTimeout);
+            var aclResult = await EnsureOnOffOperateAclAsync(
+                targetSession.Session!,
+                controllerNodeId,
+                switchNodeId,
+                targetEndpoint,
+                cts.Token);
+            if (!aclResult.Success)
+            {
+                return new DeviceOperationResult(false, DeviceOperationFailure.TransportError, $"ACL write failed: {FormatWriteResponse(aclResult)}");
+            }
+
+            var bindingResult = await EnsureOnOffBindingAsync(switchSession.Session!, targetNodeId, sourceEndpoint, targetEndpoint, cts.Token);
+            if (!bindingResult.Success)
+            {
+                return new DeviceOperationResult(false, DeviceOperationFailure.TransportError, $"Binding write failed: {FormatWriteResponse(bindingResult)}");
+            }
+
+            Registry.Update(switchId, device => device.LastSeen = DateTime.UtcNow);
+            Registry.Update(targetId, device => device.LastSeen = DateTime.UtcNow);
+            PublishEvent(switchId, "binding", $"onoff:{targetId}");
+            Log.LogInformation("Switch {SwitchId}: bound endpoint {SourceEndpoint} OnOff to {TargetId} endpoint {TargetEndpoint}",
+                switchId, sourceEndpoint, targetId, targetEndpoint);
+            return DeviceOperationResult.Succeeded;
+        }
+        catch (OperationCanceledException)
+        {
+            return new DeviceOperationResult(false, DeviceOperationFailure.Timeout, "Switch binding timed out");
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Switch {SwitchId}: binding to target {TargetId} failed", switchId, targetId);
+            return new DeviceOperationResult(false, DeviceOperationFailure.TransportError, ex.Message);
+        }
+    }
+
     /// <summary>
     /// Reads and returns the latest known state for a connected device.
     /// </summary>
@@ -393,6 +463,109 @@ public sealed class MatterControllerService(
     {
         var device = Registry.Get(deviceId);
         return device?.EndpointFor(clusterId) ?? 1;
+    }
+
+    private static ulong ToOperationalNodeId(string nodeId)
+        => ToOperationalNodeId(new BigInteger(nodeId));
+
+    private static ulong ToOperationalNodeId(BigInteger nodeId)
+        => ulong.Parse(
+            MatterDeviceHost.GetNodeOperationalId(nodeId),
+            NumberStyles.HexNumber,
+            CultureInfo.InvariantCulture);
+
+    private static async Task<WriteResponse> EnsureOnOffOperateAclAsync(
+        ISession targetSession,
+        ulong controllerNodeId,
+        ulong switchNodeId,
+        ushort targetEndpoint,
+        CancellationToken ct)
+    {
+        var accessControl = new AccessControlCluster(targetSession, endpointId: 0);
+        var existingAcl = await accessControl.ReadACLAsync(ct) ?? [];
+        var desiredTarget = new AccessControlCluster.AccessControlTargetStruct
+        {
+            Cluster = OnOffCluster.ClusterId,
+            Endpoint = targetEndpoint,
+        };
+
+        if (existingAcl.Any(entry =>
+                entry.Privilege == AccessControlCluster.AccessControlEntryPrivilegeEnum.Operate
+                && entry.AuthMode == AccessControlCluster.AccessControlEntryAuthModeEnum.CASE
+                && entry.Subjects?.Contains(switchNodeId) == true
+                && entry.Targets?.Any(target => target.Cluster == desiredTarget.Cluster && target.Endpoint == desiredTarget.Endpoint) == true))
+        {
+            return new WriteResponse(true, []);
+        }
+
+        var updatedAcl = existingAcl;
+        if (!updatedAcl.Any(entry =>
+                entry.Privilege == AccessControlCluster.AccessControlEntryPrivilegeEnum.Administer
+                && entry.AuthMode == AccessControlCluster.AccessControlEntryAuthModeEnum.CASE
+                && entry.Subjects?.Contains(controllerNodeId) == true))
+        {
+            updatedAcl = updatedAcl.Prepend(new AccessControlCluster.AccessControlEntryStruct
+            {
+                Privilege = AccessControlCluster.AccessControlEntryPrivilegeEnum.Administer,
+                AuthMode = AccessControlCluster.AccessControlEntryAuthModeEnum.CASE,
+                Subjects = [controllerNodeId],
+                Targets = null,
+            }).ToArray();
+        }
+
+        updatedAcl = updatedAcl.Append(new AccessControlCluster.AccessControlEntryStruct
+        {
+            Privilege = AccessControlCluster.AccessControlEntryPrivilegeEnum.Operate,
+            AuthMode = AccessControlCluster.AccessControlEntryAuthModeEnum.CASE,
+            Subjects = [switchNodeId],
+            Targets = [desiredTarget],
+        }).ToArray();
+
+        return await accessControl.WriteACLAsync(updatedAcl, ct: ct);
+    }
+
+    private static async Task<WriteResponse> EnsureOnOffBindingAsync(
+        ISession switchSession,
+        ulong targetNodeId,
+        ushort sourceEndpoint,
+        ushort targetEndpoint,
+        CancellationToken ct)
+    {
+        var binding = new BindingCluster(switchSession, sourceEndpoint);
+        var existingBinding = await binding.ReadBindingAsync(ct) ?? [];
+
+        if (existingBinding.Any(entry =>
+                entry.Node == targetNodeId
+                && entry.Endpoint == targetEndpoint
+                && entry.Cluster == OnOffCluster.ClusterId))
+        {
+            return new WriteResponse(true, []);
+        }
+
+        var updatedBinding = existingBinding.Append(new BindingCluster.TargetStruct
+        {
+            Node = targetNodeId,
+            Endpoint = targetEndpoint,
+            Cluster = OnOffCluster.ClusterId,
+        }).ToArray();
+
+        return await binding.WriteBindingAsync(updatedBinding, ct: ct);
+    }
+
+    private static string FormatWriteResponse(WriteResponse response)
+    {
+        if (response.StatusCode is { } statusCode)
+        {
+            return $"status=0x{statusCode:X2}";
+        }
+
+        if (response.AttributeStatuses.Count == 0)
+        {
+            return "no write status returned";
+        }
+
+        return string.Join(", ", response.AttributeStatuses.Select(
+            status => $"attr=0x{status.AttributeId:X4} status=0x{status.StatusCode:X2}"));
     }
 
     private bool TryGetConnectedSession(string id, out ResilientSession session)

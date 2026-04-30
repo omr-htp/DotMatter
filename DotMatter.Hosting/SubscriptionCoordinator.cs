@@ -18,17 +18,22 @@ internal sealed class SubscriptionCoordinator(
         var device = registry.Get(id);
         var supportsHueSaturation = device?.SupportsHueSaturation ?? false;
         var supportsXY = device?.SupportsXY ?? false;
-        var supportsColorTemperature = device?.SupportsColorTemperature ?? true;
+        var supportsColorTemperature = (device?.SupportsCluster(ColorControlCluster.ClusterId) ?? true)
+            && (device?.SupportsColorTemperature ?? true);
 
         var onOffEndpoint = device?.EndpointFor(OnOffCluster.ClusterId) ?? 1;
         var levelEndpoint = device?.EndpointFor(LevelControlCluster.ClusterId) ?? 1;
         var colorEndpoint = device?.EndpointFor(ColorControlCluster.ClusterId) ?? 1;
+        List<AttributePath> paths = [];
+        if (device?.SupportsCluster(OnOffCluster.ClusterId) ?? true)
+        {
+            paths.Add(new(onOffEndpoint, OnOffCluster.ClusterId, OnOffCluster.Attributes.OnOff));
+        }
 
-        List<AttributePath> paths =
-        [
-            new(onOffEndpoint, OnOffCluster.ClusterId, OnOffCluster.Attributes.OnOff),
-            new(levelEndpoint, LevelControlCluster.ClusterId, LevelControlCluster.Attributes.CurrentLevel),
-        ];
+        if (device?.SupportsCluster(LevelControlCluster.ClusterId) ?? true)
+        {
+            paths.Add(new(levelEndpoint, LevelControlCluster.ClusterId, LevelControlCluster.Attributes.CurrentLevel));
+        }
 
         if (supportsHueSaturation)
         {
@@ -46,11 +51,20 @@ internal sealed class SubscriptionCoordinator(
             paths.Add(new(colorEndpoint, ColorControlCluster.ClusterId, ColorControlCluster.Attributes.ColorTemperatureMireds));
         }
 
+        List<EventPath> eventPaths = [];
+
+        if (paths.Count == 0 && eventPaths.Count == 0)
+        {
+            log.LogInformation("[MATTER] {Id}: no subscribable attributes or events discovered", id);
+            return;
+        }
+
         try
         {
             var subscription = await Subscription.CreateMultiAsync(
                 session,
                 paths,
+                eventPaths,
                 minInterval: 3,
                 maxInterval: 30,
                 keepSubscriptions: false,
@@ -70,7 +84,8 @@ internal sealed class SubscriptionCoordinator(
 
             subscriptions[id] = subscription;
             lastSubscriptionReport[id] = DateTime.UtcNow;
-            log.LogInformation("[MATTER] {Id}: subscribed to OnOff, Level, Color", id);
+            log.LogInformation("[MATTER] {Id}: subscribed to {AttributeCount} attribute path(s), {EventCount} event path(s)",
+                id, paths.Count, eventPaths.Count);
         }
         catch (Exception ex)
         {

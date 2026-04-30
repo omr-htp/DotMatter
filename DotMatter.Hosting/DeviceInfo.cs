@@ -66,6 +66,17 @@ public class DeviceInfo
     /// <summary>Gets or sets the discovered endpoint-to-cluster mapping. Null until populated.</summary>
     public Dictionary<ushort, List<uint>>? Endpoints { get; set; }
 
+    /// <summary>Returns whether endpoint discovery found the given cluster, or true when discovery has not completed.</summary>
+    public bool SupportsCluster(uint clusterId)
+    {
+        if (Endpoints is null)
+        {
+            return true;
+        }
+
+        return Endpoints.Any(endpoint => endpoint.Value.Contains(clusterId));
+    }
+
     /// <summary>Returns the first non-root endpoint that hosts the given cluster, or 1 as fallback.</summary>
     public ushort EndpointFor(uint clusterId)
     {

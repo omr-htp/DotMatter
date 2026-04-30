@@ -1,6 +1,8 @@
 using DotMatter.Core;
+using DotMatter.Core.Clusters;
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.TLV;
+using System.Reflection;
 
 namespace DotMatter.Tests;
 
@@ -183,5 +185,220 @@ public class InteractionModelTests
 
         var authMode = reader.GetUnsignedInt8(2);
         Assert.That(authMode, Is.EqualTo(2));
+    }
+
+    [Test]
+    public void WriteResponse_StatusResponseSuccess_IsSuccessfulWithNoAttributeStatuses()
+    {
+        var tlv = new MatterTLV();
+        tlv.AddStructure();
+        tlv.AddUInt8(0, 0x00);
+        tlv.AddUInt8(255, 12);
+        tlv.EndContainer();
+
+        var response = InteractionManager.ParseWriteResponse(
+            CreateImFrame(0x01, tlv),
+            endpointId: 1,
+            clusterId: AccessControlCluster.ClusterId,
+            attributeId: AccessControlCluster.Attributes.ACL);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Success, Is.True);
+            Assert.That(response.StatusCode, Is.Zero);
+            Assert.That(response.AttributeStatuses, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void WriteResponse_StatusResponseFailure_ExposesStatusForAttribute()
+    {
+        var tlv = new MatterTLV();
+        tlv.AddStructure();
+        tlv.AddUInt8(0, (byte)MatterStatusCode.NeedsTimedInteraction);
+        tlv.AddUInt8(255, 12);
+        tlv.EndContainer();
+
+        var response = InteractionManager.ParseWriteResponse(
+            CreateImFrame(0x01, tlv),
+            endpointId: 1,
+            clusterId: BindingCluster.ClusterId,
+            attributeId: BindingCluster.Attributes.Binding);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Success, Is.False);
+            Assert.That(response.StatusCode, Is.EqualTo((byte)MatterStatusCode.NeedsTimedInteraction));
+            Assert.That(response.AttributeStatuses, Has.Count.EqualTo(1));
+            Assert.That(response.AttributeStatuses[0].StatusCode, Is.EqualTo((byte)MatterStatusCode.NeedsTimedInteraction));
+            Assert.That(response.AttributeStatuses[0].AttributeId, Is.EqualTo(BindingCluster.Attributes.Binding));
+        }
+    }
+
+    [Test]
+    public void WriteResponse_WriteResponseStatus_ParsesPathAndClusterStatus()
+    {
+        var tlv = new MatterTLV();
+        tlv.AddStructure();
+        tlv.AddArray(0);
+        tlv.AddStructure();
+        tlv.AddList(0);
+        tlv.AddUInt16(2, 1);
+        tlv.AddUInt32(3, AccessControlCluster.ClusterId);
+        tlv.AddUInt32(4, AccessControlCluster.Attributes.ACL);
+        tlv.EndContainer();
+        tlv.AddStructure(1);
+        tlv.AddUInt8(0, (byte)MatterStatusCode.ConstraintError);
+        tlv.AddUInt8(1, 0x05);
+        tlv.EndContainer();
+        tlv.EndContainer();
+        tlv.EndContainer();
+        tlv.AddUInt8(255, 12);
+        tlv.EndContainer();
+
+        var response = InteractionManager.ParseWriteResponse(
+            CreateImFrame(0x07, tlv),
+            endpointId: 0,
+            clusterId: 0,
+            attributeId: 0xFFFF);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Success, Is.False);
+            Assert.That(response.AttributeStatuses, Has.Count.EqualTo(1));
+            Assert.That(response.AttributeStatuses[0].EndpointId, Is.EqualTo((ushort)1));
+            Assert.That(response.AttributeStatuses[0].ClusterId, Is.EqualTo(AccessControlCluster.ClusterId));
+            Assert.That(response.AttributeStatuses[0].AttributeId, Is.EqualTo(AccessControlCluster.Attributes.ACL));
+            Assert.That(response.AttributeStatuses[0].StatusCode, Is.EqualTo((byte)MatterStatusCode.ConstraintError));
+            Assert.That(response.AttributeStatuses[0].ClusterStatusCode, Is.EqualTo(0x05));
+        }
+    }
+
+    [Test]
+    public void AccessControlEntryStruct_ReadsFabricScopedAclEntry()
+    {
+        const ulong subject = 1606652096310243993UL;
+        var tlv = new MatterTLV();
+        tlv.AddStructure();
+        tlv.AddUInt8(1, (byte)AccessControlCluster.AccessControlEntryPrivilegeEnum.Operate);
+        tlv.AddUInt8(2, (byte)AccessControlCluster.AccessControlEntryAuthModeEnum.CASE);
+        tlv.AddArray(3);
+        tlv.AddUInt64(subject);
+        tlv.EndContainer();
+        tlv.AddArray(4);
+        tlv.AddStructure();
+        tlv.AddUInt32(0, 0x0006);
+        tlv.AddUInt16(1, 1);
+        tlv.AddNull(2);
+        tlv.EndContainer();
+        tlv.EndContainer();
+        tlv.AddUInt8(254, 1);
+        tlv.EndContainer();
+
+        var entry = InvokePrivateStructReader<AccessControlCluster.AccessControlEntryStruct>(
+            typeof(AccessControlCluster),
+            "ReadAccessControlEntryStruct",
+            tlv);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry.Privilege, Is.EqualTo(AccessControlCluster.AccessControlEntryPrivilegeEnum.Operate));
+            Assert.That(entry.AuthMode, Is.EqualTo(AccessControlCluster.AccessControlEntryAuthModeEnum.CASE));
+            Assert.That(entry.Subjects, Is.EquivalentTo(new[] { subject }));
+            Assert.That(entry.Targets, Has.Length.EqualTo(1));
+            Assert.That(entry.Targets![0].Cluster, Is.EqualTo(0x0006));
+            Assert.That(entry.Targets[0].Endpoint, Is.EqualTo((ushort)1));
+            Assert.That(entry.FabricIndex, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void BindingTargetStruct_ReadsNodeEndpointClusterBinding()
+    {
+        const ulong h2NodeId = 13720259805670301903UL;
+        var tlv = new MatterTLV();
+        tlv.AddStructure();
+        tlv.AddUInt64(1, h2NodeId);
+        tlv.AddUInt16(3, 1);
+        tlv.AddUInt32(4, 0x0006);
+        tlv.AddUInt8(254, 1);
+        tlv.EndContainer();
+
+        var target = InvokePrivateStructReader<BindingCluster.TargetStruct>(
+            typeof(BindingCluster),
+            "ReadTargetStruct",
+            tlv);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(target.Node, Is.EqualTo(h2NodeId));
+            Assert.That(target.Group, Is.Null);
+            Assert.That(target.Endpoint, Is.EqualTo((ushort)1));
+            Assert.That(target.Cluster, Is.EqualTo(0x0006));
+            Assert.That(target.FabricIndex, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void AccessControlEntryStruct_WritesNullTargetsForAdminEntry()
+    {
+        var entry = new AccessControlCluster.AccessControlEntryStruct
+        {
+            Privilege = AccessControlCluster.AccessControlEntryPrivilegeEnum.Administer,
+            AuthMode = AccessControlCluster.AccessControlEntryAuthModeEnum.CASE,
+            Subjects = [0x112233UL],
+            Targets = null,
+        };
+        var tlv = new MatterTLV();
+
+        InvokePrivateStructWriter(typeof(AccessControlCluster), "WriteAccessControlEntryStruct", tlv, entry);
+
+        tlv.OpenStructure();
+        Assert.That(tlv.SkipToTag(4), Is.True);
+        Assert.That(tlv.IsNextNull(), Is.True);
+        tlv.GetNull(4);
+        Assert.That(tlv.SkipToTag(254), Is.False);
+    }
+
+    [Test]
+    public void AccessControlTargetStruct_WritesRequiredNullableFields()
+    {
+        var target = new AccessControlCluster.AccessControlTargetStruct
+        {
+            Cluster = 0x0006,
+            Endpoint = 1,
+            DeviceType = null,
+        };
+        var tlv = new MatterTLV();
+
+        InvokePrivateStructWriter(typeof(AccessControlCluster), "WriteAccessControlTargetStruct", tlv, target);
+
+        tlv.OpenStructure();
+        Assert.That(tlv.SkipToTag(2), Is.True);
+        Assert.That(tlv.IsNextNull(), Is.True);
+    }
+
+    private static MessageFrame CreateImFrame(byte opCode, MatterTLV tlv)
+        => new(new MessagePayload(tlv)
+        {
+            ProtocolId = 0x01,
+            ProtocolOpCode = opCode,
+        });
+
+    private static T InvokePrivateStructReader<T>(Type clusterType, string methodName, MatterTLV tlv)
+    {
+        var method = clusterType.GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new MissingMethodException(clusterType.FullName, methodName);
+        return (T)method.Invoke(null, [tlv])!;
+    }
+
+    private static void InvokePrivateStructWriter(Type clusterType, string methodName, MatterTLV tlv, object value)
+    {
+        var method = clusterType.GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+            .Single(method => method.Name == methodName
+                && method.GetParameters() is [{ ParameterType: var tlvType }, { ParameterType: var valueType }]
+                && tlvType == typeof(MatterTLV)
+                && valueType == value.GetType());
+        method.Invoke(null, [tlv, value]);
     }
 }

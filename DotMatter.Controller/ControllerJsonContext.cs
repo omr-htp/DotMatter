@@ -13,6 +13,7 @@ namespace DotMatter.Controller;
 [JsonSerializable(typeof(LevelRequest))]
 [JsonSerializable(typeof(ColorRequest))]
 [JsonSerializable(typeof(ColorXYRequest))]
+[JsonSerializable(typeof(SwitchBindingRequest))]
 [JsonSerializable(typeof(DeviceSummary[]))]
 [JsonSerializable(typeof(IEnumerable<DeviceSummary>))]
 [JsonSerializable(typeof(DeviceState))]

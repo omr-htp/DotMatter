@@ -113,6 +113,26 @@ internal static class DeviceApiEndpoints
             .WithSummary("Set color (CIE XY)")
             .WithDescription("Sets device color using CIE 1931 XY coordinates (0-65279).");
 
+        devices.MapPost("/devices/{id}/bindings/onoff", async (string id, SwitchBindingRequest body, MatterControllerService service) =>
+        {
+            var missing = EnsureKnownDevice(id, service);
+            if (missing != null)
+            {
+                return missing;
+            }
+
+            if (!service.HasDevice(body.TargetDeviceId))
+            {
+                return Results.NotFound(new ErrorResponse($"Target device {body.TargetDeviceId} not found"));
+            }
+
+            return ApiEndpointResults.MapDeviceResult(
+                await service.BindSwitchOnOffAsync(id, body.TargetDeviceId, body.SourceEndpoint, body.TargetEndpoint),
+                $"bound:{body.TargetDeviceId}");
+        })
+            .WithSummary("Bind switch to OnOff target")
+            .WithDescription("Writes target ACL and switch Binding entries so switch button events operate the target OnOff endpoint.");
+
         devices.MapDelete("/devices/{id}", (string id, MatterControllerService service) =>
         {
             var removed = service.DisconnectAndRemove(id);

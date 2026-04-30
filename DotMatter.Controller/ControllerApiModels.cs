@@ -48,6 +48,8 @@ public record LevelRequest(byte Level, ushort TransitionTime = 5);
 public record ColorRequest(byte Hue, byte Saturation, ushort TransitionTime = 5);
 /// <summary>Request to set device CIE XY color.</summary>
 public record ColorXYRequest(ushort X, ushort Y, ushort TransitionTime = 5);
+/// <summary>Request to bind a switch OnOff client to a target OnOff server.</summary>
+public record SwitchBindingRequest(string TargetDeviceId, ushort SourceEndpoint = 1, ushort TargetEndpoint = 1);
 /// <summary>Result of a WiFi commissioning operation.</summary>
 public record WifiCommissioningResult(bool Success, string? DeviceId, string? NodeId, string? OperationalIp, string? Error);
 /// <summary>Current state of a Matter device.</summary>

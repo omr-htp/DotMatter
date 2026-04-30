@@ -22,7 +22,10 @@ internal sealed class DeviceStateProbe(
 
         registry.Update(id, device => device.Endpoints = map);
         log.LogInformation("[MATTER] {Id}: discovered {Count} endpoint(s): {Endpoints}",
-            id, map.Count, string.Join(", ", map.Select(kv => $"EP{kv.Key}({kv.Value.Count} clusters)")));
+            id,
+            map.Count,
+            string.Join(", ", map.Select(kv =>
+                $"EP{kv.Key}({string.Join("/", kv.Value.Select(cluster => $"0x{cluster:X4}"))})")));
     }
 
     public async Task ReadDeviceStateAsync(string id, ISession session, CancellationToken ct = default)
@@ -31,45 +34,54 @@ internal sealed class DeviceStateProbe(
         var endpoint = device?.EndpointFor(OnOffCluster.ClusterId) ?? 1;
         var endpointId = $"ep{endpoint}";
 
-        try
+        if (device?.SupportsCluster(OnOffCluster.ClusterId) ?? true)
         {
-            var onOff = await new OnOffCluster(session, endpoint).ReadOnOffAsync(ct);
-            registry.Update(id, d => { d.OnOff = onOff; d.LastSeen = DateTime.UtcNow; });
-            onStateChanged(id, endpointId, "on_off", onOff.ToString().ToLowerInvariant());
-        }
-        catch (Exception ex)
-        {
-            log.LogDebug(ex, "[MATTER] ReadState {Id} OnOff failed", id);
-        }
-
-        try
-        {
-            var level = await new LevelControlCluster(session, device?.EndpointFor(LevelControlCluster.ClusterId) ?? endpoint)
-                .ReadCurrentLevelAsync(ct);
-            registry.Update(id, d => { d.Level = level; d.LastSeen = DateTime.UtcNow; });
-            if (level.HasValue)
+            try
             {
-                onStateChanged(id, endpointId, "level", level.Value.ToString());
+                var onOff = await new OnOffCluster(session, endpoint).ReadOnOffAsync(ct);
+                registry.Update(id, d => { d.OnOff = onOff; d.LastSeen = DateTime.UtcNow; });
+                onStateChanged(id, endpointId, "on_off", onOff.ToString().ToLowerInvariant());
+            }
+            catch (Exception ex)
+            {
+                log.LogDebug(ex, "[MATTER] ReadState {Id} OnOff failed", id);
             }
         }
-        catch (Exception ex)
+
+        if (device?.SupportsCluster(LevelControlCluster.ClusterId) ?? true)
         {
-            log.LogDebug(ex, "[MATTER] ReadState {Id} Level failed", id);
+            try
+            {
+                var level = await new LevelControlCluster(session, device?.EndpointFor(LevelControlCluster.ClusterId) ?? endpoint)
+                    .ReadCurrentLevelAsync(ct);
+                registry.Update(id, d => { d.Level = level; d.LastSeen = DateTime.UtcNow; });
+                if (level.HasValue)
+                {
+                    onStateChanged(id, endpointId, "level", level.Value.ToString());
+                }
+            }
+            catch (Exception ex)
+            {
+                log.LogDebug(ex, "[MATTER] ReadState {Id} Level failed", id);
+            }
         }
 
         var colorEndpoint = device?.EndpointFor(ColorControlCluster.ClusterId) ?? endpoint;
         var color = new ColorControlCluster(session, colorEndpoint);
 
-        try
+        if (device?.SupportsCluster(ColorControlCluster.ClusterId) ?? true)
         {
-            var capabilities = await color.ReadColorCapabilitiesAsync(ct);
-            registry.Update(id, d => d.ColorCapabilities = capabilities);
-            log.LogInformation("[MATTER] {Id}: ColorCaps=0x{Capabilities:X2} ({Description})",
-                id, (ushort)capabilities, capabilities);
-        }
-        catch (Exception ex)
-        {
-            log.LogDebug(ex, "[MATTER] ReadState {Id} ColorCaps failed", id);
+            try
+            {
+                var capabilities = await color.ReadColorCapabilitiesAsync(ct);
+                registry.Update(id, d => d.ColorCapabilities = capabilities);
+                log.LogInformation("[MATTER] {Id}: ColorCaps=0x{Capabilities:X2} ({Description})",
+                    id, (ushort)capabilities, capabilities);
+            }
+            catch (Exception ex)
+            {
+                log.LogDebug(ex, "[MATTER] ReadState {Id} ColorCaps failed", id);
+            }
         }
 
         device = registry.Get(id);
@@ -95,6 +107,7 @@ internal sealed class DeviceStateProbe(
                 log.LogDebug(ex, "[MATTER] ReadState {Id} ColorTemp failed", id);
             }
         }
+
     }
 
     private async Task ReadHueSaturationAsync(
