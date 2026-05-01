@@ -65,10 +65,22 @@ public sealed class MatterControllerService(
         DeviceBindingListResponse? Response,
         string? Error = null);
 
+    internal sealed record DeviceAclQueryResult(
+        bool Success,
+        DeviceOperationFailure Failure,
+        DeviceAclListResponse? Response,
+        string? Error = null);
+
     internal sealed record FabricBindingQueryResult(
         bool Success,
         DeviceOperationFailure Failure,
         FabricBindingListResponse? Response,
+        string? Error = null);
+
+    internal sealed record FabricAclQueryResult(
+        bool Success,
+        DeviceOperationFailure Failure,
+        FabricAclListResponse? Response,
         string? Error = null);
 
     /// <summary>Creates a per-client SSE channel.</summary>
@@ -476,6 +488,42 @@ public sealed class MatterControllerService(
         }
     }
 
+    /// <summary>Reads AccessControl ACL entries from one target device.</summary>
+    internal async Task<DeviceAclQueryResult> ReadAclAsync(string id)
+    {
+        var device = Registry.Get(id);
+        if (device is null)
+        {
+            return new DeviceAclQueryResult(false, DeviceOperationFailure.NotFound, null, $"Device {id} not found");
+        }
+
+        if (!TryGetConnectedSession(id, out var session))
+        {
+            return new DeviceAclQueryResult(false, DeviceOperationFailure.NotConnected, null, $"Device {id} is not connected");
+        }
+
+        try
+        {
+            using var cts = new CancellationTokenSource(_apiOptions.CommandTimeout);
+            var response = await ReadAclForEndpointAsync(
+                device,
+                session.Session!,
+                BuildOperationalNodeIndex(),
+                cts.Token);
+
+            return new DeviceAclQueryResult(true, DeviceOperationFailure.None, response);
+        }
+        catch (OperationCanceledException)
+        {
+            return new DeviceAclQueryResult(false, DeviceOperationFailure.Timeout, null, "ACL read timed out");
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Device {Id}: ACL read failed", id);
+            return new DeviceAclQueryResult(false, DeviceOperationFailure.TransportError, null, ex.Message);
+        }
+    }
+
     /// <summary>Reads Binding entries from all known devices on a controller fabric.</summary>
     internal async Task<FabricBindingQueryResult> ReadFabricBindingsAsync(string? fabricName = null, ushort? endpoint = null)
     {
@@ -522,6 +570,46 @@ public sealed class MatterControllerService(
             true,
             DeviceOperationFailure.None,
             new FabricBindingListResponse(
+                requestedFabricName,
+                sourceResults.Count,
+                successfulSources,
+                sourceResults.Count - successfulSources,
+                [.. sourceResults]));
+    }
+
+    /// <summary>Reads AccessControl ACL entries from all known devices on a controller fabric.</summary>
+    internal async Task<FabricAclQueryResult> ReadFabricAclsAsync(string? fabricName = null)
+    {
+        var requestedFabricName = string.IsNullOrWhiteSpace(fabricName)
+            ? _commissioningOptions.SharedFabricName
+            : fabricName;
+
+        string requestedCompressedFabricId;
+        try
+        {
+            var requestedFabric = await new FabricDiskStorage(Registry.BasePath).LoadFabricAsync(requestedFabricName);
+            requestedCompressedFabricId = requestedFabric.CompressedFabricId;
+        }
+        catch (Exception ex)
+        {
+            return new FabricAclQueryResult(false, DeviceOperationFailure.NotFound, null, $"Fabric {requestedFabricName} not found or unreadable: {ex.Message}");
+        }
+
+        var targetIndex = BuildOperationalNodeIndex();
+        var sourceResults = new List<DeviceAclListResponse>();
+        foreach (var device in Registry.GetAll().OrderBy(static device => device.Id, StringComparer.OrdinalIgnoreCase))
+        {
+            if (await DeviceBelongsToCompressedFabricAsync(device, requestedCompressedFabricId))
+            {
+                sourceResults.Add(await ReadFabricDeviceAclAsync(device, targetIndex));
+            }
+        }
+
+        var successfulSources = sourceResults.Count(static result => result.Error is null);
+        return new FabricAclQueryResult(
+            true,
+            DeviceOperationFailure.None,
+            new FabricAclListResponse(
                 requestedFabricName,
                 sourceResults.Count,
                 successfulSources,
@@ -626,6 +714,50 @@ public sealed class MatterControllerService(
             entries.Select(entry => MapBindingEntry(entry, targetIndex)).ToArray());
     }
 
+    private async Task<DeviceAclListResponse> ReadFabricDeviceAclAsync(
+        DeviceInfo device,
+        IReadOnlyDictionary<ulong, DeviceInfo> targetIndex)
+    {
+        if (!TryGetConnectedSession(device.Id, out var session))
+        {
+            return CreateAclErrorResponse(device, $"Device {device.Id} is not connected");
+        }
+
+        try
+        {
+            using var cts = new CancellationTokenSource(_apiOptions.CommandTimeout);
+            return await ReadAclForEndpointAsync(device, session.Session!, targetIndex, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return CreateAclErrorResponse(device, "ACL read timed out");
+        }
+        catch (Exception ex)
+        {
+            Log.LogWarning(ex, "Device {Id}: ACL read failed", device.Id);
+            return CreateAclErrorResponse(device, ex.Message);
+        }
+    }
+
+    private static DeviceAclListResponse CreateAclErrorResponse(DeviceInfo sourceDevice, string error)
+        => new(sourceDevice.Id, sourceDevice.Name, sourceDevice.FabricName, 0, [], error);
+
+    private async Task<DeviceAclListResponse> ReadAclForEndpointAsync(
+        DeviceInfo sourceDevice,
+        ISession session,
+        IReadOnlyDictionary<ulong, DeviceInfo> targetIndex,
+        CancellationToken ct)
+    {
+        var accessControl = new AccessControlCluster(session, endpointId: 0);
+        var entries = await accessControl.ReadACLAsync(ct) ?? [];
+        return new DeviceAclListResponse(
+            sourceDevice.Id,
+            sourceDevice.Name,
+            sourceDevice.FabricName,
+            0,
+            entries.Select(entry => MapAclEntry(entry, targetIndex)).ToArray());
+    }
+
     private static DeviceBindingListResponse CreateBindingErrorResponse(DeviceInfo sourceDevice, ushort endpoint, string error)
         => new(sourceDevice.Id, sourceDevice.Name, sourceDevice.FabricName, endpoint, [], error);
 
@@ -675,6 +807,34 @@ public sealed class MatterControllerService(
             targetDevice?.Id,
             targetDevice?.Name);
     }
+
+    private static DeviceAclEntry MapAclEntry(
+        AccessControlCluster.AccessControlEntryStruct entry,
+        IReadOnlyDictionary<ulong, DeviceInfo> targetIndex)
+        => new(
+            entry.Privilege.ToString(),
+            entry.AuthMode.ToString(),
+            entry.Subjects?.Select(subject => MapAclSubject(subject, targetIndex)).ToArray(),
+            entry.Targets?.Select(MapAclTarget).ToArray(),
+            entry.AuxiliaryType?.ToString(),
+            entry.FabricIndex);
+
+    private static DeviceAclSubject MapAclSubject(ulong subject, IReadOnlyDictionary<ulong, DeviceInfo> targetIndex)
+    {
+        targetIndex.TryGetValue(subject, out var device);
+        return new DeviceAclSubject(
+            subject.ToString(CultureInfo.InvariantCulture),
+            device?.Id,
+            device?.Name);
+    }
+
+    private static DeviceAclTarget MapAclTarget(AccessControlCluster.AccessControlTargetStruct target)
+        => new(
+            target.Cluster,
+            target.Cluster.HasValue ? $"0x{target.Cluster.Value:X4}" : null,
+            target.Endpoint,
+            target.DeviceType,
+            target.DeviceType.HasValue ? $"0x{target.DeviceType.Value:X4}" : null);
 
     private static ulong ToOperationalNodeId(string nodeId)
         => ToOperationalNodeId(new BigInteger(nodeId));

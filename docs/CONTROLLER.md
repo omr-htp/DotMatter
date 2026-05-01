@@ -16,9 +16,11 @@
 
 | Method | Path | Description |
 | --- | --- | --- |
+| GET | `/api/acls` | Query AccessControl ACL entries across a controller fabric |
 | GET | `/api/bindings` | Query Binding entries across a controller fabric |
 | GET | `/api/devices` | List all devices |
 | GET | `/api/devices/{id}` | Device details |
+| GET | `/api/devices/{id}/acl` | Query AccessControl ACL entries from one device |
 | GET | `/api/devices/{id}/bindings` | Query Binding entries from one source device endpoint |
 | GET | `/api/devices/{id}/state` | Current state |
 | POST | `/api/devices/{id}/on` | Turn on |
@@ -53,23 +55,50 @@ Two services on the Pi, **only one runs at a time** (systemd `Conflicts=` auto-s
 
 See [Deployment Guide](DEPLOYMENT.md) for local deploy props setup, Pi env files, Samba fast-loop configuration, and AOT cross-compilation.
 
-## Switch OnOff Binding
+## ACL and Switch OnOff Binding
+
+AccessControl ACL state is stored on target devices, not in DotMatter's local fabric files. ACL query endpoints therefore read the live `AccessControl.ACL` attribute from device endpoint 0.
+
+`GET /api/acls` queries known devices on the configured shared fabric and returns each device's ACL entries.
+
+The fabric-wide response includes per-device errors for devices that are offline or cannot be read; one failed device does not fail the whole query.
+
+For normal use, the controller selects the fabric from `Controller__Commissioning__SharedFabricName`. A legacy `fabricName` query string is still accepted for compatibility, but it is not part of the primary API shape.
+
+`GET /api/devices/{id}/acl` reads the ACL list from endpoint 0 of one device. It returns `404` for an unknown device, `503` when the device is known but disconnected or times out, and `502` for transport/decode failures.
+
+ACL entries include privilege, auth mode, raw subject values, targets, fabric index, and optional subject resolution back to known DotMatter devices when the subject matches an operational node ID.
+
+Example fabric-wide ACL query:
+
+```http
+GET /api/acls
+X-API-Key: replace-with-a-long-random-value
+```
+
+Example single-device ACL query:
+
+```http
+GET /api/devices/light-device-id/acl
+X-API-Key: replace-with-a-long-random-value
+```
 
 Binding state is stored on source devices, not in DotMatter's local fabric files. Query endpoints therefore read live Binding cluster attributes from devices on the controller fabric.
 
-`GET /api/bindings` queries known devices on a controller fabric and returns each source device's Binding entries. It accepts:
+`GET /api/bindings` queries known devices on the configured shared fabric and returns each source device's Binding entries.
 
-- `fabricName` — optional fabric directory to use as the fabric identity reference. Defaults to `Controller__Commissioning__SharedFabricName`.
 - `endpoint` — optional source endpoint. When omitted, DotMatter uses discovered Binding endpoints, falling back to endpoint 1.
 
 The fabric-wide response includes per-source errors for devices that are offline or cannot be read; one failed source does not fail the whole query.
+
+For normal use, the controller selects the fabric from `Controller__Commissioning__SharedFabricName`. A legacy `fabricName` query string is still accepted for compatibility, but it is not part of the primary API shape.
 
 `GET /api/devices/{id}/bindings?endpoint=1` reads the Binding list from one source device endpoint. It returns `404` for an unknown source device, `503` when the device is known but disconnected or times out, and `502` for transport/decode failures.
 
 Example fabric-wide query:
 
 ```http
-GET /api/bindings?fabricName=DotMatter
+GET /api/bindings
 X-API-Key: replace-with-a-long-random-value
 ```
 

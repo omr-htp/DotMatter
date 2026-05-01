@@ -123,6 +123,22 @@ public class ControllerProductionReadinessTests
     }
 
     [Test]
+    public async Task AclQueryEndpointsValidateKnownDevicesAndMissingFabric()
+    {
+        await using var factory = CreateFactory();
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-API-Key", "test-key");
+
+        var missingFabric = await client.GetAsync("/api/acls?fabricName=DotMatter");
+        var unknownDevice = await client.GetAsync("/api/devices/missing/acl");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int)missingFabric.StatusCode, Is.EqualTo(404));
+            Assert.That((int)unknownDevice.StatusCode, Is.EqualTo(404));
+        }
+    }
+
     public void BindingQueryDtosUseSourceGeneratedJson()
     {
         var response = new FabricBindingListResponse(
@@ -159,6 +175,60 @@ public class ControllerProductionReadinessTests
         {
             Assert.That(json, Does.Contain("\"fabricName\":\"DotMatter\""));
             Assert.That(json, Does.Contain("\"targetDeviceId\":\"light\""));
+            Assert.That(json, Does.Contain("\"clusterHex\":\"0x0006\""));
+        }
+    }
+
+    [Test]
+    public void AclQueryDtosUseSourceGeneratedJson()
+    {
+        var response = new FabricAclListResponse(
+            "DotMatter",
+            TotalSources: 1,
+            SuccessfulSources: 1,
+            FailedSources: 0,
+            Sources:
+            [
+                new DeviceAclListResponse(
+                    "light",
+                    "Light",
+                    "device-light",
+                    Endpoint: 0,
+                    Entries:
+                    [
+                        new DeviceAclEntry(
+                            Privilege: "Operate",
+                            AuthMode: "CASE",
+                            Subjects:
+                            [
+                                new DeviceAclSubject(
+                                    Value: "1234",
+                                    DeviceId: "switch",
+                                    DeviceName: "Switch")
+                            ],
+                            Targets:
+                            [
+                                new DeviceAclTarget(
+                                    Cluster: 0x0006,
+                                    ClusterHex: "0x0006",
+                                    Endpoint: 1,
+                                    DeviceType: null,
+                                    DeviceTypeHex: null)
+                            ],
+                            AuxiliaryType: null,
+                            FabricIndex: 1)
+                    ])
+            ]);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(
+            response,
+            ControllerJsonContext.Default.FabricAclListResponse);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json, Does.Contain("\"fabricName\":\"DotMatter\""));
+            Assert.That(json, Does.Contain("\"privilege\":\"Operate\""));
+            Assert.That(json, Does.Contain("\"deviceId\":\"switch\""));
             Assert.That(json, Does.Contain("\"clusterHex\":\"0x0006\""));
         }
     }

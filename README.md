@@ -18,7 +18,7 @@ A .NET 10 Matter protocol implementation for building Matter controllers on Linu
 
 - `DotMatter.Core`: protocol, crypto, sessions, transport, discovery, and generated clusters.
 - `DotMatter.Hosting`: registry, recovery, OTBR integration, and long-running host behavior.
-- `DotMatter.Controller`: authenticated REST API host for Raspberry Pi deployments, including binding write/query endpoints.
+- `DotMatter.Controller`: authenticated REST API host for Raspberry Pi deployments, including ACL and binding write/query endpoints.
 
 ## Quick Start
 

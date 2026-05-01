@@ -8,7 +8,13 @@ internal static class DeviceApiEndpoints
     {
         var devices = api.MapGroup(string.Empty).WithTags("Devices");
 
-        devices.MapGet("/bindings", async (string? fabricName, ushort? endpoint, MatterControllerService service) =>
+        devices.MapGet("/acls", async (HttpContext context, MatterControllerService service) =>
+            ApiEndpointResults.MapFabricAclQueryResult(
+                await service.ReadFabricAclsAsync(GetLegacyFabricName(context))))
+            .WithSummary("List fabric ACLs")
+            .WithDescription("Reads AccessControl ACL entries from known devices on the configured shared fabric. Returns per-device errors when a target device is offline or cannot be read.");
+
+        devices.MapGet("/bindings", async (HttpContext context, ushort? endpoint, MatterControllerService service) =>
         {
             if (endpoint == 0)
             {
@@ -16,10 +22,10 @@ internal static class DeviceApiEndpoints
             }
 
             return ApiEndpointResults.MapFabricBindingQueryResult(
-                await service.ReadFabricBindingsAsync(fabricName, endpoint));
+                await service.ReadFabricBindingsAsync(GetLegacyFabricName(context), endpoint));
         })
             .WithSummary("List fabric bindings")
-            .WithDescription("Reads Binding cluster entries from known devices on the selected controller fabric. Returns per-device errors when a source device is offline or cannot be read.");
+            .WithDescription("Reads Binding cluster entries from known devices on the configured shared fabric. Returns per-device errors when a source device is offline or cannot be read.");
 
         devices.MapGet("/devices", (DeviceRegistry registry) =>
             registry.GetAll().Select(device => new DeviceSummary(
@@ -80,6 +86,20 @@ internal static class DeviceApiEndpoints
         })
             .WithSummary("Read device state")
             .WithDescription("Reads current OnOff, Level, and Color state from the device.");
+
+        devices.MapGet("/devices/{id}/acl", async (string id, MatterControllerService service) =>
+        {
+            var missing = EnsureKnownDevice(id, service);
+            if (missing != null)
+            {
+                return missing;
+            }
+
+            return ApiEndpointResults.MapDeviceAclQueryResult(
+                await service.ReadAclAsync(id));
+        })
+            .WithSummary("List device ACL")
+            .WithDescription("Reads AccessControl ACL entries from endpoint 0 of one device.");
 
         devices.MapGet("/devices/{id}/bindings", async (string id, ushort? endpoint, MatterControllerService service) =>
         {
@@ -180,4 +200,10 @@ internal static class DeviceApiEndpoints
         => service.HasDevice(id)
             ? null
             : Results.NotFound(new ErrorResponse($"Device {id} not found"));
+
+    private static string? GetLegacyFabricName(HttpContext context)
+    {
+        var fabricName = context.Request.Query["fabricName"].ToString();
+        return string.IsNullOrWhiteSpace(fabricName) ? null : fabricName;
+    }
 }

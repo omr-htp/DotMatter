@@ -28,6 +28,8 @@
 | Area | Status | Notes |
 | --- | --- | --- |
 | Authenticated LAN API | Supported | API key required by default for non-health endpoints. |
+| `GET /api/acls` | Supported | Aggregates live AccessControl ACL reads across known devices on a controller fabric; returns per-device errors. |
+| `GET /api/devices/{id}/acl` | Supported | Reads one device's endpoint-0 AccessControl ACL list. |
 | `GET /api/bindings` | Supported | Aggregates live Binding cluster reads across known devices on a controller fabric; returns per-source errors. |
 | `GET /api/devices/{id}/bindings` | Supported | Reads one source device endpoint's fabric-scoped Binding list. |
 | `POST /api/devices/{id}/bindings/onoff` | Supported | Binds a switch endpoint to a target OnOff endpoint after both devices are commissioned and reachable. |

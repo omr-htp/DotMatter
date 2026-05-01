@@ -50,6 +50,16 @@ public record ColorRequest(byte Hue, byte Saturation, ushort TransitionTime = 5)
 public record ColorXYRequest(ushort X, ushort Y, ushort TransitionTime = 5);
 /// <summary>Request to bind a switch OnOff client to a target OnOff server.</summary>
 public record SwitchBindingRequest(string TargetDeviceId, ushort SourceEndpoint = 1, ushort TargetEndpoint = 1);
+/// <summary>One ACL subject entry as seen in an AccessControl ACL entry.</summary>
+public record DeviceAclSubject(string Value, string? DeviceId, string? DeviceName);
+/// <summary>One ACL target entry as seen in an AccessControl ACL entry.</summary>
+public record DeviceAclTarget(uint? Cluster, string? ClusterHex, ushort? Endpoint, uint? DeviceType, string? DeviceTypeHex);
+/// <summary>One AccessControl ACL entry as observed from a device.</summary>
+public record DeviceAclEntry(string Privilege, string AuthMode, DeviceAclSubject[]? Subjects, DeviceAclTarget[]? Targets, string? AuxiliaryType, byte FabricIndex);
+/// <summary>ACL entries read from one source device endpoint.</summary>
+public record DeviceAclListResponse(string SourceDeviceId, string? SourceDeviceName, string SourceFabricName, ushort Endpoint, DeviceAclEntry[] Entries, string? Error = null);
+/// <summary>ACL entries aggregated across devices on a controller fabric.</summary>
+public record FabricAclListResponse(string FabricName, int TotalSources, int SuccessfulSources, int FailedSources, DeviceAclListResponse[] Sources);
 /// <summary>Single Binding cluster target entry as observed from a source device endpoint.</summary>
 public record DeviceBindingEntry(string? NodeId, ushort? Group, ushort? Endpoint, uint? Cluster, string? ClusterHex, byte FabricIndex, string? TargetDeviceId, string? TargetDeviceName);
 /// <summary>Binding entries read from one source device endpoint.</summary>
