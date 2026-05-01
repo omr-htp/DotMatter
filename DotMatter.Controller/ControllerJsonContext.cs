@@ -42,3 +42,11 @@ namespace DotMatter.Controller;
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 internal partial class ControllerJsonContext : JsonSerializerContext;
+[JsonSerializable(typeof(RemovalStatus))]
+[JsonSerializable(typeof(DeviceBindingRemovalRequest))]
+[JsonSerializable(typeof(DeviceAclRemovalTarget))]
+[JsonSerializable(typeof(DeviceAclRemovalTarget[]))]
+[JsonSerializable(typeof(DeviceAclRemovalRequest))]
+[JsonSerializable(typeof(DeviceBindingRemovalResponse))]
+[JsonSerializable(typeof(DeviceAclRemovalResponse))]
+[JsonSerializable(typeof(SwitchBindingRemovalResponse))]

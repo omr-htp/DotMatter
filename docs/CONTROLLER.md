@@ -7,7 +7,7 @@
 - **Auth enabled by default** — non-health endpoints require an API key unless the environment explicitly disables it, with CORS deny-by-default
 - **BLE commissioning** — PASE → CSR → NOC → Thread/WiFi provisioning
 - **Thread + WiFi control** — OTBR-backed Thread discovery and WiFi commissioning
-- **Switch binding** — writes Matter ACL and Binding entries so a switch OnOff client can operate a target OnOff endpoint
+- **Switch binding + removal** — creates and reconciles Matter ACL and Binding state for a switch OnOff route
 - **Bounded runtime** — Owned reconnect loops, readiness/liveness health, SSE cleanup, atomic registry writes
 - **AOT-ready** — Publishes as native AOT on Linux ARM64
 - **OpenAPI + SSE** — Scalar/OpenAPI UI and server-sent events for clients
@@ -22,6 +22,8 @@
 | GET | `/api/devices/{id}` | Device details |
 | GET | `/api/devices/{id}/acl` | Query AccessControl ACL entries from one device |
 | GET | `/api/devices/{id}/bindings` | Query Binding entries from one source device endpoint |
+| POST | `/api/devices/{id}/acl/remove` | Remove matching AccessControl ACL entries from one device |
+| POST | `/api/devices/{id}/bindings/remove` | Remove matching Binding entries from one source device endpoint |
 | GET | `/api/devices/{id}/state` | Current state |
 | POST | `/api/devices/{id}/on` | Turn on |
 | POST | `/api/devices/{id}/off` | Turn off |
@@ -30,6 +32,7 @@
 | POST | `/api/devices/{id}/color` | Set color (Hue/Saturation) |
 | POST | `/api/devices/{id}/color-xy` | Set color (CIE xy) |
 | POST | `/api/devices/{id}/bindings/onoff` | Bind switch OnOff client to a target OnOff endpoint |
+| POST | `/api/devices/{id}/bindings/onoff/remove` | Remove switch OnOff route and reconcile matching ACL |
 | POST | `/api/commission` | Commission Thread device |
 | POST | `/api/commission/wifi` | Commission WiFi device |
 | DELETE | `/api/devices/{id}` | Remove device |
@@ -55,7 +58,7 @@ Two services on the Pi, **only one runs at a time** (systemd `Conflicts=` auto-s
 
 See [Deployment Guide](DEPLOYMENT.md) for local deploy props setup, Pi env files, Samba fast-loop configuration, and AOT cross-compilation.
 
-## ACL and Switch OnOff Binding
+## ACL, Binding, and Route Removal
 
 AccessControl ACL state is stored on target devices, not in DotMatter's local fabric files. ACL query endpoints therefore read the live `AccessControl.ACL` attribute from device endpoint 0.
 
@@ -135,6 +138,70 @@ Content-Type: application/json
 Both devices must already be commissioned, reachable, and on the same controller fabric.
 
 ## Configuration
+
+`POST /api/devices/{id}/bindings/onoff/remove` performs the inverse route cleanup:
+
+1. It removes the matching source Binding entry for the target node / endpoint / OnOff cluster.
+2. It removes the matching target ACL grant only when DotMatter can prove it is the exact route-owned `Operate` entry it would have created.
+
+If a broader or manual ACL entry still covers the route, DotMatter preserves it and returns a `preserved` ACL outcome instead of deleting it.
+
+Example request:
+
+```http
+POST /api/devices/switch-device-id/bindings/onoff/remove
+X-API-Key: replace-with-a-long-random-value
+Content-Type: application/json
+
+{
+  "targetDeviceId": "light-device-id",
+  "sourceEndpoint": 1,
+  "targetEndpoint": 1
+}
+```
+
+For advanced operator workflows, DotMatter also exposes raw removal surfaces:
+
+- `POST /api/devices/{id}/bindings/remove`
+- `POST /api/devices/{id}/acl/remove`
+
+These endpoints accept explicit request-body match criteria and remove all matching entries on the selected device. They are intended for repair/recovery workflows when the higher-level route API is not specific enough.
+
+Example raw Binding removal:
+
+```http
+POST /api/devices/switch-device-id/bindings/remove
+X-API-Key: replace-with-a-long-random-value
+Content-Type: application/json
+
+{
+  "endpoint": 1,
+  "cluster": 6,
+  "targetEndpoint": 1
+}
+```
+
+Example raw ACL removal:
+
+```http
+POST /api/devices/light-device-id/acl/remove
+X-API-Key: replace-with-a-long-random-value
+Content-Type: application/json
+
+{
+  "privilege": "Operate",
+  "authMode": "CASE",
+  "subjects": ["16846372162258142440"],
+  "targets": [
+    {
+      "cluster": 6,
+      "endpoint": 1
+    }
+  ]
+}
+```
+
+Both raw removal endpoints use request bodies instead of query strings so multi-field match criteria stay explicit and extensible.
 
 See [Configuration Reference](CONFIGURATION.md) for all settings.
 

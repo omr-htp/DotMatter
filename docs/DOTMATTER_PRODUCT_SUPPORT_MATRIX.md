@@ -33,6 +33,9 @@
 | `GET /api/bindings` | Supported | Aggregates live Binding cluster reads across known devices on a controller fabric; returns per-source errors. |
 | `GET /api/devices/{id}/bindings` | Supported | Reads one source device endpoint's fabric-scoped Binding list. |
 | `POST /api/devices/{id}/bindings/onoff` | Supported | Binds a switch endpoint to a target OnOff endpoint after both devices are commissioned and reachable. |
+| `POST /api/devices/{id}/bindings/onoff/remove` | Supported | Removes the switch OnOff route and conservatively preserves broader/manual ACL entries when they should not be deleted. |
+| `POST /api/devices/{id}/bindings/remove` | Supported | Removes matching Binding entries from one source endpoint using explicit request-body match criteria. |
+| `POST /api/devices/{id}/acl/remove` | Supported | Removes matching ACL entries from endpoint 0 using explicit request-body match criteria. |
 | Health endpoints | Supported | `/health`, `/health/live`, and `/health/ready` remain anonymous. |
 | CORS allowlist | Supported | Disabled by default unless explicit origins are configured. |
 | Query-string API key auth | Unsupported | Header-based auth is the supported path. |

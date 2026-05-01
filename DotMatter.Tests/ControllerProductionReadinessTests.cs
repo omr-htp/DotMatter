@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using System.Net.Http.Json;
 
 namespace DotMatter.Tests;
 
@@ -139,6 +140,28 @@ public class ControllerProductionReadinessTests
         }
     }
 
+    [Test]
+    public async Task RouteRemovalEndpointsValidateInputAndKnownDevices()
+    {
+        await using var factory = CreateFactory();
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-API-Key", "test-key");
+
+        var invalidBindingRemove = await client.PostAsJsonAsync("/api/devices/missing/bindings/remove", new DeviceBindingRemovalRequest());
+        var invalidAclRemove = await client.PostAsJsonAsync("/api/devices/missing/acl/remove", new DeviceAclRemovalRequest("Nope", "CASE", ["1"]));
+        var unknownRawBindingDevice = await client.PostAsJsonAsync("/api/devices/missing/bindings/remove", new DeviceBindingRemovalRequest(Endpoint: 1, Cluster: 0x0006));
+        var unknownRouteDevice = await client.PostAsJsonAsync("/api/devices/missing/bindings/onoff/remove", new SwitchBindingRequest("target"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int)invalidBindingRemove.StatusCode, Is.EqualTo(400));
+            Assert.That((int)invalidAclRemove.StatusCode, Is.EqualTo(400));
+            Assert.That((int)unknownRawBindingDevice.StatusCode, Is.EqualTo(404));
+            Assert.That((int)unknownRouteDevice.StatusCode, Is.EqualTo(404));
+        }
+    }
+
+    [Test]
     public void BindingQueryDtosUseSourceGeneratedJson()
     {
         var response = new FabricBindingListResponse(
@@ -176,6 +199,90 @@ public class ControllerProductionReadinessTests
             Assert.That(json, Does.Contain("\"fabricName\":\"DotMatter\""));
             Assert.That(json, Does.Contain("\"targetDeviceId\":\"light\""));
             Assert.That(json, Does.Contain("\"clusterHex\":\"0x0006\""));
+        }
+    }
+
+    [Test]
+    public void RouteRemovalDtosUseSourceGeneratedJson()
+    {
+        var switchResponse = new SwitchBindingRemovalResponse(
+            "switch",
+            "Switch",
+            "light",
+            "Light",
+            SourceEndpoint: 1,
+            TargetEndpoint: 1,
+            Binding: new RemovalStatus("removed", 1, 0),
+            Acl: new RemovalStatus("preserved", 0, 1, "Broader or manual ACL state still covers this route"));
+
+        var bindingResponse = new DeviceBindingRemovalResponse(
+            "switch",
+            "Switch",
+            "device-switch",
+            Endpoint: 1,
+            Result: new RemovalStatus("removed", 1, 0),
+            RemovedEntries:
+            [
+                new DeviceBindingEntry(
+                    NodeId: "1234",
+                    Group: null,
+                    Endpoint: 1,
+                    Cluster: 0x0006,
+                    ClusterHex: "0x0006",
+                    FabricIndex: 1,
+                    TargetDeviceId: "light",
+                    TargetDeviceName: "Light")
+            ]);
+
+        var aclResponse = new DeviceAclRemovalResponse(
+            "light",
+            "Light",
+            "device-light",
+            Endpoint: 0,
+            Result: new RemovalStatus("removed", 1, 0),
+            RemovedEntries:
+            [
+                new DeviceAclEntry(
+                    Privilege: "Operate",
+                    AuthMode: "CASE",
+                    Subjects:
+                    [
+                        new DeviceAclSubject(
+                            Value: "1234",
+                            DeviceId: "switch",
+                            DeviceName: "Switch")
+                    ],
+                    Targets:
+                    [
+                        new DeviceAclTarget(
+                            Cluster: 0x0006,
+                            ClusterHex: "0x0006",
+                            Endpoint: 1,
+                            DeviceType: null,
+                            DeviceTypeHex: null)
+                    ],
+                    AuxiliaryType: null,
+                    FabricIndex: 1)
+            ]);
+
+        var switchJson = System.Text.Json.JsonSerializer.Serialize(
+            switchResponse,
+            ControllerJsonContext.Default.SwitchBindingRemovalResponse);
+        var bindingJson = System.Text.Json.JsonSerializer.Serialize(
+            bindingResponse,
+            ControllerJsonContext.Default.DeviceBindingRemovalResponse);
+        var aclJson = System.Text.Json.JsonSerializer.Serialize(
+            aclResponse,
+            ControllerJsonContext.Default.DeviceAclRemovalResponse);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(switchJson, Does.Contain("\"outcome\":\"removed\""));
+            Assert.That(switchJson, Does.Contain("\"reason\":\"Broader or manual ACL state still covers this route\""));
+            Assert.That(bindingJson, Does.Contain("\"removedEntries\""));
+            Assert.That(bindingJson, Does.Contain("\"targetDeviceId\":\"light\""));
+            Assert.That(aclJson, Does.Contain("\"privilege\":\"Operate\""));
+            Assert.That(aclJson, Does.Contain("\"clusterHex\":\"0x0006\""));
         }
     }
 

@@ -50,6 +50,20 @@ public record ColorRequest(byte Hue, byte Saturation, ushort TransitionTime = 5)
 public record ColorXYRequest(ushort X, ushort Y, ushort TransitionTime = 5);
 /// <summary>Request to bind a switch OnOff client to a target OnOff server.</summary>
 public record SwitchBindingRequest(string TargetDeviceId, ushort SourceEndpoint = 1, ushort TargetEndpoint = 1);
+/// <summary>Summary of one removal attempt.</summary>
+public record RemovalStatus(string Outcome, int RemovedCount, int RemainingCount, string? Reason = null);
+/// <summary>Request to remove Binding entries from a source endpoint.</summary>
+public record DeviceBindingRemovalRequest(ushort Endpoint = 1, string? NodeId = null, ushort? Group = null, ushort? TargetEndpoint = null, uint? Cluster = null);
+/// <summary>Request target selector for ACL entry removal.</summary>
+public record DeviceAclRemovalTarget(uint? Cluster, ushort? Endpoint, uint? DeviceType);
+/// <summary>Request to remove ACL entries from endpoint 0 of a device.</summary>
+public record DeviceAclRemovalRequest(string Privilege, string AuthMode, string[]? Subjects = null, DeviceAclRemovalTarget[]? Targets = null, string? AuxiliaryType = null);
+/// <summary>Result of removing Binding entries from one source device endpoint.</summary>
+public record DeviceBindingRemovalResponse(string SourceDeviceId, string? SourceDeviceName, string SourceFabricName, ushort Endpoint, RemovalStatus Result, DeviceBindingEntry[] RemovedEntries, string? Error = null);
+/// <summary>Result of removing ACL entries from one target device endpoint.</summary>
+public record DeviceAclRemovalResponse(string SourceDeviceId, string? SourceDeviceName, string SourceFabricName, ushort Endpoint, RemovalStatus Result, DeviceAclEntry[] RemovedEntries, string? Error = null);
+/// <summary>Result of removing a switch OnOff route and its matching target ACL grant.</summary>
+public record SwitchBindingRemovalResponse(string SourceDeviceId, string? SourceDeviceName, string TargetDeviceId, string? TargetDeviceName, ushort SourceEndpoint, ushort TargetEndpoint, RemovalStatus Binding, RemovalStatus Acl, string? Error = null);
 /// <summary>One ACL subject entry as seen in an AccessControl ACL entry.</summary>
 public record DeviceAclSubject(string Value, string? DeviceId, string? DeviceName);
 /// <summary>One ACL target entry as seen in an AccessControl ACL entry.</summary>
@@ -85,3 +99,17 @@ public record LivenessResponse(string Status, DateTime Timestamp);
 public record DeviceEvent(string Device, string Type, string Value, DateTime Time);
 /// <summary>Event emitted during commissioning.</summary>
 public record CommissionEvent(string Source, string Type, string Value, DateTime Time);
+/// <summary>Summary of one removal attempt.</summary>
+public record RemovalStatus(string Outcome, int RemovedCount, int RemainingCount, string? Reason = null);
+/// <summary>Request to remove Binding entries from a source endpoint.</summary>
+public record DeviceBindingRemovalRequest(ushort Endpoint = 1, string? NodeId = null, ushort? Group = null, ushort? TargetEndpoint = null, uint? Cluster = null);
+/// <summary>Request target selector for ACL entry removal.</summary>
+public record DeviceAclRemovalTarget(uint? Cluster, ushort? Endpoint, uint? DeviceType);
+/// <summary>Request to remove ACL entries from endpoint 0 of a device.</summary>
+public record DeviceAclRemovalRequest(string Privilege, string AuthMode, string[]? Subjects = null, DeviceAclRemovalTarget[]? Targets = null, string? AuxiliaryType = null);
+/// <summary>Result of removing Binding entries from one source device endpoint.</summary>
+public record DeviceBindingRemovalResponse(string SourceDeviceId, string? SourceDeviceName, string SourceFabricName, ushort Endpoint, RemovalStatus Result, DeviceBindingEntry[] RemovedEntries, string? Error = null);
+/// <summary>Result of removing ACL entries from one target device endpoint.</summary>
+public record DeviceAclRemovalResponse(string SourceDeviceId, string? SourceDeviceName, string SourceFabricName, ushort Endpoint, RemovalStatus Result, DeviceAclEntry[] RemovedEntries, string? Error = null);
+/// <summary>Result of removing a switch OnOff route and its matching target ACL grant.</summary>
+public record SwitchBindingRemovalResponse(string SourceDeviceId, string? SourceDeviceName, string TargetDeviceId, string? TargetDeviceName, ushort SourceEndpoint, ushort TargetEndpoint, RemovalStatus Binding, RemovalStatus Acl, string? Error = null);

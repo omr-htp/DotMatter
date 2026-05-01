@@ -1,4 +1,5 @@
 using DotMatter.Core;
+using System.Text.Json.Serialization.Metadata;
 
 namespace DotMatter.Controller;
 
@@ -101,6 +102,33 @@ internal static class ApiEndpointResults
                     statusCode: StatusCodes.Status502BadGateway)
             };
 
+    internal static IResult MapDeviceBindingRemovalResult(MatterControllerService.DeviceBindingRemovalResult result)
+        => MapRemovalResult(
+            result.Success,
+            result.Failure,
+            result.Response,
+            result.Error,
+            ControllerJsonContext.Default.DeviceBindingRemovalResponse,
+            "Binding removal failed");
+
+    internal static IResult MapDeviceAclRemovalResult(MatterControllerService.DeviceAclRemovalResult result)
+        => MapRemovalResult(
+            result.Success,
+            result.Failure,
+            result.Response,
+            result.Error,
+            ControllerJsonContext.Default.DeviceAclRemovalResponse,
+            "ACL removal failed");
+
+    internal static IResult MapSwitchBindingRemovalResult(MatterControllerService.SwitchBindingRemovalResult result)
+        => MapRemovalResult(
+            result.Success,
+            result.Failure,
+            result.Response,
+            result.Error,
+            ControllerJsonContext.Default.SwitchBindingRemovalResponse,
+            "Switch route removal failed");
+
     internal static IResult MapFabricBindingQueryResult(MatterControllerService.FabricBindingQueryResult result)
         => result.Success && result.Response is not null
             ? Results.Ok(result.Response)
@@ -142,4 +170,34 @@ internal static class ApiEndpointResults
         => result.Error?.Contains("already in progress", StringComparison.OrdinalIgnoreCase) == true
             ? Results.Conflict(result)
             : Results.UnprocessableEntity(result);
+
+    private static IResult MapRemovalResult<TResponse>(
+        bool success,
+        DeviceOperationFailure failure,
+        TResponse? response,
+        string? error,
+        JsonTypeInfo<TResponse> jsonTypeInfo,
+        string defaultError)
+        where TResponse : class
+    {
+        if (success && response is not null)
+        {
+            return Results.Ok(response);
+        }
+
+        var statusCode = failure switch
+        {
+            DeviceOperationFailure.NotFound => StatusCodes.Status404NotFound,
+            DeviceOperationFailure.Timeout => StatusCodes.Status503ServiceUnavailable,
+            DeviceOperationFailure.NotConnected => StatusCodes.Status503ServiceUnavailable,
+            _ => StatusCodes.Status502BadGateway,
+        };
+
+        return response is not null
+            ? Results.Json(response, jsonTypeInfo, statusCode: statusCode)
+            : Results.Json(
+                new ErrorResponse(error ?? defaultError),
+                ControllerJsonContext.Default.ErrorResponse,
+                statusCode: statusCode);
+    }
 }
