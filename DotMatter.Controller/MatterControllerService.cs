@@ -59,6 +59,18 @@ public sealed class MatterControllerService(
     private readonly DeviceCommandExecutor _commandExecutor = new(log, registry, apiOptions);
     private int _nextClientId;
 
+    internal sealed record DeviceBindingQueryResult(
+        bool Success,
+        DeviceOperationFailure Failure,
+        DeviceBindingListResponse? Response,
+        string? Error = null);
+
+    internal sealed record FabricBindingQueryResult(
+        bool Success,
+        DeviceOperationFailure Failure,
+        FabricBindingListResponse? Response,
+        string? Error = null);
+
     /// <summary>Creates a per-client SSE channel.</summary>
     public ControllerEventSubscription SubscribeEvents(CancellationToken ct)
     {
@@ -427,6 +439,96 @@ public sealed class MatterControllerService(
         }
     }
 
+    /// <summary>Reads Binding entries from one source device endpoint.</summary>
+    internal async Task<DeviceBindingQueryResult> ReadBindingsAsync(string id, ushort endpoint = 1)
+    {
+        var device = Registry.Get(id);
+        if (device is null)
+        {
+            return new DeviceBindingQueryResult(false, DeviceOperationFailure.NotFound, null, $"Device {id} not found");
+        }
+
+        if (!TryGetConnectedSession(id, out var session))
+        {
+            return new DeviceBindingQueryResult(false, DeviceOperationFailure.NotConnected, null, $"Device {id} is not connected");
+        }
+
+        try
+        {
+            using var cts = new CancellationTokenSource(_apiOptions.CommandTimeout);
+            var response = await ReadBindingsForEndpointAsync(
+                device,
+                session.Session!,
+                endpoint,
+                BuildOperationalNodeIndex(),
+                cts.Token);
+
+            return new DeviceBindingQueryResult(true, DeviceOperationFailure.None, response);
+        }
+        catch (OperationCanceledException)
+        {
+            return new DeviceBindingQueryResult(false, DeviceOperationFailure.Timeout, null, "Binding read timed out");
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Device {Id}: Binding read failed on endpoint {Endpoint}", id, endpoint);
+            return new DeviceBindingQueryResult(false, DeviceOperationFailure.TransportError, null, ex.Message);
+        }
+    }
+
+    /// <summary>Reads Binding entries from all known devices on a controller fabric.</summary>
+    internal async Task<FabricBindingQueryResult> ReadFabricBindingsAsync(string? fabricName = null, ushort? endpoint = null)
+    {
+        var requestedFabricName = string.IsNullOrWhiteSpace(fabricName)
+            ? _commissioningOptions.SharedFabricName
+            : fabricName;
+
+        string requestedCompressedFabricId;
+        try
+        {
+            var requestedFabric = await new FabricDiskStorage(Registry.BasePath).LoadFabricAsync(requestedFabricName);
+            requestedCompressedFabricId = requestedFabric.CompressedFabricId;
+        }
+        catch (Exception ex)
+        {
+            return new FabricBindingQueryResult(false, DeviceOperationFailure.NotFound, null, $"Fabric {requestedFabricName} not found or unreadable: {ex.Message}");
+        }
+
+        var targetIndex = BuildOperationalNodeIndex();
+        var sourceDevices = new List<DeviceInfo>();
+        foreach (var device in Registry.GetAll().OrderBy(static device => device.Id, StringComparer.OrdinalIgnoreCase))
+        {
+            if (await DeviceBelongsToCompressedFabricAsync(device, requestedCompressedFabricId))
+            {
+                sourceDevices.Add(device);
+            }
+        }
+
+        var sourceResults = new List<DeviceBindingListResponse>();
+        foreach (var device in sourceDevices)
+        {
+            var endpoints = endpoint.HasValue
+                ? [endpoint.Value]
+                : GetBindingEndpoints(device);
+
+            foreach (var bindingEndpoint in endpoints)
+            {
+                sourceResults.Add(await ReadFabricDeviceBindingsAsync(device, bindingEndpoint, targetIndex));
+            }
+        }
+
+        var successfulSources = sourceResults.Count(static result => result.Error is null);
+        return new FabricBindingQueryResult(
+            true,
+            DeviceOperationFailure.None,
+            new FabricBindingListResponse(
+                requestedFabricName,
+                sourceResults.Count,
+                successfulSources,
+                sourceResults.Count - successfulSources,
+                [.. sourceResults]));
+    }
+
     /// <summary>
     /// Reads and returns the latest known state for a connected device.
     /// </summary>
@@ -465,8 +567,144 @@ public sealed class MatterControllerService(
         return device?.EndpointFor(clusterId) ?? 1;
     }
 
+    private static ushort[] GetBindingEndpoints(DeviceInfo device)
+    {
+        if (device.Endpoints is null)
+        {
+            return [1];
+        }
+
+        var endpoints = device.Endpoints
+            .Where(static endpoint => endpoint.Key != 0 && endpoint.Value.Contains(BindingCluster.ClusterId))
+            .Select(static endpoint => endpoint.Key)
+            .Order()
+            .ToArray();
+
+        return endpoints.Length == 0 ? [1] : endpoints;
+    }
+
+    private async Task<DeviceBindingListResponse> ReadFabricDeviceBindingsAsync(
+        DeviceInfo device,
+        ushort endpoint,
+        IReadOnlyDictionary<ulong, DeviceInfo> targetIndex)
+    {
+        if (!TryGetConnectedSession(device.Id, out var session))
+        {
+            return CreateBindingErrorResponse(device, endpoint, $"Device {device.Id} is not connected");
+        }
+
+        try
+        {
+            using var cts = new CancellationTokenSource(_apiOptions.CommandTimeout);
+            return await ReadBindingsForEndpointAsync(device, session.Session!, endpoint, targetIndex, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return CreateBindingErrorResponse(device, endpoint, "Binding read timed out");
+        }
+        catch (Exception ex)
+        {
+            Log.LogWarning(ex, "Device {Id}: Binding read failed on endpoint {Endpoint}", device.Id, endpoint);
+            return CreateBindingErrorResponse(device, endpoint, ex.Message);
+        }
+    }
+
+    private async Task<DeviceBindingListResponse> ReadBindingsForEndpointAsync(
+        DeviceInfo sourceDevice,
+        ISession session,
+        ushort endpoint,
+        IReadOnlyDictionary<ulong, DeviceInfo> targetIndex,
+        CancellationToken ct)
+    {
+        var binding = new BindingCluster(session, endpoint);
+        var entries = await binding.ReadBindingAsync(ct) ?? [];
+        return new DeviceBindingListResponse(
+            sourceDevice.Id,
+            sourceDevice.Name,
+            sourceDevice.FabricName,
+            endpoint,
+            entries.Select(entry => MapBindingEntry(entry, targetIndex)).ToArray());
+    }
+
+    private static DeviceBindingListResponse CreateBindingErrorResponse(DeviceInfo sourceDevice, ushort endpoint, string error)
+        => new(sourceDevice.Id, sourceDevice.Name, sourceDevice.FabricName, endpoint, [], error);
+
+    private IReadOnlyDictionary<ulong, DeviceInfo> BuildOperationalNodeIndex()
+    {
+        var index = new Dictionary<ulong, DeviceInfo>();
+        foreach (var device in Registry.GetAll())
+        {
+            if (TryToOperationalNodeId(device.NodeId, out var operationalNodeId))
+            {
+                index[operationalNodeId] = device;
+            }
+        }
+
+        return index;
+    }
+
+    private async Task<bool> DeviceBelongsToCompressedFabricAsync(DeviceInfo device, string compressedFabricId)
+    {
+        try
+        {
+            var fabric = await new FabricDiskStorage(Registry.BasePath).LoadFabricAsync(device.FabricName);
+            return string.Equals(fabric.CompressedFabricId, compressedFabricId, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            Log.LogWarning(ex, "Device {Id}: failed to read fabric {FabricName}", device.Id, device.FabricName);
+            return false;
+        }
+    }
+
+    private static DeviceBindingEntry MapBindingEntry(BindingCluster.TargetStruct entry, IReadOnlyDictionary<ulong, DeviceInfo> targetIndex)
+    {
+        DeviceInfo? targetDevice = null;
+        if (entry.Node.HasValue)
+        {
+            targetIndex.TryGetValue(entry.Node.Value, out targetDevice);
+        }
+
+        return new DeviceBindingEntry(
+            entry.Node?.ToString(CultureInfo.InvariantCulture),
+            entry.Group,
+            entry.Endpoint,
+            entry.Cluster,
+            entry.Cluster.HasValue ? $"0x{entry.Cluster.Value:X4}" : null,
+            entry.FabricIndex,
+            targetDevice?.Id,
+            targetDevice?.Name);
+    }
+
     private static ulong ToOperationalNodeId(string nodeId)
         => ToOperationalNodeId(new BigInteger(nodeId));
+
+    private static bool TryToOperationalNodeId(string nodeId, out ulong operationalNodeId)
+    {
+        operationalNodeId = 0;
+        if (string.IsNullOrWhiteSpace(nodeId))
+        {
+            return false;
+        }
+
+        try
+        {
+            operationalNodeId = ToOperationalNodeId(nodeId);
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
+    }
 
     private static ulong ToOperationalNodeId(BigInteger nodeId)
         => ulong.Parse(

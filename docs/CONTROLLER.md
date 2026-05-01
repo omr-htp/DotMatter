@@ -16,8 +16,10 @@
 
 | Method | Path | Description |
 | --- | --- | --- |
+| GET | `/api/bindings` | Query Binding entries across a controller fabric |
 | GET | `/api/devices` | List all devices |
 | GET | `/api/devices/{id}` | Device details |
+| GET | `/api/devices/{id}/bindings` | Query Binding entries from one source device endpoint |
 | GET | `/api/devices/{id}/state` | Current state |
 | POST | `/api/devices/{id}/on` | Turn on |
 | POST | `/api/devices/{id}/off` | Turn off |
@@ -52,6 +54,31 @@ Two services on the Pi, **only one runs at a time** (systemd `Conflicts=` auto-s
 See [Deployment Guide](DEPLOYMENT.md) for local deploy props setup, Pi env files, Samba fast-loop configuration, and AOT cross-compilation.
 
 ## Switch OnOff Binding
+
+Binding state is stored on source devices, not in DotMatter's local fabric files. Query endpoints therefore read live Binding cluster attributes from devices on the controller fabric.
+
+`GET /api/bindings` queries known devices on a controller fabric and returns each source device's Binding entries. It accepts:
+
+- `fabricName` — optional fabric directory to use as the fabric identity reference. Defaults to `Controller__Commissioning__SharedFabricName`.
+- `endpoint` — optional source endpoint. When omitted, DotMatter uses discovered Binding endpoints, falling back to endpoint 1.
+
+The fabric-wide response includes per-source errors for devices that are offline or cannot be read; one failed source does not fail the whole query.
+
+`GET /api/devices/{id}/bindings?endpoint=1` reads the Binding list from one source device endpoint. It returns `404` for an unknown source device, `503` when the device is known but disconnected or times out, and `502` for transport/decode failures.
+
+Example fabric-wide query:
+
+```http
+GET /api/bindings?fabricName=DotMatter
+X-API-Key: replace-with-a-long-random-value
+```
+
+Example single-device query:
+
+```http
+GET /api/devices/switch-device-id/bindings?endpoint=1
+X-API-Key: replace-with-a-long-random-value
+```
 
 `POST /api/devices/{id}/bindings/onoff` configures the source device identified by `{id}` as a switch and binds its OnOff client to a target device's OnOff server endpoint.
 

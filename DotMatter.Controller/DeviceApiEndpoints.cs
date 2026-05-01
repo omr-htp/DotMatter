@@ -8,6 +8,19 @@ internal static class DeviceApiEndpoints
     {
         var devices = api.MapGroup(string.Empty).WithTags("Devices");
 
+        devices.MapGet("/bindings", async (string? fabricName, ushort? endpoint, MatterControllerService service) =>
+        {
+            if (endpoint == 0)
+            {
+                return Results.BadRequest(new ErrorResponse("Endpoint must be greater than 0"));
+            }
+
+            return ApiEndpointResults.MapFabricBindingQueryResult(
+                await service.ReadFabricBindingsAsync(fabricName, endpoint));
+        })
+            .WithSummary("List fabric bindings")
+            .WithDescription("Reads Binding cluster entries from known devices on the selected controller fabric. Returns per-device errors when a source device is offline or cannot be read.");
+
         devices.MapGet("/devices", (DeviceRegistry registry) =>
             registry.GetAll().Select(device => new DeviceSummary(
                 device.Id, device.Name, device.NodeId, device.Ip, device.Port,
@@ -67,6 +80,25 @@ internal static class DeviceApiEndpoints
         })
             .WithSummary("Read device state")
             .WithDescription("Reads current OnOff, Level, and Color state from the device.");
+
+        devices.MapGet("/devices/{id}/bindings", async (string id, ushort? endpoint, MatterControllerService service) =>
+        {
+            if (endpoint == 0)
+            {
+                return Results.BadRequest(new ErrorResponse("Endpoint must be greater than 0"));
+            }
+
+            var missing = EnsureKnownDevice(id, service);
+            if (missing != null)
+            {
+                return missing;
+            }
+
+            return ApiEndpointResults.MapDeviceBindingQueryResult(
+                await service.ReadBindingsAsync(id, endpoint ?? 1));
+        })
+            .WithSummary("List device bindings")
+            .WithDescription("Reads Binding cluster entries from one source device endpoint. The endpoint query parameter defaults to 1.");
 
         devices.MapPost("/devices/{id}/level", async (string id, LevelRequest body, MatterControllerService service) =>
         {

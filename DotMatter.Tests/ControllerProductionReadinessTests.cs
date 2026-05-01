@@ -106,6 +106,64 @@ public class ControllerProductionReadinessTests
     }
 
     [Test]
+    public async Task BindingQueryEndpointsValidateInputAndKnownDevices()
+    {
+        await using var factory = CreateFactory();
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-API-Key", "test-key");
+
+        var invalidFabricEndpoint = await client.GetAsync("/api/bindings?endpoint=0");
+        var unknownDevice = await client.GetAsync("/api/devices/missing/bindings");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int)invalidFabricEndpoint.StatusCode, Is.EqualTo(400));
+            Assert.That((int)unknownDevice.StatusCode, Is.EqualTo(404));
+        }
+    }
+
+    [Test]
+    public void BindingQueryDtosUseSourceGeneratedJson()
+    {
+        var response = new FabricBindingListResponse(
+            "DotMatter",
+            TotalSources: 1,
+            SuccessfulSources: 1,
+            FailedSources: 0,
+            Sources:
+            [
+                new DeviceBindingListResponse(
+                    "switch",
+                    "Switch",
+                    "device-switch",
+                    Endpoint: 1,
+                    Entries:
+                    [
+                        new DeviceBindingEntry(
+                            NodeId: "1234",
+                            Group: null,
+                            Endpoint: 1,
+                            Cluster: 0x0006,
+                            ClusterHex: "0x0006",
+                            FabricIndex: 1,
+                            TargetDeviceId: "light",
+                            TargetDeviceName: "Light")
+                    ])
+            ]);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(
+            response,
+            ControllerJsonContext.Default.FabricBindingListResponse);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json, Does.Contain("\"fabricName\":\"DotMatter\""));
+            Assert.That(json, Does.Contain("\"targetDeviceId\":\"light\""));
+            Assert.That(json, Does.Contain("\"clusterHex\":\"0x0006\""));
+        }
+    }
+
+    [Test]
     public void StartupFailsWhenAuthIsEnabledWithoutAnApiKey()
     {
         using var factory = CreateFactory(includeApiKey: false);

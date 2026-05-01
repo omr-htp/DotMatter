@@ -28,6 +28,8 @@
 | Area | Status | Notes |
 | --- | --- | --- |
 | Authenticated LAN API | Supported | API key required by default for non-health endpoints. |
+| `GET /api/bindings` | Supported | Aggregates live Binding cluster reads across known devices on a controller fabric; returns per-source errors. |
+| `GET /api/devices/{id}/bindings` | Supported | Reads one source device endpoint's fabric-scoped Binding list. |
 | `POST /api/devices/{id}/bindings/onoff` | Supported | Binds a switch endpoint to a target OnOff endpoint after both devices are commissioned and reachable. |
 | Health endpoints | Supported | `/health`, `/health/live`, and `/health/ready` remain anonymous. |
 | CORS allowlist | Supported | Disabled by default unless explicit origins are configured. |
