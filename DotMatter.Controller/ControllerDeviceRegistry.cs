@@ -12,6 +12,6 @@ internal sealed class ControllerDeviceRegistry(
 {
     protected override void OnPersistenceFailure(string id, string operation, Exception exception)
     {
-        DotMatterProductDiagnostics.RegistryPersistenceFailures.Add(1);
+        DotMatterProductDiagnostics.RecordRegistryPersistenceFailure();
     }
 }

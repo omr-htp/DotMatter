@@ -7,6 +7,7 @@
 - **Auth enabled by default** — non-health endpoints require an API key unless the environment explicitly disables it, with CORS deny-by-default
 - **BLE commissioning** — PASE → CSR → NOC → Thread/WiFi provisioning
 - **Thread + WiFi control** — OTBR-backed Thread discovery and WiFi commissioning
+- **Runtime diagnostics** — authenticated runtime status plus optional detailed diagnostics endpoint
 - **Switch binding + removal** — creates and reconciles Matter ACL and Binding state for a switch OnOff route
 - **Bounded runtime** — Owned reconnect loops, readiness/liveness health, SSE cleanup, atomic registry writes
 - **AOT-ready** — Publishes as native AOT on Linux ARM64
@@ -33,6 +34,8 @@
 | POST | `/api/devices/{id}/color-xy` | Set color (CIE xy) |
 | POST | `/api/devices/{id}/bindings/onoff` | Bind switch OnOff client to a target OnOff endpoint |
 | POST | `/api/devices/{id}/bindings/onoff/remove` | Remove switch OnOff route and reconcile matching ACL |
+| GET | `/api/system/runtime` | Safe authenticated runtime snapshot |
+| GET | `/api/system/diagnostics` | Detailed runtime diagnostics when enabled |
 | POST | `/api/commission` | Commission Thread device |
 | POST | `/api/commission/wifi` | Commission WiFi device |
 | DELETE | `/api/devices/{id}` | Remove device |
@@ -57,6 +60,52 @@ Two services on the Pi, **only one runs at a time** (systemd `Conflicts=` auto-s
 - Runtime state lives under `/var/lib/.dot-matter`
 
 See [Deployment Guide](DEPLOYMENT.md) for local deploy props setup, Pi env files, Samba fast-loop configuration, and AOT cross-compilation.
+
+## Runtime Diagnostics
+
+`GET /api/system/runtime` returns a safe authenticated runtime snapshot for the controller service. It is intended for operators and automation that need more detail than `/health` without exposing sensitive internals.
+
+The runtime payload includes:
+
+- startup / ready / stopping state
+- uptime and startup timestamp
+- environment name
+- known and online device counts
+- in-process counters for:
+  - commissioning attempts / rejections
+  - API authentication failures
+  - rate-limit rejections
+  - managed reconnect requests
+  - subscription restarts
+  - registry persistence failures
+
+Example request:
+
+```http
+GET /api/system/runtime
+X-API-Key: replace-with-a-long-random-value
+```
+
+`GET /api/system/diagnostics` returns a more detailed runtime/configuration snapshot, but it is **disabled by default**. Enable it only when you intentionally want authenticated operators to see additional runtime configuration detail.
+
+Enable it with:
+
+```dotenv
+Controller__Diagnostics__EnableDetailedRuntimeEndpoint=true
+```
+
+When enabled, the detailed response includes:
+
+- the full safe runtime snapshot
+- non-secret API/runtime configuration such as rate-limit settings and OpenAPI state
+- diagnostics gating state, including whether sensitive core diagnostics are enabled
+
+Example request:
+
+```http
+GET /api/system/diagnostics
+X-API-Key: replace-with-a-long-random-value
+```
 
 ## ACL, Binding, and Route Removal
 
@@ -137,8 +186,6 @@ Content-Type: application/json
 
 Both devices must already be commissioned, reachable, and on the same controller fabric.
 
-## Configuration
-
 `POST /api/devices/{id}/bindings/onoff/remove` performs the inverse route cleanup:
 
 1. It removes the matching source Binding entry for the target node / endpoint / OnOff cluster.
@@ -202,6 +249,8 @@ Content-Type: application/json
 ```
 
 Both raw removal endpoints use request bodies instead of query strings so multi-field match criteria stay explicit and extensible.
+
+## Configuration
 
 See [Configuration Reference](CONFIGURATION.md) for all settings.
 

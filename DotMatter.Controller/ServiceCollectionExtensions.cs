@@ -22,6 +22,10 @@ internal static class ServiceCollectionExtensions
             .Bind(configuration.GetSection("Controller:Commissioning"))
             .ValidateOnStart();
 
+        services.AddOptions<ControllerDiagnosticsOptions>()
+            .Bind(configuration.GetSection("Controller:Diagnostics"))
+            .ValidateOnStart();
+
         services.AddOptions<RegistryOptions>()
             .Bind(configuration.GetSection("Controller:Registry"))
             .ValidateOnStart();

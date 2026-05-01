@@ -193,6 +193,7 @@ public sealed class MatterControllerService(
     /// <inheritdoc />
     protected override async Task OnSubscriptionStaleAsync(string id, ResilientSession rs, ISession session, CancellationToken ct)
     {
+        DotMatterProductDiagnostics.RecordSubscriptionRestart();
         await base.OnSubscriptionStaleAsync(id, rs, session, ct);
     }
 
@@ -951,6 +952,7 @@ public sealed class MatterControllerService(
     /// <inheritdoc />
     protected override bool TryScheduleManagedReconnect(string id, ResilientSession rs)
     {
+        DotMatterProductDiagnostics.RecordManagedReconnectRequest();
         return base.TryScheduleManagedReconnect(id, rs);
     }
 

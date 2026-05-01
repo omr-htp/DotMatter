@@ -46,3 +46,12 @@ public sealed class CommissioningOptions
     /// <summary>Gets or sets the timeout for connecting to a newly commissioned device.</summary>
     public TimeSpan FollowUpConnectTimeout { get; set; } = TimeSpan.FromSeconds(30);
 }
+
+/// <summary>
+/// Diagnostics endpoint configuration.
+/// </summary>
+public sealed class ControllerDiagnosticsOptions
+{
+    /// <summary>Gets or sets a value indicating whether the detailed runtime diagnostics endpoint is available.</summary>
+    public bool EnableDetailedRuntimeEndpoint { get; set; }
+}

@@ -24,6 +24,7 @@ builder.Services.AddSingleton<IOtbrService, OtbrService>();
 builder.Services.AddSingleton<DeviceRegistry, ControllerDeviceRegistry>();
 builder.Services.AddSingleton<CommissioningService>();
 builder.Services.AddSingleton<MatterControllerService>();
+builder.Services.AddSingleton<RuntimeDiagnosticsService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MatterControllerService>());
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
@@ -72,7 +73,7 @@ app.Use(async (ctx, next) =>
     var provided = ctx.Request.Headers[security.HeaderName].FirstOrDefault();
     if (!string.Equals(provided, security.ApiKey, StringComparison.Ordinal))
     {
-        DotMatterProductDiagnostics.ApiAuthenticationFailures.Add(1);
+        DotMatterProductDiagnostics.RecordApiAuthenticationFailure();
         ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
         await ctx.Response.WriteAsJsonAsync(
             new ErrorResponse("Invalid or missing API key"),

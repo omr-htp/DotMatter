@@ -36,6 +36,8 @@
 | `POST /api/devices/{id}/bindings/onoff/remove` | Supported | Removes the switch OnOff route and conservatively preserves broader/manual ACL entries when they should not be deleted. |
 | `POST /api/devices/{id}/bindings/remove` | Supported | Removes matching Binding entries from one source endpoint using explicit request-body match criteria. |
 | `POST /api/devices/{id}/acl/remove` | Supported | Removes matching ACL entries from endpoint 0 using explicit request-body match criteria. |
+| `GET /api/system/runtime` | Supported | Returns an authenticated safe runtime snapshot with readiness, device counts, and in-process diagnostics counters. |
+| `GET /api/system/diagnostics` | Supported when explicitly enabled | Disabled by default; returns a more detailed authenticated runtime/configuration snapshot when `Controller__Diagnostics__EnableDetailedRuntimeEndpoint=true`. |
 | Health endpoints | Supported | `/health`, `/health/live`, and `/health/ready` remain anonymous. |
 | CORS allowlist | Supported | Disabled by default unless explicit origins are configured. |
 | Query-string API key auth | Unsupported | Header-based auth is the supported path. |

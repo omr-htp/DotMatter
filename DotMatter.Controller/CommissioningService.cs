@@ -287,11 +287,11 @@ public class CommissioningService(
         Func<Task<(bool Success, string? DeviceId, string? NodeId, string? Ip, string? Error)>> action,
         CancellationToken ct)
     {
-        DotMatterProductDiagnostics.CommissioningAttempts.Add(1);
+        DotMatterProductDiagnostics.RecordCommissioningAttempt();
 
         if (!await _commissioning.WaitAsync(TimeSpan.Zero, ct))
         {
-            DotMatterProductDiagnostics.CommissioningRejections.Add(1);
+            DotMatterProductDiagnostics.RecordCommissioningRejection();
             return (false, null, null, null, "Another commissioning is already in progress");
         }
 

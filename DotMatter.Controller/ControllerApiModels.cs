@@ -85,6 +85,52 @@ public record WifiCommissioningResult(bool Success, string? DeviceId, string? No
 /// <summary>Current state of a Matter device.</summary>
 public record DeviceState(bool? OnOff, bool IsOnline, DateTime? LastSeen, byte? Level, byte? Hue, byte? Saturation,
     ushort? ColorX, ushort? ColorY, byte? ColorMode, string? VendorName, string? ProductName);
+/// <summary>In-process controller diagnostic counters since startup.</summary>
+public record RuntimeDiagnosticsCounters(
+    long CommissioningAttempts,
+    long CommissioningRejections,
+    long ApiAuthenticationFailures,
+    long RateLimitRejections,
+    long ManagedReconnectRequests,
+    long SubscriptionRestarts,
+    long RegistryPersistenceFailures);
+/// <summary>Safe runtime snapshot for the controller service.</summary>
+public record RuntimeSnapshotResponse(
+    string Status,
+    string Environment,
+    bool StartupCompleted,
+    bool Ready,
+    bool Stopping,
+    string Uptime,
+    DateTime StartedAtUtc,
+    DeviceCounts Devices,
+    RuntimeDiagnosticsCounters Counters,
+    DateTime Timestamp,
+    string? LastStartupError = null);
+/// <summary>Non-secret API/runtime configuration summary for diagnostics.</summary>
+public record RuntimeApiDiagnostics(
+    bool RequireApiKey,
+    string HeaderName,
+    int AllowedCorsOriginCount,
+    int RateLimitPermitLimit,
+    string RateLimitWindow,
+    int RateLimitQueueLimit,
+    int SseClientBufferCapacity,
+    string CommandTimeout,
+    bool OpenApiEnabled);
+/// <summary>Diagnostics gating and controller configuration summary.</summary>
+public record RuntimeDetailedDiagnostics(
+    bool DetailedEndpointEnabled,
+    bool SensitiveDiagnosticsEnabled,
+    int MaxRenderedBytes,
+    string SharedFabricName,
+    string DefaultFabricNamePrefix,
+    string FollowUpConnectTimeout);
+/// <summary>Detailed runtime diagnostics payload, gated by configuration.</summary>
+public record RuntimeDetailedResponse(
+    RuntimeSnapshotResponse Runtime,
+    RuntimeApiDiagnostics Api,
+    RuntimeDetailedDiagnostics Diagnostics);
 /// <summary>Error response payload.</summary>
 public record ErrorResponse(string Error);
 /// <summary>Count of devices by online status.</summary>
@@ -99,17 +145,3 @@ public record LivenessResponse(string Status, DateTime Timestamp);
 public record DeviceEvent(string Device, string Type, string Value, DateTime Time);
 /// <summary>Event emitted during commissioning.</summary>
 public record CommissionEvent(string Source, string Type, string Value, DateTime Time);
-/// <summary>Summary of one removal attempt.</summary>
-public record RemovalStatus(string Outcome, int RemovedCount, int RemainingCount, string? Reason = null);
-/// <summary>Request to remove Binding entries from a source endpoint.</summary>
-public record DeviceBindingRemovalRequest(ushort Endpoint = 1, string? NodeId = null, ushort? Group = null, ushort? TargetEndpoint = null, uint? Cluster = null);
-/// <summary>Request target selector for ACL entry removal.</summary>
-public record DeviceAclRemovalTarget(uint? Cluster, ushort? Endpoint, uint? DeviceType);
-/// <summary>Request to remove ACL entries from endpoint 0 of a device.</summary>
-public record DeviceAclRemovalRequest(string Privilege, string AuthMode, string[]? Subjects = null, DeviceAclRemovalTarget[]? Targets = null, string? AuxiliaryType = null);
-/// <summary>Result of removing Binding entries from one source device endpoint.</summary>
-public record DeviceBindingRemovalResponse(string SourceDeviceId, string? SourceDeviceName, string SourceFabricName, ushort Endpoint, RemovalStatus Result, DeviceBindingEntry[] RemovedEntries, string? Error = null);
-/// <summary>Result of removing ACL entries from one target device endpoint.</summary>
-public record DeviceAclRemovalResponse(string SourceDeviceId, string? SourceDeviceName, string SourceFabricName, ushort Endpoint, RemovalStatus Result, DeviceAclEntry[] RemovedEntries, string? Error = null);
-/// <summary>Result of removing a switch OnOff route and its matching target ACL grant.</summary>
-public record SwitchBindingRemovalResponse(string SourceDeviceId, string? SourceDeviceName, string TargetDeviceId, string? TargetDeviceName, ushort SourceEndpoint, ushort TargetEndpoint, RemovalStatus Binding, RemovalStatus Acl, string? Error = null);

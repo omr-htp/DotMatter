@@ -36,6 +36,12 @@ machine-local env file.
 | `Controller__Api__CommandTimeout` | `00:00:10` | Default device command timeout. |
 | `Controller__Api__EnableOpenApi` | `false` | Enable OpenAPI and Scalar UI. `appsettings.Development.json` turns this on for local development. |
 
+## Diagnostics
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `Controller__Diagnostics__EnableDetailedRuntimeEndpoint` | `false` | Enable `GET /api/system/diagnostics`. Keep disabled unless you intentionally want authenticated operators to see the detailed runtime/configuration snapshot. |
+
 ## Commissioning
 
 | Setting | Default | Purpose |
@@ -95,4 +101,6 @@ or `/etc/dotmatter/dot-matter-aot.env` rather than editing tracked project files
 - API keys are accepted only through the configured header, `X-API-Key` by default. Query-string API keys are not supported.
 - `/health`, `/health/live`, and `/health/ready` are intentionally unauthenticated for monitoring and orchestration.
 - `/api/events` is an SSE stream. Rate limiting applies to the initial request, not the full connection lifetime. Clients should reconnect on disconnect and refresh device state after reconnecting.
+- `/api/system/runtime` is authenticated and safe for normal operator use.
+- `/api/system/diagnostics` is authenticated and disabled by default unless `Controller__Diagnostics__EnableDetailedRuntimeEndpoint=true`.
 - Keep OpenAPI disabled in production unless the endpoint is protected by your deployment architecture.

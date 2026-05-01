@@ -12,6 +12,7 @@ internal sealed class ConfigureRateLimiter(IOptions<ControllerApiOptions> api)
         opts.RejectionStatusCode = 429;
         opts.OnRejected = (context, _) =>
         {
+            DotMatterProductDiagnostics.RecordRateLimitRejection();
             var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<ConfigureRateLimiter>>();
             logger.LogWarning(
                 "Rate limit exceeded for {Method} {Path} from {RemoteIp}",

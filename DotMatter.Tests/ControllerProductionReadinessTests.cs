@@ -141,6 +141,52 @@ public class ControllerProductionReadinessTests
     }
 
     [Test]
+    public async Task RuntimeDiagnosticsEndpointRequiresAuthAndDetailedEndpointIsDisabledByDefault()
+    {
+        await using var factory = CreateFactory();
+        var anonymousClient = factory.CreateClient();
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-API-Key", "test-key");
+
+        var unauthorized = await anonymousClient.GetAsync("/api/system/runtime");
+        var runtime = await client.GetFromJsonAsync<RuntimeSnapshotResponse>("/api/system/runtime");
+        var detailed = await client.GetAsync("/api/system/diagnostics");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int)unauthorized.StatusCode, Is.EqualTo(401));
+            Assert.That(runtime, Is.Not.Null);
+            Assert.That(runtime!.Environment, Is.EqualTo("Testing"));
+            Assert.That(runtime.Ready, Is.True);
+            Assert.That(runtime.Counters.ApiAuthenticationFailures, Is.GreaterThanOrEqualTo(1));
+            Assert.That((int)detailed.StatusCode, Is.EqualTo(404));
+        }
+    }
+
+    [Test]
+    public async Task DetailedRuntimeDiagnosticsEndpointCanBeEnabledByConfig()
+    {
+        await using var factory = CreateFactory(new Dictionary<string, string?>
+        {
+            ["Controller:Diagnostics:EnableDetailedRuntimeEndpoint"] = "true",
+        });
+
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-API-Key", "test-key");
+
+        var detailed = await client.GetFromJsonAsync<RuntimeDetailedResponse>("/api/system/diagnostics");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(detailed, Is.Not.Null);
+            Assert.That(detailed!.Diagnostics.DetailedEndpointEnabled, Is.True);
+            Assert.That(detailed.Diagnostics.SensitiveDiagnosticsEnabled, Is.False);
+            Assert.That(detailed.Api.RequireApiKey, Is.True);
+            Assert.That(detailed.Runtime.Environment, Is.EqualTo("Testing"));
+        }
+    }
+
+    [Test]
     public async Task RouteRemovalEndpointsValidateInputAndKnownDevices()
     {
         await using var factory = CreateFactory();
@@ -199,6 +245,52 @@ public class ControllerProductionReadinessTests
             Assert.That(json, Does.Contain("\"fabricName\":\"DotMatter\""));
             Assert.That(json, Does.Contain("\"targetDeviceId\":\"light\""));
             Assert.That(json, Does.Contain("\"clusterHex\":\"0x0006\""));
+        }
+    }
+
+    [Test]
+    public void RuntimeDiagnosticsDtosUseSourceGeneratedJson()
+    {
+        var response = new RuntimeDetailedResponse(
+            new RuntimeSnapshotResponse(
+                "ready",
+                "Production",
+                StartupCompleted: true,
+                Ready: true,
+                Stopping: false,
+                Uptime: "0.00:10:00",
+                StartedAtUtc: DateTime.UtcNow.AddMinutes(-10),
+                Devices: new DeviceCounts(2, 2),
+                Counters: new RuntimeDiagnosticsCounters(1, 0, 2, 3, 4, 5, 6),
+                Timestamp: DateTime.UtcNow),
+            new RuntimeApiDiagnostics(
+                RequireApiKey: true,
+                HeaderName: "X-API-Key",
+                AllowedCorsOriginCount: 0,
+                RateLimitPermitLimit: 60,
+                RateLimitWindow: "00:01:00",
+                RateLimitQueueLimit: 5,
+                SseClientBufferCapacity: 100,
+                CommandTimeout: "00:00:10",
+                OpenApiEnabled: false),
+            new RuntimeDetailedDiagnostics(
+                DetailedEndpointEnabled: true,
+                SensitiveDiagnosticsEnabled: false,
+                MaxRenderedBytes: 32,
+                SharedFabricName: "DotMatter",
+                DefaultFabricNamePrefix: "device",
+                FollowUpConnectTimeout: "00:00:30"));
+
+        var json = System.Text.Json.JsonSerializer.Serialize(
+            response,
+            ControllerJsonContext.Default.RuntimeDetailedResponse);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json, Does.Contain("\"status\":\"ready\""));
+            Assert.That(json, Does.Contain("\"apiAuthenticationFailures\":2"));
+            Assert.That(json, Does.Contain("\"rateLimitRejections\":3"));
+            Assert.That(json, Does.Contain("\"detailedEndpointEnabled\":true"));
         }
     }
 
