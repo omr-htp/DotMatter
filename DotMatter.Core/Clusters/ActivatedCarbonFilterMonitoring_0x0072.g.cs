@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -103,6 +104,32 @@ public class ActivatedCarbonFilterMonitoringCluster : ClusterBase
     {
         tlv.AddUInt8(0, (byte)value.ProductIdentifierType);
         tlv.AddUTF8String(1, value.ProductIdentifierValue);
+    }
+
+    // TLV struct deserializers
+
+    private static ReplacementProductStruct ReadReplacementProductStruct(MatterTLV tlv)
+    {
+        var value = new ReplacementProductStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ProductIdentifierType = (ProductIdentifierTypeEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.ProductIdentifierValue = tlv.GetUTF8String(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

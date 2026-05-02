@@ -54,10 +54,12 @@ public sealed class MatterControllerService(
     IOptions<CommissioningOptions> commissioningOptions) : MatterDeviceHost(log, registry, runtimeStatus, otbrService, recoveryOptions.Value)
 {
     private readonly ConcurrentDictionary<int, Channel<string>> _sseClients = new();
+    private readonly ConcurrentDictionary<int, Channel<string>> _matterEventClients = new();
     private readonly ControllerApiOptions _apiOptions = apiOptions.Value;
     private readonly CommissioningOptions _commissioningOptions = commissioningOptions.Value;
     private readonly DeviceCommandExecutor _commandExecutor = new(log, registry, apiOptions);
     private int _nextClientId;
+    private int _nextMatterEventClientId;
 
     internal sealed record DeviceBindingQueryResult(
         bool Success,
@@ -101,6 +103,12 @@ public sealed class MatterControllerService(
         FabricAclListResponse? Response,
         string? Error = null);
 
+    internal sealed record DeviceMatterEventQueryResult(
+        bool Success,
+        DeviceOperationFailure Failure,
+        DeviceMatterEventReadResponse? Response,
+        string? Error = null);
+
     private sealed record BindingRemovalPlan(
         BindingCluster.TargetStruct[] UpdatedEntries,
         BindingCluster.TargetStruct[] RemovedEntries,
@@ -119,6 +127,17 @@ public sealed class MatterControllerService(
 
     /// <summary>Creates a per-client SSE channel.</summary>
     public ControllerEventSubscription SubscribeEvents(CancellationToken ct)
+        => SubscribeClient(_sseClients, ref _nextClientId, RemoveSseClient, ct);
+
+    /// <summary>Creates a per-client SSE channel for live Matter event envelopes.</summary>
+    public ControllerEventSubscription SubscribeMatterEvents(CancellationToken ct)
+        => SubscribeClient(_matterEventClients, ref _nextMatterEventClientId, RemoveMatterEventClient, ct);
+
+    private ControllerEventSubscription SubscribeClient(
+        ConcurrentDictionary<int, Channel<string>> clients,
+        ref int nextClientId,
+        Action<int> removeClient,
+        CancellationToken ct)
     {
         var channel = Channel.CreateBounded<string>(new BoundedChannelOptions(_apiOptions.SseClientBufferCapacity)
         {
@@ -127,16 +146,16 @@ public sealed class MatterControllerService(
             SingleWriter = false,
         });
 
-        var clientId = Interlocked.Increment(ref _nextClientId);
-        _sseClients[clientId] = channel;
-        var registration = ct.Register(() => RemoveSseClient(clientId));
+        var clientId = Interlocked.Increment(ref nextClientId);
+        clients[clientId] = channel;
+        var registration = ct.Register(() => removeClient(clientId));
 
         return new ControllerEventSubscription(
             channel.Reader,
             () =>
             {
                 registration.Dispose();
-                RemoveSseClient(clientId);
+                removeClient(clientId);
                 return ValueTask.CompletedTask;
             });
     }
@@ -149,9 +168,28 @@ public sealed class MatterControllerService(
         }
     }
 
-    private void BroadcastEvent(string evt)
+    private void RemoveMatterEventClient(int clientId)
     {
-        foreach (var (_, ch) in _sseClients)
+        if (_matterEventClients.TryRemove(clientId, out var channel))
+        {
+            channel.Writer.TryComplete();
+        }
+    }
+
+    private void BroadcastEvent(string evt)
+        => BroadcastSerializedEvent(_sseClients, evt);
+
+    private void BroadcastMatterEvent(string evt)
+        => BroadcastSerializedEvent(_matterEventClients, evt);
+
+    private static void BroadcastSerializedEvent(ConcurrentDictionary<int, Channel<string>> clients, string evt)
+    {
+        if (clients.IsEmpty)
+        {
+            return;
+        }
+
+        foreach (var (_, ch) in clients)
         {
             ch.Writer.TryWrite(evt);
         }
@@ -163,6 +201,12 @@ public sealed class MatterControllerService(
             new DeviceEvent(id, type, value, DateTime.UtcNow),
             ControllerJsonContext.Default.DeviceEvent);
         BroadcastEvent(json);
+    }
+
+    private void PublishMatterEvent(MatterEventResponse evt)
+    {
+        var json = JsonSerializer.Serialize(evt, ControllerJsonContext.Default.MatterEventResponse);
+        BroadcastMatterEvent(json);
     }
 
     /// <inheritdoc />
@@ -209,11 +253,31 @@ public sealed class MatterControllerService(
     }
 
     /// <inheritdoc />
+    protected override void ProcessEventReports(string id, IReadOnlyList<MatterEventReport> reports)
+    {
+        if (_matterEventClients.IsEmpty)
+        {
+            return;
+        }
+
+        var device = Registry.Get(id);
+        foreach (var report in reports)
+        {
+            PublishMatterEvent(MapMatterEventResponse(id, device?.Name, report));
+        }
+    }
+
+    /// <inheritdoc />
     public override async Task StopAsync(CancellationToken ct)
     {
         foreach (var clientId in _sseClients.Keys.ToArray())
         {
             RemoveSseClient(clientId);
+        }
+
+        foreach (var clientId in _matterEventClients.Keys.ToArray())
+        {
+            RemoveMatterEventClient(clientId);
         }
 
         await base.StopAsync(ct);
@@ -924,6 +988,61 @@ public sealed class MatterControllerService(
                 [.. sourceResults]));
     }
 
+    /// <summary>Reads raw Matter event envelopes from one device for a selected cluster and optional event.</summary>
+    internal async Task<DeviceMatterEventQueryResult> ReadMatterEventsAsync(
+        string id,
+        ushort? endpoint,
+        uint clusterId,
+        uint? eventId = null,
+        bool fabricFiltered = false)
+    {
+        var device = Registry.Get(id);
+        if (device is null)
+        {
+            return new DeviceMatterEventQueryResult(false, DeviceOperationFailure.NotFound, null, $"Device {id} not found");
+        }
+
+        if (!TryGetConnectedSession(id, out var session))
+        {
+            return new DeviceMatterEventQueryResult(false, DeviceOperationFailure.NotConnected, null, $"Device {id} is not connected");
+        }
+
+        try
+        {
+            using var cts = new CancellationTokenSource(_apiOptions.CommandTimeout);
+            var resolvedEndpoint = ResolveMatterEventEndpoint(device, clusterId, endpoint);
+            var reports = await MatterEvents.ReadAsync(
+                session.Session!,
+                [new MatterEventPath(resolvedEndpoint, clusterId, eventId)],
+                fabricFiltered,
+                cts.Token);
+
+            Registry.Update(id, current => current.LastSeen = DateTime.UtcNow);
+
+            return new DeviceMatterEventQueryResult(
+                true,
+                DeviceOperationFailure.None,
+                new DeviceMatterEventReadResponse(
+                    device.Id,
+                    device.Name,
+                    resolvedEndpoint,
+                    clusterId,
+                    $"0x{clusterId:X4}",
+                    eventId,
+                    eventId.HasValue ? $"0x{eventId.Value:X4}" : null,
+                    reports.Select(report => MapMatterEventResponse(device.Id, device.Name, report)).ToArray()));
+        }
+        catch (OperationCanceledException)
+        {
+            return new DeviceMatterEventQueryResult(false, DeviceOperationFailure.Timeout, null, "Matter event read timed out");
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Device {Id}: Matter event read failed on cluster 0x{ClusterId:X4}", id, clusterId);
+            return new DeviceMatterEventQueryResult(false, DeviceOperationFailure.TransportError, null, ex.Message);
+        }
+    }
+
     /// <summary>
     /// Reads and returns the latest known state for a connected device.
     /// </summary>
@@ -976,6 +1095,29 @@ public sealed class MatterControllerService(
             .ToArray();
 
         return endpoints.Length == 0 ? [1] : endpoints;
+    }
+
+    private static ushort ResolveMatterEventEndpoint(DeviceInfo device, uint clusterId, ushort? requestedEndpoint)
+    {
+        if (requestedEndpoint.HasValue)
+        {
+            return requestedEndpoint.Value;
+        }
+
+        if (device.Endpoints is not null)
+        {
+            foreach (var (endpoint, clusters) in device.Endpoints)
+            {
+                if (clusters.Contains(clusterId))
+                {
+                    return endpoint;
+                }
+            }
+        }
+
+        return clusterId is AccessControlCluster.ClusterId or GeneralDiagnosticsCluster.ClusterId
+            ? (ushort)0
+            : (ushort)1;
     }
 
     private async Task<DeviceBindingListResponse> ReadFabricDeviceBindingsAsync(
@@ -1142,6 +1284,75 @@ public sealed class MatterControllerService(
             target.Endpoint,
             target.DeviceType,
             target.DeviceType.HasValue ? $"0x{target.DeviceType.Value:X4}" : null);
+
+    private static MatterEventResponse MapMatterEventResponse(string deviceId, string? deviceName, MatterEventReport report)
+    {
+        var mappedEvent = ClusterEventRegistry.MapEventReport(report);
+        return new MatterEventResponse(
+            deviceId,
+            deviceName,
+            report.EndpointId,
+            report.ClusterId,
+            $"0x{report.ClusterId:X4}",
+            mappedEvent?.ClusterName ?? ClusterEventRegistry.GetClusterName(report.ClusterId),
+            report.EventId,
+            $"0x{report.EventId:X4}",
+            mappedEvent?.EventName ?? "Unknown",
+            report.EventNumber,
+            report.Priority,
+            report.EpochTimestamp,
+            report.SystemTimestamp,
+            report.DeltaEpochTimestamp,
+            report.DeltaSystemTimestamp,
+            MapMatterEventPayload(mappedEvent, report),
+            report.RawData is { } rawData ? Convert.ToHexString(rawData.GetBytes()) : null,
+            report.StatusCode,
+            DateTime.UtcNow);
+    }
+
+    private static MatterEventPayloadResponse MapMatterEventPayload(MatterClusterEvent? mappedEvent, MatterEventReport report)
+    {
+        if (mappedEvent?.TypedPayload is not null)
+        {
+            var payloadJson = ClusterEventRegistry.BuildPayloadJson(mappedEvent);
+            if (payloadJson != null)
+            {
+                return new MatterEventPayloadResponse(
+                    "typed",
+                    ToJsonElement(payloadJson),
+                    mappedEvent.Reason);
+            }
+
+            return new MatterEventPayloadResponse(
+                "unknown",
+                null,
+                "Generated JSON projection for the typed payload is not available.");
+        }
+
+        if (mappedEvent != null)
+        {
+            return new MatterEventPayloadResponse("unknown", null, mappedEvent.Reason);
+        }
+
+        if (report.StatusCode.HasValue)
+        {
+            return new MatterEventPayloadResponse(
+                "unknown",
+                null,
+                $"Event report carried status code 0x{report.StatusCode.Value:X2}.");
+        }
+
+        return new MatterEventPayloadResponse(
+            "unknown",
+            null,
+            "Cluster does not have generated event support.");
+    }
+
+    private static JsonElement ToJsonElement(System.Text.Json.Nodes.JsonNode node)
+    {
+        using var document = JsonDocument.Parse(node.ToJsonString());
+        return document.RootElement.Clone();
+    }
 
     private static bool TryParseBindingNodeId(string? nodeId, out ulong? parsedNodeId, out string? error)
     {

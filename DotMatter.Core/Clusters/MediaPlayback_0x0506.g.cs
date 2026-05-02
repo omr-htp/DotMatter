@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -207,6 +208,80 @@ public class MediaPlaybackCluster : ClusterBase
         if (value.Position != null) { tlv.AddUInt64(1, value.Position.Value); } else { tlv.AddNull(1); }
     }
 
+    // TLV struct deserializers
+
+    private static TrackStruct ReadTrackStruct(MatterTLV tlv)
+    {
+        var value = new TrackStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ID = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.TrackAttributes = ReadTrackAttributesStruct(tlv); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static TrackAttributesStruct ReadTrackAttributesStruct(MatterTLV tlv)
+    {
+        var value = new TrackAttributesStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.LanguageCode = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.DisplayName = tlv.GetUTF8String(1); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static PlaybackPositionStruct ReadPlaybackPositionStruct(MatterTLV tlv)
+    {
+        var value = new PlaybackPositionStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.UpdatedAt = tlv.GetUnsignedInt(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Position = tlv.GetUnsignedInt(1); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -272,6 +347,57 @@ public class MediaPlaybackCluster : ClusterBase
     {
         /// <summary>StateChanged (0x0000).</summary>
         public const uint StateChanged = 0x0000;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Media Playback", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>StateChanged event payload.</summary>
+    public sealed class StateChangedEventData
+    {
+        /// <summary>Gets or sets CurrentState.</summary>
+        public PlaybackStateEnum CurrentState { get; set; } = default!;
+        /// <summary>Gets or sets StartTime.</summary>
+        public ulong StartTime { get; set; }
+        /// <summary>Gets or sets Duration.</summary>
+        public ulong Duration { get; set; }
+        /// <summary>Gets or sets SampledPosition.</summary>
+        public PlaybackPositionStruct SampledPosition { get; set; } = default!;
+        /// <summary>Gets or sets PlaybackSpeed.</summary>
+        public float PlaybackSpeed { get; set; }
+        /// <summary>Gets or sets SeekRangeEnd.</summary>
+        public ulong SeekRangeEnd { get; set; }
+        /// <summary>Gets or sets SeekRangeStart.</summary>
+        public ulong SeekRangeStart { get; set; }
+        /// <summary>Gets or sets Data.</summary>
+        public byte[]? Data { get; set; }
+        /// <summary>Gets or sets AudioAdvanceUnmuted.</summary>
+        public bool AudioAdvanceUnmuted { get; set; }
+    }
+
+    /// <summary>StateChanged event report.</summary>
+    public sealed class StateChangedEvent(MatterEventReport report, StateChangedEventData payload)
+        : ClusterEvent(report, "StateChanged")
+    {
+        /// <summary>Gets the typed StateChanged payload.</summary>
+        public StateChangedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Async command methods
@@ -396,4 +522,194 @@ public class MediaPlaybackCluster : ClusterBase
     /// <summary>Read AvailableTextTracks attribute (0x000A).</summary>
     public Task<TrackStruct[]?> ReadAvailableTextTracksAsync(CancellationToken ct = default)
         => ReadRefAttributeAsync<TrackStruct[]>(0x000A, ct);
+
+    // Event payload parsers
+
+    private static StateChangedEventData ReadStateChangedEventData(MatterTLV tlv)
+    {
+        var value = new StateChangedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.CurrentState = (PlaybackStateEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.StartTime = tlv.GetUnsignedInt(1);
+                    break;
+                case 2:
+                    value.Duration = tlv.GetUnsignedInt(2);
+                    break;
+                case 3:
+                    value.SampledPosition = ReadPlaybackPositionStruct(tlv);
+                    break;
+                case 4:
+                    value.PlaybackSpeed = tlv.GetFloat(4);
+                    break;
+                case 5:
+                    value.SeekRangeEnd = tlv.GetUnsignedInt(5);
+                    break;
+                case 6:
+                    value.SeekRangeStart = tlv.GetUnsignedInt(6);
+                    break;
+                case 7:
+                    if (tlv.IsNextNull()) { tlv.GetNull(7); } else { value.Data = tlv.GetOctetString(7); }
+                    break;
+                case 8:
+                    value.AudioAdvanceUnmuted = tlv.GetBoolean(8);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadStateChangedEventData(MatterEventReport report, out StateChangedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadStateChangedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "StateChanged payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateTrackStructJson(TrackStruct value)
+    {
+        var json = new JsonObject();
+        if (value.ID is { } iD)
+        {
+            json["iD"] = CreateJsonValue(iD);
+        }
+        if (value.TrackAttributes is { } trackAttributes)
+        {
+            json["trackAttributes"] = CreateTrackAttributesStructJson(trackAttributes);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateTrackAttributesStructJson(TrackAttributesStruct value)
+    {
+        var json = new JsonObject();
+        if (value.LanguageCode is { } languageCode)
+        {
+            json["languageCode"] = CreateJsonValue(languageCode);
+        }
+        if (value.DisplayName is { } displayName)
+        {
+            json["displayName"] = CreateJsonValue(displayName);
+        }
+        return json;
+    }
+
+    private static JsonObject CreatePlaybackPositionStructJson(PlaybackPositionStruct value)
+    {
+        var json = new JsonObject();
+        json["updatedAt"] = CreateJsonValue(value.UpdatedAt);
+        if (value.Position is { } position)
+        {
+            json["position"] = CreateJsonValue(position);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateStateChangedEventDataJson(StateChangedEventData value)
+    {
+        var json = new JsonObject();
+        if (value.CurrentState is { } currentState)
+        {
+            json["currentState"] = CreateJsonValue(currentState.ToString());
+        }
+        json["startTime"] = CreateJsonValue(value.StartTime);
+        json["duration"] = CreateJsonValue(value.Duration);
+        if (value.SampledPosition is { } sampledPosition)
+        {
+            json["sampledPosition"] = CreatePlaybackPositionStructJson(sampledPosition);
+        }
+        json["playbackSpeed"] = CreateJsonValue(value.PlaybackSpeed);
+        json["seekRangeEnd"] = CreateJsonValue(value.SeekRangeEnd);
+        json["seekRangeStart"] = CreateJsonValue(value.SeekRangeStart);
+        if (value.Data is { } data)
+        {
+            json["data"] = CreateJsonValue(data);
+        }
+        json["audioAdvanceUnmuted"] = CreateJsonValue(value.AudioAdvanceUnmuted);
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            StateChangedEvent typed => CreateStateChangedEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.StateChanged when TryReadStateChangedEventData(report, out var stateChangedEventData, out _) => new StateChangedEvent(report, stateChangedEventData!),
+            Events.StateChanged when TryReadStateChangedEventData(report, out _, out var stateChangedReason) => new UnknownClusterEvent(report, stateChangedReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

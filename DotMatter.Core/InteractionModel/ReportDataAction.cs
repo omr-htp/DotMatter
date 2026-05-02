@@ -10,43 +10,60 @@ public class ReportDataAction
     {
         payload.OpenStructure();
 
-        if (payload.IsNextTag(0))
+        while (!payload.IsEndContainerNext())
         {
-            SubscriptionId = payload.GetUnsignedInt32(0);
-        }
-
-        if (payload.IsNextTag(1))
-        {
-            payload.OpenArray(1);
-
-            while (!payload.IsEndContainerNext())
+            if (payload.IsNextTag(0))
             {
-                AttributeReports.Add(new AttributeReportIB(payload));
+                SubscriptionId = payload.GetUnsignedInt32(0);
+                continue;
             }
 
-            payload.CloseContainer();
-        }
-
-        // Tag 2: EventReports
-        if (payload.IsNextTag(2))
-        {
-            payload.OpenArray(2);
-            while (!payload.IsEndContainerNext())
+            if (payload.IsNextTag(1))
             {
-                EventReports.Add(new EventReportIB(payload));
+                payload.OpenArray(1);
+
+                while (!payload.IsEndContainerNext())
+                {
+                    AttributeReports.Add(new AttributeReportIB(payload));
+                }
+
+                payload.CloseContainer();
+                continue;
             }
-            payload.CloseContainer();
+
+            if (payload.IsNextTag(2))
+            {
+                payload.OpenArray(2);
+                while (!payload.IsEndContainerNext())
+                {
+                    EventReports.Add(new EventReportIB(payload));
+                }
+                payload.CloseContainer();
+                continue;
+            }
+
+            if (payload.IsNextTag(3))
+            {
+                MoreChunkedMessages = payload.GetBoolean(3);
+                continue;
+            }
+
+            if (payload.IsNextTag(4))
+            {
+                SuppressResponse = payload.GetBoolean(4);
+                continue;
+            }
+
+            if (payload.IsNextTag(255))
+            {
+                InteractionModelRevision = payload.GetUnsignedInt8(255);
+                continue;
+            }
+
+            payload.SkipElement();
         }
 
-        if (payload.IsNextTag(3))
-        {
-            MoreChunkedMessages = payload.GetBoolean(3);
-        }
-
-        if (payload.IsNextTag(4))
-        {
-            SuppressResponse = payload.GetBoolean(4);
-        }
+        payload.CloseContainer();
     }
 
     /// <summary>SubscriptionId.</summary>

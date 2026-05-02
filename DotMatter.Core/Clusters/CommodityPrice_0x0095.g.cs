@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -180,6 +181,106 @@ public class CommodityPriceCluster : ClusterBase
         tlv.AddUInt8(1, value.DecimalPoints);
     }
 
+    // TLV struct deserializers
+
+    private static CommodityPriceComponentStruct ReadCommodityPriceComponentStruct(MatterTLV tlv)
+    {
+        var value = new CommodityPriceComponentStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Price = tlv.GetSignedInt(0);
+                    break;
+                case 1:
+                    value.Source = (TariffPriceTypeEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Description = tlv.GetUTF8String(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.TariffComponentID = tlv.GetUnsignedIntAny(3); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static CommodityPriceStruct ReadCommodityPriceStruct(MatterTLV tlv)
+    {
+        var value = new CommodityPriceStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.PeriodStart = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.PeriodEnd = tlv.GetUnsignedIntAny(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Price = tlv.GetSignedInt(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.PriceLevel = (short)tlv.GetSignedInt(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.Description = tlv.GetUTF8String(4); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); value.Components = null; break; }
+                    var items5 = new List<CommodityPriceComponentStruct>();
+                    tlv.OpenArray(5);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items5.Add(ReadCommodityPriceComponentStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.Components = [.. items5];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static CurrencyStruct ReadCurrencyStruct(MatterTLV tlv)
+    {
+        var value = new CurrencyStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Currency = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.DecimalPoints = (byte)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -207,6 +308,41 @@ public class CommodityPriceCluster : ClusterBase
     {
         /// <summary>PriceChange (0x0000).</summary>
         public const uint PriceChange = 0x0000;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Commodity Price", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>PriceChange event payload.</summary>
+    public sealed class PriceChangeEventData
+    {
+        /// <summary>Gets or sets CurrentPrice.</summary>
+        public CommodityPriceStruct CurrentPrice { get; set; } = default!;
+    }
+
+    /// <summary>PriceChange event report.</summary>
+    public sealed class PriceChangeEvent(MatterEventReport report, PriceChangeEventData payload)
+        : ClusterEvent(report, "PriceChange")
+    {
+        /// <summary>Gets the typed PriceChange payload.</summary>
+        public PriceChangeEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Async command methods
@@ -240,4 +376,176 @@ public class CommodityPriceCluster : ClusterBase
     /// <summary>Read PriceForecast attribute (0x0003).</summary>
     public Task<CommodityPriceStruct[]?> ReadPriceForecastAsync(CancellationToken ct = default)
         => ReadRefAttributeAsync<CommodityPriceStruct[]>(0x0003, ct);
+
+    // Event payload parsers
+
+    private static PriceChangeEventData ReadPriceChangeEventData(MatterTLV tlv)
+    {
+        var value = new PriceChangeEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.CurrentPrice = ReadCommodityPriceStruct(tlv); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadPriceChangeEventData(MatterEventReport report, out PriceChangeEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadPriceChangeEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "PriceChange payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateCommodityPriceComponentStructJson(CommodityPriceComponentStruct value)
+    {
+        var json = new JsonObject();
+        json["price"] = CreateJsonValue(value.Price);
+        if (value.Source is { } source)
+        {
+            json["source"] = CreateJsonValue(source.ToString());
+        }
+        if (value.Description is { } description)
+        {
+            json["description"] = CreateJsonValue(description);
+        }
+        if (value.TariffComponentID is { } tariffComponentID)
+        {
+            json["tariffComponentID"] = CreateJsonValue(tariffComponentID);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateCommodityPriceStructJson(CommodityPriceStruct value)
+    {
+        var json = new JsonObject();
+        json["periodStart"] = CreateJsonValue(value.PeriodStart);
+        if (value.PeriodEnd is { } periodEnd)
+        {
+            json["periodEnd"] = CreateJsonValue(periodEnd);
+        }
+        if (value.Price is { } price)
+        {
+            json["price"] = CreateJsonValue(price);
+        }
+        if (value.PriceLevel is { } priceLevel)
+        {
+            json["priceLevel"] = CreateJsonValue(priceLevel);
+        }
+        if (value.Description is { } description)
+        {
+            json["description"] = CreateJsonValue(description);
+        }
+        if (value.Components is { } componentsValues)
+        {
+            var componentsItems = new JsonArray();
+            foreach (var item in componentsValues)
+            {
+                componentsItems.Add((JsonNode?)CreateCommodityPriceComponentStructJson(item));
+            }
+            json["components"] = componentsItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateCurrencyStructJson(CurrencyStruct value)
+    {
+        var json = new JsonObject();
+        json["currency"] = CreateJsonValue(value.Currency);
+        json["decimalPoints"] = CreateJsonValue(value.DecimalPoints);
+        return json;
+    }
+
+    private static JsonObject CreatePriceChangeEventDataJson(PriceChangeEventData value)
+    {
+        var json = new JsonObject();
+        if (value.CurrentPrice is { } currentPrice)
+        {
+            json["currentPrice"] = CreateCommodityPriceStructJson(currentPrice);
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            PriceChangeEvent typed => CreatePriceChangeEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.PriceChange when TryReadPriceChangeEventData(report, out var priceChangeEventData, out _) => new PriceChangeEvent(report, priceChangeEventData!),
+            Events.PriceChange when TryReadPriceChangeEventData(report, out _, out var priceChangeReason) => new UnknownClusterEvent(report, priceChangeReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

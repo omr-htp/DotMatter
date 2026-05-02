@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -142,6 +143,79 @@ public class WiFiNetworkDiagnosticsCluster : ClusterBase
         public const uint ConnectionStatus = 0x0002;
     }
 
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Wi-Fi Network Diagnostics", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>Disconnection event payload.</summary>
+    public sealed class DisconnectionEventData
+    {
+        /// <summary>Gets or sets ReasonCode.</summary>
+        public ushort ReasonCode { get; set; }
+    }
+
+    /// <summary>Disconnection event report.</summary>
+    public sealed class DisconnectionEvent(MatterEventReport report, DisconnectionEventData payload)
+        : ClusterEvent(report, "Disconnection")
+    {
+        /// <summary>Gets the typed Disconnection payload.</summary>
+        public DisconnectionEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>AssociationFailure event payload.</summary>
+    public sealed class AssociationFailureEventData
+    {
+        /// <summary>Gets or sets AssociationFailureCause.</summary>
+        public AssociationFailureCauseEnum AssociationFailureCause { get; set; } = default!;
+        /// <summary>Gets or sets Status.</summary>
+        public ushort Status { get; set; }
+    }
+
+    /// <summary>AssociationFailure event report.</summary>
+    public sealed class AssociationFailureEvent(MatterEventReport report, AssociationFailureEventData payload)
+        : ClusterEvent(report, "AssociationFailure")
+    {
+        /// <summary>Gets the typed AssociationFailure payload.</summary>
+        public AssociationFailureEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>ConnectionStatus event payload.</summary>
+    public sealed class ConnectionStatusEventData
+    {
+        /// <summary>Gets or sets ConnectionStatus.</summary>
+        public ConnectionStatusEnum ConnectionStatus { get; set; } = default!;
+    }
+
+    /// <summary>ConnectionStatus event report.</summary>
+    public sealed class ConnectionStatusEvent(MatterEventReport report, ConnectionStatusEventData payload)
+        : ClusterEvent(report, "ConnectionStatus")
+    {
+        /// <summary>Gets the typed ConnectionStatus payload.</summary>
+        public ConnectionStatusEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
     // Async command methods
 
     /// <summary>Send ResetCounts command (0x0000).</summary>
@@ -201,4 +275,230 @@ public class WiFiNetworkDiagnosticsCluster : ClusterBase
     /// <summary>Read OverrunCount attribute (0x000C).</summary>
     public Task<ulong?> ReadOverrunCountAsync(CancellationToken ct = default)
         => ReadNullableAttributeAsync<ulong>(0x000C, ct);
+
+    // Event payload parsers
+
+    private static DisconnectionEventData ReadDisconnectionEventData(MatterTLV tlv)
+    {
+        var value = new DisconnectionEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ReasonCode = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadDisconnectionEventData(MatterEventReport report, out DisconnectionEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadDisconnectionEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "Disconnection payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static AssociationFailureEventData ReadAssociationFailureEventData(MatterTLV tlv)
+    {
+        var value = new AssociationFailureEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.AssociationFailureCause = (AssociationFailureCauseEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Status = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadAssociationFailureEventData(MatterEventReport report, out AssociationFailureEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadAssociationFailureEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "AssociationFailure payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static ConnectionStatusEventData ReadConnectionStatusEventData(MatterTLV tlv)
+    {
+        var value = new ConnectionStatusEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ConnectionStatus = (ConnectionStatusEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadConnectionStatusEventData(MatterEventReport report, out ConnectionStatusEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadConnectionStatusEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "ConnectionStatus payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateDisconnectionEventDataJson(DisconnectionEventData value)
+    {
+        var json = new JsonObject();
+        json["reasonCode"] = CreateJsonValue(value.ReasonCode);
+        return json;
+    }
+
+    private static JsonObject CreateAssociationFailureEventDataJson(AssociationFailureEventData value)
+    {
+        var json = new JsonObject();
+        if (value.AssociationFailureCause is { } associationFailureCause)
+        {
+            json["associationFailureCause"] = CreateJsonValue(associationFailureCause.ToString());
+        }
+        json["status"] = CreateJsonValue(value.Status);
+        return json;
+    }
+
+    private static JsonObject CreateConnectionStatusEventDataJson(ConnectionStatusEventData value)
+    {
+        var json = new JsonObject();
+        if (value.ConnectionStatus is { } connectionStatus)
+        {
+            json["connectionStatus"] = CreateJsonValue(connectionStatus.ToString());
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            DisconnectionEvent typed => CreateDisconnectionEventDataJson(typed.Payload),
+            AssociationFailureEvent typed => CreateAssociationFailureEventDataJson(typed.Payload),
+            ConnectionStatusEvent typed => CreateConnectionStatusEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.Disconnection when TryReadDisconnectionEventData(report, out var disconnectionEventData, out _) => new DisconnectionEvent(report, disconnectionEventData!),
+            Events.Disconnection when TryReadDisconnectionEventData(report, out _, out var disconnectionReason) => new UnknownClusterEvent(report, disconnectionReason),
+            Events.AssociationFailure when TryReadAssociationFailureEventData(report, out var associationFailureEventData, out _) => new AssociationFailureEvent(report, associationFailureEventData!),
+            Events.AssociationFailure when TryReadAssociationFailureEventData(report, out _, out var associationFailureReason) => new UnknownClusterEvent(report, associationFailureReason),
+            Events.ConnectionStatus when TryReadConnectionStatusEventData(report, out var connectionStatusEventData, out _) => new ConnectionStatusEvent(report, connectionStatusEventData!),
+            Events.ConnectionStatus when TryReadConnectionStatusEventData(report, out _, out var connectionStatusReason) => new UnknownClusterEvent(report, connectionStatusReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

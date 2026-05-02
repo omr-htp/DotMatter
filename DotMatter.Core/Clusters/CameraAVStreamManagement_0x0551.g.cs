@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -519,6 +520,353 @@ public class CameraAVStreamManagementCluster : ClusterBase
         tlv.AddUInt16(1, value.Y1);
         tlv.AddUInt16(2, value.X2);
         tlv.AddUInt16(3, value.Y2);
+    }
+
+    // TLV struct deserializers
+
+    private static AudioCapabilitiesStruct ReadAudioCapabilitiesStruct(MatterTLV tlv)
+    {
+        var value = new AudioCapabilitiesStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.MaxNumberOfChannels = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    var items1 = new List<AudioCodecEnum>();
+                    tlv.OpenArray(1);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items1.Add((AudioCodecEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.SupportedCodecs = [.. items1];
+                    break;
+                case 2:
+                    var items2 = new List<uint>();
+                    tlv.OpenArray(2);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items2.Add((uint)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.SupportedSampleRates = [.. items2];
+                    break;
+                case 3:
+                    var items3 = new List<byte>();
+                    tlv.OpenArray(3);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items3.Add((byte)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.SupportedBitDepths = [.. items3];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static AudioStreamStruct ReadAudioStreamStruct(MatterTLV tlv)
+    {
+        var value = new AudioStreamStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.AudioStreamID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.StreamUsage = (StreamUsageEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.AudioCodec = (AudioCodecEnum)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.ChannelCount = (byte)tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    value.SampleRate = tlv.GetUnsignedIntAny(4);
+                    break;
+                case 5:
+                    value.BitRate = tlv.GetUnsignedIntAny(5);
+                    break;
+                case 6:
+                    value.BitDepth = (byte)tlv.GetUnsignedIntAny(6);
+                    break;
+                case 7:
+                    value.ReferenceCount = (byte)tlv.GetUnsignedIntAny(7);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static RateDistortionTradeOffPointsStruct ReadRateDistortionTradeOffPointsStruct(MatterTLV tlv)
+    {
+        var value = new RateDistortionTradeOffPointsStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Codec = (VideoCodecEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Resolution = ReadVideoResolutionStruct(tlv);
+                    break;
+                case 2:
+                    value.MinBitRate = tlv.GetUnsignedIntAny(2);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static SnapshotCapabilitiesStruct ReadSnapshotCapabilitiesStruct(MatterTLV tlv)
+    {
+        var value = new SnapshotCapabilitiesStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Resolution = ReadVideoResolutionStruct(tlv);
+                    break;
+                case 1:
+                    value.MaxFrameRate = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.ImageCodec = (ImageCodecEnum)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.RequiresEncodedPixels = tlv.GetBoolean(3);
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.RequiresHardwareEncoder = tlv.GetBoolean(4); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static SnapshotStreamStruct ReadSnapshotStreamStruct(MatterTLV tlv)
+    {
+        var value = new SnapshotStreamStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.SnapshotStreamID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.ImageCodec = (ImageCodecEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.FrameRate = (ushort)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.MinResolution = ReadVideoResolutionStruct(tlv);
+                    break;
+                case 4:
+                    value.MaxResolution = ReadVideoResolutionStruct(tlv);
+                    break;
+                case 5:
+                    value.Quality = (byte)tlv.GetUnsignedIntAny(5);
+                    break;
+                case 6:
+                    value.ReferenceCount = (byte)tlv.GetUnsignedIntAny(6);
+                    break;
+                case 7:
+                    value.EncodedPixels = tlv.GetBoolean(7);
+                    break;
+                case 8:
+                    value.HardwareEncoder = tlv.GetBoolean(8);
+                    break;
+                case 9:
+                    if (tlv.IsNextNull()) { tlv.GetNull(9); } else { value.WatermarkEnabled = tlv.GetBoolean(9); }
+                    break;
+                case 10:
+                    if (tlv.IsNextNull()) { tlv.GetNull(10); } else { value.OSDEnabled = tlv.GetBoolean(10); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static VideoResolutionStruct ReadVideoResolutionStruct(MatterTLV tlv)
+    {
+        var value = new VideoResolutionStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Width = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Height = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static VideoSensorParamsStruct ReadVideoSensorParamsStruct(MatterTLV tlv)
+    {
+        var value = new VideoSensorParamsStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.SensorWidth = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.SensorHeight = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.MaxFPS = (ushort)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.MaxHDRFPS = (ushort)tlv.GetUnsignedIntAny(3); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static VideoStreamStruct ReadVideoStreamStruct(MatterTLV tlv)
+    {
+        var value = new VideoStreamStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.VideoStreamID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.StreamUsage = (StreamUsageEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.VideoCodec = (VideoCodecEnum)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.MinFrameRate = (ushort)tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    value.MaxFrameRate = (ushort)tlv.GetUnsignedIntAny(4);
+                    break;
+                case 5:
+                    value.MinResolution = ReadVideoResolutionStruct(tlv);
+                    break;
+                case 6:
+                    value.MaxResolution = ReadVideoResolutionStruct(tlv);
+                    break;
+                case 7:
+                    value.MinBitRate = tlv.GetUnsignedIntAny(7);
+                    break;
+                case 8:
+                    value.MaxBitRate = tlv.GetUnsignedIntAny(8);
+                    break;
+                case 9:
+                    value.KeyFrameInterval = (ushort)tlv.GetUnsignedIntAny(9);
+                    break;
+                case 10:
+                    if (tlv.IsNextNull()) { tlv.GetNull(10); } else { value.WatermarkEnabled = tlv.GetBoolean(10); }
+                    break;
+                case 11:
+                    if (tlv.IsNextNull()) { tlv.GetNull(11); } else { value.OSDEnabled = tlv.GetBoolean(11); }
+                    break;
+                case 12:
+                    value.ReferenceCount = (byte)tlv.GetUnsignedIntAny(12);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ViewportStruct ReadViewportStruct(MatterTLV tlv)
+    {
+        var value = new ViewportStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.X1 = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Y1 = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.X2 = (ushort)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.Y2 = (ushort)tlv.GetUnsignedIntAny(3);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

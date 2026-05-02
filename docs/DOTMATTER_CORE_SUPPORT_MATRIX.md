@@ -46,6 +46,7 @@
 | Working generated command/attribute paths used by current device flows | Supported | Must be covered by integration tests. |
 | AccessControl ACL read/write | Supported | Includes fabric-scoped struct decoding and timed whole-list writes through `ReadACLAsync` and `WriteACLAsync`. |
 | Binding list read/write | Supported | Includes fabric-scoped target decoding and timed whole-list writes through `ReadBindingAsync` and `WriteBindingAsync`. |
+| Raw and typed Matter event reads/subscriptions | Supported | Includes raw `MatterEvents` APIs, generated cluster `ReadEventsAsync(...)` / `SubscribeEventsAsync(...)`, typed payload parsing, and unknown-event fallback that preserves raw metadata/TLV. |
 | Interaction Model write response parsing | Supported | Empty successful write responses, attribute status lists, and status reports are distinguished for callers. |
 | Generated APIs with serializer/parser TODO behavior | Unsupported | The generator must emit explicit `NotSupportedException` paths for these members; do not patch generated files by hand. |
 | Complex generated attribute readers without verified parsers | Unsupported | These stay out of the supported surface until CodeGen emits a concrete parser. |
@@ -63,3 +64,4 @@
 - Unsupported paths fail clearly rather than silently running partial implementations.
 - Public API changes follow semantic versioning and require review.
 - Generator changes that affect supported cluster APIs must be accompanied by an intentional regeneration step before release.
+- Event parser changes must preserve raw event metadata/TLV so unknown or not-yet-modeled events remain inspectable.

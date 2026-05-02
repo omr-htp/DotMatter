@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -101,6 +102,62 @@ public class DescriptorCluster : ClusterBase
         tlv.AddUInt8(1, value.NamespaceID);
         tlv.AddUInt8(2, value.Tag);
         if (value.Label != null) tlv.AddUTF8String(3, value.Label);
+    }
+
+    // TLV struct deserializers
+
+    private static DeviceTypeStruct ReadDeviceTypeStruct(MatterTLV tlv)
+    {
+        var value = new DeviceTypeStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.DeviceType = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Revision = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static SemanticTagStruct ReadSemanticTagStruct(MatterTLV tlv)
+    {
+        var value = new SemanticTagStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.MfgCode = (ushort)tlv.GetUnsignedIntAny(0); }
+                    break;
+                case 1:
+                    value.NamespaceID = (byte)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.Tag = (byte)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.Label = tlv.GetUTF8String(3); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

@@ -21,6 +21,7 @@
 | Session recovery and reconnect for commissioned devices | Supported | Bounded background work, explicit shutdown, and stale subscription recovery are part of the contract. |
 | Lighting and current device-control flows | Supported | On/Off, Level, and Color operations used by the host are in scope for v1. |
 | Switch OnOff binding flow | Supported | Writes target ACL and source Binding entries for devices on the same controller fabric. |
+| Matter event inspection for live testing | Supported | Includes one-shot device event reads and a dedicated Matter SSE stream separate from controller state-change events, with typed payload JSON when DotMatter has generated support. |
 | WiFi commissioning path | Supported | Requires explicit WiFi SSID and password input. |
 
 ### Controller API
@@ -32,10 +33,12 @@
 | `GET /api/devices/{id}/acl` | Supported | Reads one device's endpoint-0 AccessControl ACL list. |
 | `GET /api/bindings` | Supported | Aggregates live Binding cluster reads across known devices on a controller fabric; returns per-source errors. |
 | `GET /api/devices/{id}/bindings` | Supported | Reads one source device endpoint's fabric-scoped Binding list. |
+| `GET /api/devices/{id}/matter/events` | Supported for live testing | Reads Matter event envelopes from one device for a selected cluster and optional event ID, including typed payload JSON when available. |
 | `POST /api/devices/{id}/bindings/onoff` | Supported | Binds a switch endpoint to a target OnOff endpoint after both devices are commissioned and reachable. |
 | `POST /api/devices/{id}/bindings/onoff/remove` | Supported | Removes the switch OnOff route and conservatively preserves broader/manual ACL entries when they should not be deleted. |
 | `POST /api/devices/{id}/bindings/remove` | Supported | Removes matching Binding entries from one source endpoint using explicit request-body match criteria. |
 | `POST /api/devices/{id}/acl/remove` | Supported | Removes matching ACL entries from endpoint 0 using explicit request-body match criteria. |
+| `GET /api/matter/events` | Supported for live testing | Dedicated authenticated SSE stream for Matter event envelopes observed from discovery-driven subscribed devices, including typed payload JSON when available. |
 | `GET /api/system/runtime` | Supported | Returns an authenticated safe runtime snapshot with readiness, device counts, and in-process diagnostics counters. |
 | `GET /api/system/diagnostics` | Supported when explicitly enabled | Disabled by default; returns a more detailed authenticated runtime/configuration snapshot when `Controller__Diagnostics__EnableDetailedRuntimeEndpoint=true`. |
 | Health endpoints | Supported | `/health`, `/health/live`, and `/health/ready` remain anonymous. |

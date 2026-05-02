@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -163,6 +164,91 @@ public class OTASoftwareUpdateRequestorCluster : ClusterBase
         public const uint DownloadError = 0x0002;
     }
 
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "OTA Software Update Requestor", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>StateTransition event payload.</summary>
+    public sealed class StateTransitionEventData
+    {
+        /// <summary>Gets or sets PreviousState.</summary>
+        public UpdateStateEnum PreviousState { get; set; } = default!;
+        /// <summary>Gets or sets NewState.</summary>
+        public UpdateStateEnum NewState { get; set; } = default!;
+        /// <summary>Gets or sets Reason.</summary>
+        public ChangeReasonEnum Reason { get; set; } = default!;
+        /// <summary>Gets or sets TargetSoftwareVersion.</summary>
+        public uint? TargetSoftwareVersion { get; set; }
+    }
+
+    /// <summary>StateTransition event report.</summary>
+    public sealed class StateTransitionEvent(MatterEventReport report, StateTransitionEventData payload)
+        : ClusterEvent(report, "StateTransition")
+    {
+        /// <summary>Gets the typed StateTransition payload.</summary>
+        public StateTransitionEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>VersionApplied event payload.</summary>
+    public sealed class VersionAppliedEventData
+    {
+        /// <summary>Gets or sets SoftwareVersion.</summary>
+        public uint SoftwareVersion { get; set; }
+        /// <summary>Gets or sets ProductID.</summary>
+        public ushort ProductID { get; set; }
+    }
+
+    /// <summary>VersionApplied event report.</summary>
+    public sealed class VersionAppliedEvent(MatterEventReport report, VersionAppliedEventData payload)
+        : ClusterEvent(report, "VersionApplied")
+    {
+        /// <summary>Gets the typed VersionApplied payload.</summary>
+        public VersionAppliedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>DownloadError event payload.</summary>
+    public sealed class DownloadErrorEventData
+    {
+        /// <summary>Gets or sets SoftwareVersion.</summary>
+        public uint SoftwareVersion { get; set; }
+        /// <summary>Gets or sets BytesDownloaded.</summary>
+        public ulong BytesDownloaded { get; set; }
+        /// <summary>Gets or sets ProgressPercent.</summary>
+        public byte? ProgressPercent { get; set; }
+        /// <summary>Gets or sets PlatformCode.</summary>
+        public long? PlatformCode { get; set; }
+    }
+
+    /// <summary>DownloadError event report.</summary>
+    public sealed class DownloadErrorEvent(MatterEventReport report, DownloadErrorEventData payload)
+        : ClusterEvent(report, "DownloadError")
+    {
+        /// <summary>Gets the typed DownloadError payload.</summary>
+        public DownloadErrorEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
     // Async command methods
 
     /// <summary>Send AnnounceOTAProvider command (0x0000).</summary>
@@ -201,4 +287,274 @@ public class OTASoftwareUpdateRequestorCluster : ClusterBase
             ArgumentNullException.ThrowIfNull(defaultOTAProviders);
             if (defaultOTAProviders != null) { tlv.AddArray(2); foreach (var item in defaultOTAProviders) { WriteProviderLocation(tlv, item); } tlv.EndContainer(); }
         }, timedRequest, timedTimeoutMs, ct);
+
+    // Event payload parsers
+
+    private static StateTransitionEventData ReadStateTransitionEventData(MatterTLV tlv)
+    {
+        var value = new StateTransitionEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.PreviousState = (UpdateStateEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.NewState = (UpdateStateEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.Reason = (ChangeReasonEnum)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.TargetSoftwareVersion = tlv.GetUnsignedIntAny(3); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadStateTransitionEventData(MatterEventReport report, out StateTransitionEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadStateTransitionEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "StateTransition payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static VersionAppliedEventData ReadVersionAppliedEventData(MatterTLV tlv)
+    {
+        var value = new VersionAppliedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.SoftwareVersion = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.ProductID = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadVersionAppliedEventData(MatterEventReport report, out VersionAppliedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadVersionAppliedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "VersionApplied payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static DownloadErrorEventData ReadDownloadErrorEventData(MatterTLV tlv)
+    {
+        var value = new DownloadErrorEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.SoftwareVersion = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.BytesDownloaded = tlv.GetUnsignedInt(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.ProgressPercent = (byte)tlv.GetUnsignedIntAny(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.PlatformCode = tlv.GetSignedInt(3); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadDownloadErrorEventData(MatterEventReport report, out DownloadErrorEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadDownloadErrorEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "DownloadError payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateProviderLocationJson(ProviderLocation value)
+    {
+        var json = new JsonObject();
+        json["providerNodeID"] = CreateJsonValue(value.ProviderNodeID);
+        json["endpoint"] = CreateJsonValue(value.Endpoint);
+        return json;
+    }
+
+    private static JsonObject CreateStateTransitionEventDataJson(StateTransitionEventData value)
+    {
+        var json = new JsonObject();
+        if (value.PreviousState is { } previousState)
+        {
+            json["previousState"] = CreateJsonValue(previousState.ToString());
+        }
+        if (value.NewState is { } newState)
+        {
+            json["newState"] = CreateJsonValue(newState.ToString());
+        }
+        if (value.Reason is { } reason)
+        {
+            json["reason"] = CreateJsonValue(reason.ToString());
+        }
+        if (value.TargetSoftwareVersion is { } targetSoftwareVersion)
+        {
+            json["targetSoftwareVersion"] = CreateJsonValue(targetSoftwareVersion);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateVersionAppliedEventDataJson(VersionAppliedEventData value)
+    {
+        var json = new JsonObject();
+        json["softwareVersion"] = CreateJsonValue(value.SoftwareVersion);
+        json["productID"] = CreateJsonValue(value.ProductID);
+        return json;
+    }
+
+    private static JsonObject CreateDownloadErrorEventDataJson(DownloadErrorEventData value)
+    {
+        var json = new JsonObject();
+        json["softwareVersion"] = CreateJsonValue(value.SoftwareVersion);
+        json["bytesDownloaded"] = CreateJsonValue(value.BytesDownloaded);
+        if (value.ProgressPercent is { } progressPercent)
+        {
+            json["progressPercent"] = CreateJsonValue(progressPercent);
+        }
+        if (value.PlatformCode is { } platformCode)
+        {
+            json["platformCode"] = CreateJsonValue(platformCode);
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            StateTransitionEvent typed => CreateStateTransitionEventDataJson(typed.Payload),
+            VersionAppliedEvent typed => CreateVersionAppliedEventDataJson(typed.Payload),
+            DownloadErrorEvent typed => CreateDownloadErrorEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.StateTransition when TryReadStateTransitionEventData(report, out var stateTransitionEventData, out _) => new StateTransitionEvent(report, stateTransitionEventData!),
+            Events.StateTransition when TryReadStateTransitionEventData(report, out _, out var stateTransitionReason) => new UnknownClusterEvent(report, stateTransitionReason),
+            Events.VersionApplied when TryReadVersionAppliedEventData(report, out var versionAppliedEventData, out _) => new VersionAppliedEvent(report, versionAppliedEventData!),
+            Events.VersionApplied when TryReadVersionAppliedEventData(report, out _, out var versionAppliedReason) => new UnknownClusterEvent(report, versionAppliedReason),
+            Events.DownloadError when TryReadDownloadErrorEventData(report, out var downloadErrorEventData, out _) => new DownloadErrorEvent(report, downloadErrorEventData!),
+            Events.DownloadError when TryReadDownloadErrorEventData(report, out _, out var downloadErrorReason) => new UnknownClusterEvent(report, downloadErrorReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

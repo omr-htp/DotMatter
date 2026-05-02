@@ -64,7 +64,8 @@ public abstract class MatterDeviceHost(
             Registry,
             Subscriptions,
             LastSubscriptionReport,
-            ProcessAttributeReports);
+            ProcessAttributeReports,
+            ProcessEventReports);
 
     private SessionLifecycleCoordinator SessionLifecycleCoordinator =>
         _sessionLifecycleCoordinator ??= new SessionLifecycleCoordinator(
@@ -265,12 +266,12 @@ public abstract class MatterDeviceHost(
             while (!ct.IsCancellationRequested && rs.IsConnected && rs.Connection is { } udp)
             {
                 var bytes = await udp.UnroutedMessages.ReadAsync(ct);
-                if (Subscriptions.TryGetValue(id, out var sub))
+                var processedSubscriptionReport = await TryProcessSubscriptionMessageAsync(id, bytes);
+                if (processedSubscriptionReport)
                 {
-                    await sub.ProcessIncomingBytesAsync(bytes);
+                    LastSubscriptionReport[id] = DateTime.UtcNow;
                 }
 
-                LastSubscriptionReport[id] = DateTime.UtcNow;
                 Registry.Update(id, d => d.LastSeen = DateTime.UtcNow);
             }
         }
@@ -283,6 +284,17 @@ public abstract class MatterDeviceHost(
         }
 
         Log.LogDebug("[MATTER] {Id}: listener stopped", id);
+    }
+
+    /// <summary>Attempts to process an unrouted message as a subscription report for the specified device.</summary>
+    protected virtual async Task<bool> TryProcessSubscriptionMessageAsync(string id, byte[] bytes)
+    {
+        if (Subscriptions.TryGetValue(id, out var sub))
+        {
+            return await sub.ProcessIncomingBytesAsync(bytes);
+        }
+
+        return false;
     }
 
     /// <summary>Discovers endpoints and server clusters for a connected device.</summary>
@@ -300,6 +312,11 @@ public abstract class MatterDeviceHost(
     /// <summary>Processes subscription attribute reports.</summary>
     protected virtual void ProcessAttributeReports(string id, ReportDataAction report)
         => AttributeReportProjector.Process(id, report);
+
+    /// <summary>Processes subscription event reports.</summary>
+    protected virtual void ProcessEventReports(string id, IReadOnlyList<MatterEventReport> reports)
+    {
+    }
 
     /// <summary>Schedules a host-owned background operation if one with the same key is not running.</summary>
     protected bool ScheduleOwnedOperation(string key, Func<CancellationToken, Task> work)

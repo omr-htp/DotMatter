@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -155,6 +156,90 @@ public class SoilMeasurementCluster : ClusterBase
         if (value.FixedMax != null) tlv.AddUInt64(5, value.FixedMax.Value);
         if (value.FixedMin != null) tlv.AddUInt64(6, value.FixedMin.Value);
         if (value.FixedTypical != null) tlv.AddUInt64(7, value.FixedTypical.Value);
+    }
+
+    // TLV struct deserializers
+
+    private static MeasurementAccuracyStruct ReadMeasurementAccuracyStruct(MatterTLV tlv)
+    {
+        var value = new MeasurementAccuracyStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.MeasurementType = (MeasurementTypeEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Measured = tlv.GetBoolean(1);
+                    break;
+                case 2:
+                    value.MinMeasuredValue = tlv.GetSignedInt(2);
+                    break;
+                case 3:
+                    value.MaxMeasuredValue = tlv.GetSignedInt(3);
+                    break;
+                case 4:
+                    var items4 = new List<MeasurementAccuracyRangeStruct>();
+                    tlv.OpenArray(4);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items4.Add(ReadMeasurementAccuracyRangeStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.AccuracyRanges = [.. items4];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static MeasurementAccuracyRangeStruct ReadMeasurementAccuracyRangeStruct(MatterTLV tlv)
+    {
+        var value = new MeasurementAccuracyRangeStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.RangeMin = tlv.GetSignedInt(0);
+                    break;
+                case 1:
+                    value.RangeMax = tlv.GetSignedInt(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.PercentMax = (ushort)tlv.GetUnsignedIntAny(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.PercentMin = (ushort)tlv.GetUnsignedIntAny(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.PercentTypical = (ushort)tlv.GetUnsignedIntAny(4); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.FixedMax = tlv.GetUnsignedInt(5); }
+                    break;
+                case 6:
+                    if (tlv.IsNextNull()) { tlv.GetNull(6); } else { value.FixedMin = tlv.GetUnsignedInt(6); }
+                    break;
+                case 7:
+                    if (tlv.IsNextNull()) { tlv.GetNull(7); } else { value.FixedTypical = tlv.GetUnsignedInt(7); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

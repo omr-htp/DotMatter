@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -89,6 +90,35 @@ public class MeterIdentificationCluster : ClusterBase
         if (value.PowerThreshold != null) tlv.AddUInt64(0, value.PowerThreshold.Value);
         if (value.ApparentPowerThreshold != null) tlv.AddInt64(1, value.ApparentPowerThreshold.Value);
         tlv.AddUInt8(2, (byte)value.PowerThresholdSource);
+    }
+
+    // TLV struct deserializers
+
+    private static PowerThresholdStruct ReadPowerThresholdStruct(MatterTLV tlv)
+    {
+        var value = new PowerThresholdStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.PowerThreshold = tlv.GetUnsignedInt(0); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.ApparentPowerThreshold = tlv.GetSignedInt(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.PowerThresholdSource = (PowerThresholdSourceEnum)tlv.GetUnsignedIntAny(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

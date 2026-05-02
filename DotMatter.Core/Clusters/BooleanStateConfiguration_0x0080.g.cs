@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -96,6 +97,61 @@ public class BooleanStateConfigurationCluster : ClusterBase
         public const uint SensorFault = 0x0001;
     }
 
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Boolean State Configuration", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>AlarmsStateChanged event payload.</summary>
+    public sealed class AlarmsStateChangedEventData
+    {
+        /// <summary>Gets or sets AlarmsActive.</summary>
+        public AlarmModeBitmap AlarmsActive { get; set; } = default!;
+        /// <summary>Gets or sets AlarmsSuppressed.</summary>
+        public AlarmModeBitmap? AlarmsSuppressed { get; set; }
+    }
+
+    /// <summary>AlarmsStateChanged event report.</summary>
+    public sealed class AlarmsStateChangedEvent(MatterEventReport report, AlarmsStateChangedEventData payload)
+        : ClusterEvent(report, "AlarmsStateChanged")
+    {
+        /// <summary>Gets the typed AlarmsStateChanged payload.</summary>
+        public AlarmsStateChangedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>SensorFault event payload.</summary>
+    public sealed class SensorFaultEventData
+    {
+        /// <summary>Gets or sets SensorFault.</summary>
+        public SensorFaultBitmap SensorFault { get; set; } = default!;
+    }
+
+    /// <summary>SensorFault event report.</summary>
+    public sealed class SensorFaultEvent(MatterEventReport report, SensorFaultEventData payload)
+        : ClusterEvent(report, "SensorFault")
+    {
+        /// <summary>Gets the typed SensorFault payload.</summary>
+        public SensorFaultEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
     // Async command methods
 
     /// <summary>Send SuppressAlarm command (0x0000).</summary>
@@ -156,4 +212,180 @@ public class BooleanStateConfigurationCluster : ClusterBase
         {
             tlv.AddUInt8(2, currentSensitivityLevel);
         }, timedRequest, timedTimeoutMs, ct);
+
+    // Event payload parsers
+
+    private static AlarmsStateChangedEventData ReadAlarmsStateChangedEventData(MatterTLV tlv)
+    {
+        var value = new AlarmsStateChangedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.AlarmsActive = (AlarmModeBitmap)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.AlarmsSuppressed = (AlarmModeBitmap)tlv.GetUnsignedIntAny(1); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadAlarmsStateChangedEventData(MatterEventReport report, out AlarmsStateChangedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadAlarmsStateChangedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "AlarmsStateChanged payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static SensorFaultEventData ReadSensorFaultEventData(MatterTLV tlv)
+    {
+        var value = new SensorFaultEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.SensorFault = (SensorFaultBitmap)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadSensorFaultEventData(MatterEventReport report, out SensorFaultEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadSensorFaultEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "SensorFault payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateAlarmsStateChangedEventDataJson(AlarmsStateChangedEventData value)
+    {
+        var json = new JsonObject();
+        if (value.AlarmsActive is { } alarmsActive)
+        {
+            json["alarmsActive"] = CreateJsonValue(alarmsActive.ToString());
+        }
+        if (value.AlarmsSuppressed is { } alarmsSuppressed)
+        {
+            json["alarmsSuppressed"] = CreateJsonValue(alarmsSuppressed.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateSensorFaultEventDataJson(SensorFaultEventData value)
+    {
+        var json = new JsonObject();
+        if (value.SensorFault is { } sensorFault)
+        {
+            json["sensorFault"] = CreateJsonValue(sensorFault.ToString());
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            AlarmsStateChangedEvent typed => CreateAlarmsStateChangedEventDataJson(typed.Payload),
+            SensorFaultEvent typed => CreateSensorFaultEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.AlarmsStateChanged when TryReadAlarmsStateChangedEventData(report, out var alarmsStateChangedEventData, out _) => new AlarmsStateChangedEvent(report, alarmsStateChangedEventData!),
+            Events.AlarmsStateChanged when TryReadAlarmsStateChangedEventData(report, out _, out var alarmsStateChangedReason) => new UnknownClusterEvent(report, alarmsStateChangedReason),
+            Events.SensorFault when TryReadSensorFaultEventData(report, out var sensorFaultEventData, out _) => new SensorFaultEvent(report, sensorFaultEventData!),
+            Events.SensorFault when TryReadSensorFaultEventData(report, out _, out var sensorFaultReason) => new UnknownClusterEvent(report, sensorFaultReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

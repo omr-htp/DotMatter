@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace DotMatter.Controller;
 
 /// <summary>Commission a new Matter device via BLE.</summary>
@@ -131,6 +133,43 @@ public record RuntimeDetailedResponse(
     RuntimeSnapshotResponse Runtime,
     RuntimeApiDiagnostics Api,
     RuntimeDetailedDiagnostics Diagnostics);
+/// <summary>Stable typed/unknown payload envelope for controller Matter event APIs.</summary>
+public record MatterEventPayloadResponse(
+    string Kind,
+    JsonElement? Data = null,
+    string? Reason = null);
+/// <summary>Single Matter event envelope used by controller testing APIs.</summary>
+public record MatterEventResponse(
+    string DeviceId,
+    string? DeviceName,
+    ushort Endpoint,
+    uint Cluster,
+    string ClusterHex,
+    string? ClusterName,
+    uint EventId,
+    string EventHex,
+    string EventName,
+    ulong EventNumber,
+    byte Priority,
+    ulong? EpochTimestamp,
+    ulong? SystemTimestamp,
+    ulong? DeltaEpochTimestamp,
+    ulong? DeltaSystemTimestamp,
+    MatterEventPayloadResponse Payload,
+    string? PayloadTlvHex,
+    byte? StatusCode,
+    DateTime ReceivedAtUtc);
+/// <summary>One-shot raw Matter event read response for a device and cluster.</summary>
+public record DeviceMatterEventReadResponse(
+    string SourceDeviceId,
+    string? SourceDeviceName,
+    ushort Endpoint,
+    uint Cluster,
+    string ClusterHex,
+    uint? RequestedEventId,
+    string? RequestedEventHex,
+    MatterEventResponse[] Events,
+    string? Error = null);
 /// <summary>Error response payload.</summary>
 public record ErrorResponse(string Error);
 /// <summary>Count of devices by online status.</summary>

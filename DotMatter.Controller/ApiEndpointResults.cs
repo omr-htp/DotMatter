@@ -157,6 +157,26 @@ internal static class ApiEndpointResults
                     statusCode: StatusCodes.Status503ServiceUnavailable),
                 _ => Results.Json(
                     new ErrorResponse(result.Error ?? "ACL query failed"),
+                     ControllerJsonContext.Default.ErrorResponse,
+                     statusCode: StatusCodes.Status502BadGateway)
+             };
+
+    internal static IResult MapDeviceMatterEventQueryResult(MatterControllerService.DeviceMatterEventQueryResult result)
+        => result.Success && result.Response is not null
+            ? Results.Ok(result.Response)
+            : result.Failure switch
+            {
+                DeviceOperationFailure.NotFound => Results.NotFound(new ErrorResponse(result.Error ?? "Device not found")),
+                DeviceOperationFailure.Timeout => Results.Json(
+                    new ErrorResponse(result.Error ?? "Matter event read timed out"),
+                    ControllerJsonContext.Default.ErrorResponse,
+                    statusCode: StatusCodes.Status503ServiceUnavailable),
+                DeviceOperationFailure.NotConnected => Results.Json(
+                    new ErrorResponse(result.Error ?? "Device is not connected"),
+                    ControllerJsonContext.Default.ErrorResponse,
+                    statusCode: StatusCodes.Status503ServiceUnavailable),
+                _ => Results.Json(
+                    new ErrorResponse(result.Error ?? "Matter event read failed"),
                     ControllerJsonContext.Default.ErrorResponse,
                     statusCode: StatusCodes.Status502BadGateway)
             };

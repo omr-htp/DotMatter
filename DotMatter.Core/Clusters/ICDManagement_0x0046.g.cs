@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -133,6 +134,38 @@ public class ICDManagementCluster : ClusterBase
         tlv.AddUInt64(1, value.CheckInNodeID);
         tlv.AddUInt64(2, value.MonitoredSubject);
         tlv.AddUInt8(4, (byte)value.ClientType);
+    }
+
+    // TLV struct deserializers
+
+    private static MonitoringRegistrationStruct ReadMonitoringRegistrationStruct(MatterTLV tlv)
+    {
+        var value = new MonitoringRegistrationStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 1:
+                    value.CheckInNodeID = tlv.GetUnsignedInt(1);
+                    break;
+                case 2:
+                    value.MonitoredSubject = tlv.GetUnsignedInt(2);
+                    break;
+                case 4:
+                    value.ClientType = (ClientTypeEnum)tlv.GetUnsignedIntAny(4);
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

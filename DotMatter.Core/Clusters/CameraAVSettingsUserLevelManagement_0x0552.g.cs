@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -186,6 +187,116 @@ public class CameraAVSettingsUserLevelManagementCluster : ClusterBase
         tlv.AddUInt16(1, value.Y1);
         tlv.AddUInt16(2, value.X2);
         tlv.AddUInt16(3, value.Y2);
+    }
+
+    // TLV struct deserializers
+
+    private static DPTZStruct ReadDPTZStruct(MatterTLV tlv)
+    {
+        var value = new DPTZStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.VideoStreamID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Viewport = ReadViewportStruct(tlv);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static MPTZPresetStruct ReadMPTZPresetStruct(MatterTLV tlv)
+    {
+        var value = new MPTZPresetStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.PresetID = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Name = tlv.GetUTF8String(1);
+                    break;
+                case 2:
+                    value.Settings = ReadMPTZStruct(tlv);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static MPTZStruct ReadMPTZStruct(MatterTLV tlv)
+    {
+        var value = new MPTZStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.Pan = (short)tlv.GetSignedInt(0); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Tilt = (short)tlv.GetSignedInt(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Zoom = (byte)tlv.GetUnsignedIntAny(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ViewportStruct ReadViewportStruct(MatterTLV tlv)
+    {
+        var value = new ViewportStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.X1 = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Y1 = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.X2 = (ushort)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.Y2 = (ushort)tlv.GetUnsignedIntAny(3);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

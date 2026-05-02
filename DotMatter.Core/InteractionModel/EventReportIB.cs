@@ -81,12 +81,25 @@ public sealed class EventDataIB
     /// <summary>Priority.</summary>
     /// <summary>Gets or sets the Priority value.</summary>
     public byte Priority { get; }
-    /// <summary>Timestamp.</summary>
-    /// <summary>Gets or sets the Timestamp value.</summary>
-    public ulong Timestamp { get; }
+    /// <summary>EpochTimestamp.</summary>
+    /// <summary>Gets or sets the EpochTimestamp value.</summary>
+    public ulong? EpochTimestamp { get; }
+    /// <summary>SystemTimestamp.</summary>
+    /// <summary>Gets or sets the SystemTimestamp value.</summary>
+    public ulong? SystemTimestamp { get; }
+    /// <summary>DeltaEpochTimestamp.</summary>
+    /// <summary>Gets or sets the DeltaEpochTimestamp value.</summary>
+    public ulong? DeltaEpochTimestamp { get; }
+    /// <summary>DeltaSystemTimestamp.</summary>
+    /// <summary>Gets or sets the DeltaSystemTimestamp value.</summary>
+    public ulong? DeltaSystemTimestamp { get; }
+    /// <summary>Compatibility timestamp view. Prefers epoch/system timestamps when present.</summary>
+    public ulong Timestamp => EpochTimestamp ?? SystemTimestamp ?? DeltaEpochTimestamp ?? DeltaSystemTimestamp ?? 0;
     /// <summary>Data.</summary>
     /// <summary>Gets or sets the Data value.</summary>
     public object? Data { get; }
+    /// <summary>Raw TLV element for the Data field, including its context tag, when present.</summary>
+    public MatterTLV? RawData { get; }
 
     /// <summary>EventDataIB.</summary>
     public EventDataIB(MatterTLV payload)
@@ -131,16 +144,31 @@ public sealed class EventDataIB
                 Priority = payload.GetUnsignedInt8(2);
                 continue;
             }
-            // Tags 3/4/5: epoch timestamp / system timestamp / delta epoch
-            if (payload.IsNextTag(3) || payload.IsNextTag(4) || payload.IsNextTag(5))
+            if (payload.IsNextTag(3))
             {
-                int tag = payload.PeekTag();
-                Timestamp = payload.GetUnsignedInt64(tag);
+                EpochTimestamp = payload.GetUnsignedInt64(3);
+                continue;
+            }
+            if (payload.IsNextTag(4))
+            {
+                SystemTimestamp = payload.GetUnsignedInt64(4);
+                continue;
+            }
+            if (payload.IsNextTag(5))
+            {
+                DeltaEpochTimestamp = payload.GetUnsignedInt64(5);
                 continue;
             }
             if (payload.IsNextTag(6))
             {
-                Data = payload.GetData(6);
+                DeltaSystemTimestamp = payload.GetUnsignedInt64(6);
+                continue;
+            }
+            if (payload.IsNextTag(7))
+            {
+                var dataStart = payload.Position;
+                Data = payload.GetData(7);
+                RawData = new MatterTLV(payload.AsSpan()[dataStart..payload.Position]);
                 continue;
             }
             payload.SkipElement();

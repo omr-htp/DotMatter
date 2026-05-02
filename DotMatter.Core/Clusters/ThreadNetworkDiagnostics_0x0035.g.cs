@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -296,6 +297,194 @@ public class ThreadNetworkDiagnosticsCluster : ClusterBase
         tlv.AddBool(11, value.ChannelMaskPresent);
     }
 
+    // TLV struct deserializers
+
+    private static NeighborTableStruct ReadNeighborTableStruct(MatterTLV tlv)
+    {
+        var value = new NeighborTableStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ExtAddress = tlv.GetUnsignedInt(0);
+                    break;
+                case 1:
+                    value.Age = tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.Rloc16 = (ushort)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.LinkFrameCounter = tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    value.MleFrameCounter = tlv.GetUnsignedIntAny(4);
+                    break;
+                case 5:
+                    value.LQI = (byte)tlv.GetUnsignedIntAny(5);
+                    break;
+                case 6:
+                    if (tlv.IsNextNull()) { tlv.GetNull(6); } else { value.AverageRssi = (sbyte)tlv.GetSignedInt(6); }
+                    break;
+                case 7:
+                    if (tlv.IsNextNull()) { tlv.GetNull(7); } else { value.LastRssi = (sbyte)tlv.GetSignedInt(7); }
+                    break;
+                case 8:
+                    value.FrameErrorRate = (byte)tlv.GetUnsignedIntAny(8);
+                    break;
+                case 9:
+                    value.MessageErrorRate = (byte)tlv.GetUnsignedIntAny(9);
+                    break;
+                case 10:
+                    value.RxOnWhenIdle = tlv.GetBoolean(10);
+                    break;
+                case 11:
+                    value.FullThreadDevice = tlv.GetBoolean(11);
+                    break;
+                case 12:
+                    value.FullNetworkData = tlv.GetBoolean(12);
+                    break;
+                case 13:
+                    value.IsChild = tlv.GetBoolean(13);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static RouteTableStruct ReadRouteTableStruct(MatterTLV tlv)
+    {
+        var value = new RouteTableStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ExtAddress = tlv.GetUnsignedInt(0);
+                    break;
+                case 1:
+                    value.Rloc16 = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.RouterId = (byte)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.NextHop = (byte)tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    value.PathCost = (byte)tlv.GetUnsignedIntAny(4);
+                    break;
+                case 5:
+                    value.LQIIn = (byte)tlv.GetUnsignedIntAny(5);
+                    break;
+                case 6:
+                    value.LQIOut = (byte)tlv.GetUnsignedIntAny(6);
+                    break;
+                case 7:
+                    value.Age = (byte)tlv.GetUnsignedIntAny(7);
+                    break;
+                case 8:
+                    value.Allocated = tlv.GetBoolean(8);
+                    break;
+                case 9:
+                    value.LinkEstablished = tlv.GetBoolean(9);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static SecurityPolicy ReadSecurityPolicy(MatterTLV tlv)
+    {
+        var value = new SecurityPolicy();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.RotationTime = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Flags = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static OperationalDatasetComponents ReadOperationalDatasetComponents(MatterTLV tlv)
+    {
+        var value = new OperationalDatasetComponents();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ActiveTimestampPresent = tlv.GetBoolean(0);
+                    break;
+                case 1:
+                    value.PendingTimestampPresent = tlv.GetBoolean(1);
+                    break;
+                case 2:
+                    value.MasterKeyPresent = tlv.GetBoolean(2);
+                    break;
+                case 3:
+                    value.NetworkNamePresent = tlv.GetBoolean(3);
+                    break;
+                case 4:
+                    value.ExtendedPanIdPresent = tlv.GetBoolean(4);
+                    break;
+                case 5:
+                    value.MeshLocalPrefixPresent = tlv.GetBoolean(5);
+                    break;
+                case 6:
+                    value.DelayPresent = tlv.GetBoolean(6);
+                    break;
+                case 7:
+                    value.PanIdPresent = tlv.GetBoolean(7);
+                    break;
+                case 8:
+                    value.ChannelPresent = tlv.GetBoolean(8);
+                    break;
+                case 9:
+                    value.PskcPresent = tlv.GetBoolean(9);
+                    break;
+                case 10:
+                    value.SecurityPolicyPresent = tlv.GetBoolean(10);
+                    break;
+                case 11:
+                    value.ChannelMaskPresent = tlv.GetBoolean(11);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -445,6 +634,61 @@ public class ThreadNetworkDiagnosticsCluster : ClusterBase
         public const uint ConnectionStatus = 0x0000;
         /// <summary>NetworkFaultChange (0x0001).</summary>
         public const uint NetworkFaultChange = 0x0001;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Thread Network Diagnostics", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>ConnectionStatus event payload.</summary>
+    public sealed class ConnectionStatusEventData
+    {
+        /// <summary>Gets or sets ConnectionStatus.</summary>
+        public ConnectionStatusEnum ConnectionStatus { get; set; } = default!;
+    }
+
+    /// <summary>ConnectionStatus event report.</summary>
+    public sealed class ConnectionStatusEvent(MatterEventReport report, ConnectionStatusEventData payload)
+        : ClusterEvent(report, "ConnectionStatus")
+    {
+        /// <summary>Gets the typed ConnectionStatus payload.</summary>
+        public ConnectionStatusEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>NetworkFaultChange event payload.</summary>
+    public sealed class NetworkFaultChangeEventData
+    {
+        /// <summary>Gets or sets Current.</summary>
+        public NetworkFaultEnum[] Current { get; set; } = default!;
+        /// <summary>Gets or sets Previous.</summary>
+        public NetworkFaultEnum[] Previous { get; set; } = default!;
+    }
+
+    /// <summary>NetworkFaultChange event report.</summary>
+    public sealed class NetworkFaultChangeEvent(MatterEventReport report, NetworkFaultChangeEventData payload)
+        : ClusterEvent(report, "NetworkFaultChange")
+    {
+        /// <summary>Gets the typed NetworkFaultChange payload.</summary>
+        public NetworkFaultChangeEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Async command methods
@@ -714,4 +958,272 @@ public class ThreadNetworkDiagnosticsCluster : ClusterBase
     /// <summary>Read Rloc16 attribute (0x0040).</summary>
     public Task<ushort?> ReadRloc16Async(CancellationToken ct = default)
         => ReadNullableAttributeAsync<ushort>(0x0040, ct);
+
+    // Event payload parsers
+
+    private static ConnectionStatusEventData ReadConnectionStatusEventData(MatterTLV tlv)
+    {
+        var value = new ConnectionStatusEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ConnectionStatus = (ConnectionStatusEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadConnectionStatusEventData(MatterEventReport report, out ConnectionStatusEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadConnectionStatusEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "ConnectionStatus payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static NetworkFaultChangeEventData ReadNetworkFaultChangeEventData(MatterTLV tlv)
+    {
+        var value = new NetworkFaultChangeEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    var items0 = new List<NetworkFaultEnum>();
+                    tlv.OpenArray(0);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items0.Add((NetworkFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Current = [.. items0];
+                    break;
+                case 1:
+                    var items1 = new List<NetworkFaultEnum>();
+                    tlv.OpenArray(1);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items1.Add((NetworkFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Previous = [.. items1];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadNetworkFaultChangeEventData(MatterEventReport report, out NetworkFaultChangeEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadNetworkFaultChangeEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "NetworkFaultChange payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateNeighborTableStructJson(NeighborTableStruct value)
+    {
+        var json = new JsonObject();
+        json["extAddress"] = CreateJsonValue(value.ExtAddress);
+        json["age"] = CreateJsonValue(value.Age);
+        json["rloc16"] = CreateJsonValue(value.Rloc16);
+        json["linkFrameCounter"] = CreateJsonValue(value.LinkFrameCounter);
+        json["mleFrameCounter"] = CreateJsonValue(value.MleFrameCounter);
+        json["lQI"] = CreateJsonValue(value.LQI);
+        if (value.AverageRssi is { } averageRssi)
+        {
+            json["averageRssi"] = CreateJsonValue(averageRssi);
+        }
+        if (value.LastRssi is { } lastRssi)
+        {
+            json["lastRssi"] = CreateJsonValue(lastRssi);
+        }
+        json["frameErrorRate"] = CreateJsonValue(value.FrameErrorRate);
+        json["messageErrorRate"] = CreateJsonValue(value.MessageErrorRate);
+        json["rxOnWhenIdle"] = CreateJsonValue(value.RxOnWhenIdle);
+        json["fullThreadDevice"] = CreateJsonValue(value.FullThreadDevice);
+        json["fullNetworkData"] = CreateJsonValue(value.FullNetworkData);
+        json["isChild"] = CreateJsonValue(value.IsChild);
+        return json;
+    }
+
+    private static JsonObject CreateRouteTableStructJson(RouteTableStruct value)
+    {
+        var json = new JsonObject();
+        json["extAddress"] = CreateJsonValue(value.ExtAddress);
+        json["rloc16"] = CreateJsonValue(value.Rloc16);
+        json["routerId"] = CreateJsonValue(value.RouterId);
+        json["nextHop"] = CreateJsonValue(value.NextHop);
+        json["pathCost"] = CreateJsonValue(value.PathCost);
+        json["lQIIn"] = CreateJsonValue(value.LQIIn);
+        json["lQIOut"] = CreateJsonValue(value.LQIOut);
+        json["age"] = CreateJsonValue(value.Age);
+        json["allocated"] = CreateJsonValue(value.Allocated);
+        json["linkEstablished"] = CreateJsonValue(value.LinkEstablished);
+        return json;
+    }
+
+    private static JsonObject CreateSecurityPolicyJson(SecurityPolicy value)
+    {
+        var json = new JsonObject();
+        json["rotationTime"] = CreateJsonValue(value.RotationTime);
+        json["flags"] = CreateJsonValue(value.Flags);
+        return json;
+    }
+
+    private static JsonObject CreateOperationalDatasetComponentsJson(OperationalDatasetComponents value)
+    {
+        var json = new JsonObject();
+        json["activeTimestampPresent"] = CreateJsonValue(value.ActiveTimestampPresent);
+        json["pendingTimestampPresent"] = CreateJsonValue(value.PendingTimestampPresent);
+        json["masterKeyPresent"] = CreateJsonValue(value.MasterKeyPresent);
+        json["networkNamePresent"] = CreateJsonValue(value.NetworkNamePresent);
+        json["extendedPanIdPresent"] = CreateJsonValue(value.ExtendedPanIdPresent);
+        json["meshLocalPrefixPresent"] = CreateJsonValue(value.MeshLocalPrefixPresent);
+        json["delayPresent"] = CreateJsonValue(value.DelayPresent);
+        json["panIdPresent"] = CreateJsonValue(value.PanIdPresent);
+        json["channelPresent"] = CreateJsonValue(value.ChannelPresent);
+        json["pskcPresent"] = CreateJsonValue(value.PskcPresent);
+        json["securityPolicyPresent"] = CreateJsonValue(value.SecurityPolicyPresent);
+        json["channelMaskPresent"] = CreateJsonValue(value.ChannelMaskPresent);
+        return json;
+    }
+
+    private static JsonObject CreateConnectionStatusEventDataJson(ConnectionStatusEventData value)
+    {
+        var json = new JsonObject();
+        if (value.ConnectionStatus is { } connectionStatus)
+        {
+            json["connectionStatus"] = CreateJsonValue(connectionStatus.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateNetworkFaultChangeEventDataJson(NetworkFaultChangeEventData value)
+    {
+        var json = new JsonObject();
+        if (value.Current is { } currentValues)
+        {
+            var currentItems = new JsonArray();
+            foreach (var item in currentValues)
+            {
+                currentItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["current"] = currentItems;
+        }
+        if (value.Previous is { } previousValues)
+        {
+            var previousItems = new JsonArray();
+            foreach (var item in previousValues)
+            {
+                previousItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["previous"] = previousItems;
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            ConnectionStatusEvent typed => CreateConnectionStatusEventDataJson(typed.Payload),
+            NetworkFaultChangeEvent typed => CreateNetworkFaultChangeEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.ConnectionStatus when TryReadConnectionStatusEventData(report, out var connectionStatusEventData, out _) => new ConnectionStatusEvent(report, connectionStatusEventData!),
+            Events.ConnectionStatus when TryReadConnectionStatusEventData(report, out _, out var connectionStatusReason) => new UnknownClusterEvent(report, connectionStatusReason),
+            Events.NetworkFaultChange when TryReadNetworkFaultChangeEventData(report, out var networkFaultChangeEventData, out _) => new NetworkFaultChangeEvent(report, networkFaultChangeEventData!),
+            Events.NetworkFaultChange when TryReadNetworkFaultChangeEventData(report, out _, out var networkFaultChangeReason) => new UnknownClusterEvent(report, networkFaultChangeReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

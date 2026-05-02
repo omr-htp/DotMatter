@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -116,6 +117,35 @@ public class OccupancySensingCluster : ClusterBase
         tlv.AddUInt16(2, value.HoldTimeDefault);
     }
 
+    // TLV struct deserializers
+
+    private static HoldTimeLimitsStruct ReadHoldTimeLimitsStruct(MatterTLV tlv)
+    {
+        var value = new HoldTimeLimitsStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.HoldTimeMin = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.HoldTimeMax = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.HoldTimeDefault = (ushort)tlv.GetUnsignedIntAny(2);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -154,6 +184,41 @@ public class OccupancySensingCluster : ClusterBase
     {
         /// <summary>OccupancyChanged (0x0000).</summary>
         public const uint OccupancyChanged = 0x0000;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Occupancy Sensing", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>OccupancyChanged event payload.</summary>
+    public sealed class OccupancyChangedEventData
+    {
+        /// <summary>Gets or sets Occupancy.</summary>
+        public OccupancyBitmap Occupancy { get; set; } = default!;
+    }
+
+    /// <summary>OccupancyChanged event report.</summary>
+    public sealed class OccupancyChangedEvent(MatterEventReport report, OccupancyChangedEventData payload)
+        : ClusterEvent(report, "OccupancyChanged")
+    {
+        /// <summary>Gets the typed OccupancyChanged payload.</summary>
+        public OccupancyChangedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Attribute readers
@@ -325,4 +390,126 @@ public class OccupancySensingCluster : ClusterBase
         {
             tlv.AddUInt8(2, physicalContactUnoccupiedToOccupiedThreshold);
         }, timedRequest, timedTimeoutMs, ct);
+
+    // Event payload parsers
+
+    private static OccupancyChangedEventData ReadOccupancyChangedEventData(MatterTLV tlv)
+    {
+        var value = new OccupancyChangedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Occupancy = (OccupancyBitmap)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadOccupancyChangedEventData(MatterEventReport report, out OccupancyChangedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadOccupancyChangedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "OccupancyChanged payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateHoldTimeLimitsStructJson(HoldTimeLimitsStruct value)
+    {
+        var json = new JsonObject();
+        json["holdTimeMin"] = CreateJsonValue(value.HoldTimeMin);
+        json["holdTimeMax"] = CreateJsonValue(value.HoldTimeMax);
+        json["holdTimeDefault"] = CreateJsonValue(value.HoldTimeDefault);
+        return json;
+    }
+
+    private static JsonObject CreateOccupancyChangedEventDataJson(OccupancyChangedEventData value)
+    {
+        var json = new JsonObject();
+        if (value.Occupancy is { } occupancy)
+        {
+            json["occupancy"] = CreateJsonValue(occupancy.ToString());
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            OccupancyChangedEvent typed => CreateOccupancyChangedEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.OccupancyChanged when TryReadOccupancyChangedEventData(report, out var occupancyChangedEventData, out _) => new OccupancyChangedEvent(report, occupancyChangedEventData!),
+            Events.OccupancyChanged when TryReadOccupancyChangedEventData(report, out _, out var occupancyChangedReason) => new UnknownClusterEvent(report, occupancyChangedReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

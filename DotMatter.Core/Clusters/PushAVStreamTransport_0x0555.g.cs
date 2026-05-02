@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -512,6 +513,338 @@ public class PushAVStreamTransportCluster : ClusterBase
         tlv.AddUInt16(1, value.VideoStreamID);
     }
 
+    // TLV struct deserializers
+
+    private static AudioStreamStruct ReadAudioStreamStruct(MatterTLV tlv)
+    {
+        var value = new AudioStreamStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.AudioStreamName = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    value.AudioStreamID = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static CMAFContainerOptionsStruct ReadCMAFContainerOptionsStruct(MatterTLV tlv)
+    {
+        var value = new CMAFContainerOptionsStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.CMAFInterface = (CMAFInterfaceEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.SegmentDuration = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.ChunkDuration = (ushort)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.SessionGroup = (byte)tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    value.TrackName = tlv.GetUTF8String(4);
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.CENCKey = tlv.GetOctetString(5); }
+                    break;
+                case 6:
+                    if (tlv.IsNextNull()) { tlv.GetNull(6); } else { value.CENCKeyID = tlv.GetOctetString(6); }
+                    break;
+                case 7:
+                    if (tlv.IsNextNull()) { tlv.GetNull(7); } else { value.MetadataEnabled = tlv.GetBoolean(7); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ContainerOptionsStruct ReadContainerOptionsStruct(MatterTLV tlv)
+    {
+        var value = new ContainerOptionsStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ContainerType = (ContainerFormatEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.CMAFContainerOptions = ReadCMAFContainerOptionsStruct(tlv); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static SupportedFormatStruct ReadSupportedFormatStruct(MatterTLV tlv)
+    {
+        var value = new SupportedFormatStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ContainerFormat = (ContainerFormatEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.IngestMethod = (IngestMethodsEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static TransportConfigurationStruct ReadTransportConfigurationStruct(MatterTLV tlv)
+    {
+        var value = new TransportConfigurationStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ConnectionID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.TransportStatus = (TransportStatusEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.TransportOptions = ReadTransportOptionsStruct(tlv); }
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static TransportMotionTriggerTimeControlStruct ReadTransportMotionTriggerTimeControlStruct(MatterTLV tlv)
+    {
+        var value = new TransportMotionTriggerTimeControlStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.InitialDuration = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.AugmentationDuration = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.MaxDuration = tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.BlindDuration = (ushort)tlv.GetUnsignedIntAny(3);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static TransportOptionsStruct ReadTransportOptionsStruct(MatterTLV tlv)
+    {
+        var value = new TransportOptionsStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.StreamUsage = (StreamUsageEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.VideoStreamID = (ushort)tlv.GetUnsignedIntAny(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.AudioStreamID = (ushort)tlv.GetUnsignedIntAny(2); }
+                    break;
+                case 3:
+                    value.TLSEndpointID = (ushort)tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    value.URL = tlv.GetUTF8String(4);
+                    break;
+                case 5:
+                    value.TriggerOptions = ReadTransportTriggerOptionsStruct(tlv);
+                    break;
+                case 6:
+                    value.IngestMethod = (IngestMethodsEnum)tlv.GetUnsignedIntAny(6);
+                    break;
+                case 7:
+                    value.ContainerOptions = ReadContainerOptionsStruct(tlv);
+                    break;
+                case 8:
+                    if (tlv.IsNextNull()) { tlv.GetNull(8); } else { value.ExpiryTime = tlv.GetUnsignedIntAny(8); }
+                    break;
+                case 9:
+                    if (tlv.IsNextNull()) { tlv.GetNull(9); value.VideoStreams = null; break; }
+                    var items9 = new List<VideoStreamStruct>();
+                    tlv.OpenArray(9);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items9.Add(ReadVideoStreamStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.VideoStreams = [.. items9];
+                    break;
+                case 10:
+                    if (tlv.IsNextNull()) { tlv.GetNull(10); value.AudioStreams = null; break; }
+                    var items10 = new List<AudioStreamStruct>();
+                    tlv.OpenArray(10);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items10.Add(ReadAudioStreamStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.AudioStreams = [.. items10];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static TransportTriggerOptionsStruct ReadTransportTriggerOptionsStruct(MatterTLV tlv)
+    {
+        var value = new TransportTriggerOptionsStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.TriggerType = (TransportTriggerTypeEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); value.MotionZones = null; break; }
+                    var items1 = new List<TransportZoneOptionsStruct>();
+                    tlv.OpenArray(1);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items1.Add(ReadTransportZoneOptionsStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.MotionZones = [.. items1];
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.MotionSensitivity = (byte)tlv.GetUnsignedIntAny(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.MotionTimeControl = ReadTransportMotionTriggerTimeControlStruct(tlv); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.MaxPreRollLen = (ushort)tlv.GetUnsignedIntAny(4); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static TransportZoneOptionsStruct ReadTransportZoneOptionsStruct(MatterTLV tlv)
+    {
+        var value = new TransportZoneOptionsStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.Zone = (ushort)tlv.GetUnsignedIntAny(0); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Sensitivity = (byte)tlv.GetUnsignedIntAny(1); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static VideoStreamStruct ReadVideoStreamStruct(MatterTLV tlv)
+    {
+        var value = new VideoStreamStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.VideoStreamName = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    value.VideoStreamID = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -545,6 +878,71 @@ public class PushAVStreamTransportCluster : ClusterBase
         public const uint PushTransportBegin = 0x0000;
         /// <summary>PushTransportEnd (0x0001).</summary>
         public const uint PushTransportEnd = 0x0001;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Push AV Stream Transport", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>PushTransportBegin event payload.</summary>
+    public sealed class PushTransportBeginEventData
+    {
+        /// <summary>Gets or sets ConnectionID.</summary>
+        public ushort ConnectionID { get; set; }
+        /// <summary>Gets or sets TriggerType.</summary>
+        public TransportTriggerTypeEnum TriggerType { get; set; } = default!;
+        /// <summary>Gets or sets ActivationReason.</summary>
+        public TriggerActivationReasonEnum? ActivationReason { get; set; }
+        /// <summary>Gets or sets ContainerType.</summary>
+        public ContainerFormatEnum ContainerType { get; set; } = default!;
+        /// <summary>Gets or sets CMAFSessionNumber.</summary>
+        public ulong? CMAFSessionNumber { get; set; }
+    }
+
+    /// <summary>PushTransportBegin event report.</summary>
+    public sealed class PushTransportBeginEvent(MatterEventReport report, PushTransportBeginEventData payload)
+        : ClusterEvent(report, "PushTransportBegin")
+    {
+        /// <summary>Gets the typed PushTransportBegin payload.</summary>
+        public PushTransportBeginEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>PushTransportEnd event payload.</summary>
+    public sealed class PushTransportEndEventData
+    {
+        /// <summary>Gets or sets ConnectionID.</summary>
+        public ushort ConnectionID { get; set; }
+        /// <summary>Gets or sets ContainerType.</summary>
+        public ContainerFormatEnum ContainerType { get; set; } = default!;
+        /// <summary>Gets or sets CMAFSessionNumber.</summary>
+        public ulong? CMAFSessionNumber { get; set; }
+    }
+
+    /// <summary>PushTransportEnd event report.</summary>
+    public sealed class PushTransportEndEvent(MatterEventReport report, PushTransportEndEventData payload)
+        : ClusterEvent(report, "PushTransportEnd")
+    {
+        /// <summary>Gets the typed PushTransportEnd payload.</summary>
+        public PushTransportEndEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Async command methods
@@ -613,4 +1011,415 @@ public class PushAVStreamTransportCluster : ClusterBase
     /// <summary>Read CurrentConnections attribute (0x0001).</summary>
     public Task<TransportConfigurationStruct[]?> ReadCurrentConnectionsAsync(CancellationToken ct = default)
         => ReadRefAttributeAsync<TransportConfigurationStruct[]>(0x0001, ct);
+
+    // Event payload parsers
+
+    private static PushTransportBeginEventData ReadPushTransportBeginEventData(MatterTLV tlv)
+    {
+        var value = new PushTransportBeginEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ConnectionID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.TriggerType = (TransportTriggerTypeEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.ActivationReason = (TriggerActivationReasonEnum)tlv.GetUnsignedIntAny(2); }
+                    break;
+                case 3:
+                    value.ContainerType = (ContainerFormatEnum)tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.CMAFSessionNumber = tlv.GetUnsignedInt(4); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadPushTransportBeginEventData(MatterEventReport report, out PushTransportBeginEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadPushTransportBeginEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "PushTransportBegin payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static PushTransportEndEventData ReadPushTransportEndEventData(MatterTLV tlv)
+    {
+        var value = new PushTransportEndEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ConnectionID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.ContainerType = (ContainerFormatEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.CMAFSessionNumber = tlv.GetUnsignedInt(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadPushTransportEndEventData(MatterEventReport report, out PushTransportEndEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadPushTransportEndEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "PushTransportEnd payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateAudioStreamStructJson(AudioStreamStruct value)
+    {
+        var json = new JsonObject();
+        if (value.AudioStreamName is { } audioStreamName)
+        {
+            json["audioStreamName"] = CreateJsonValue(audioStreamName);
+        }
+        json["audioStreamID"] = CreateJsonValue(value.AudioStreamID);
+        return json;
+    }
+
+    private static JsonObject CreateCMAFContainerOptionsStructJson(CMAFContainerOptionsStruct value)
+    {
+        var json = new JsonObject();
+        if (value.CMAFInterface is { } cMAFInterface)
+        {
+            json["cMAFInterface"] = CreateJsonValue(cMAFInterface.ToString());
+        }
+        json["segmentDuration"] = CreateJsonValue(value.SegmentDuration);
+        json["chunkDuration"] = CreateJsonValue(value.ChunkDuration);
+        json["sessionGroup"] = CreateJsonValue(value.SessionGroup);
+        if (value.TrackName is { } trackName)
+        {
+            json["trackName"] = CreateJsonValue(trackName);
+        }
+        if (value.CENCKey is { } cENCKey)
+        {
+            json["cENCKey"] = CreateJsonValue(cENCKey);
+        }
+        if (value.CENCKeyID is { } cENCKeyID)
+        {
+            json["cENCKeyID"] = CreateJsonValue(cENCKeyID);
+        }
+        if (value.MetadataEnabled is { } metadataEnabled)
+        {
+            json["metadataEnabled"] = CreateJsonValue(metadataEnabled);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateContainerOptionsStructJson(ContainerOptionsStruct value)
+    {
+        var json = new JsonObject();
+        if (value.ContainerType is { } containerType)
+        {
+            json["containerType"] = CreateJsonValue(containerType.ToString());
+        }
+        if (value.CMAFContainerOptions is { } cMAFContainerOptions)
+        {
+            json["cMAFContainerOptions"] = CreateCMAFContainerOptionsStructJson(cMAFContainerOptions);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateSupportedFormatStructJson(SupportedFormatStruct value)
+    {
+        var json = new JsonObject();
+        if (value.ContainerFormat is { } containerFormat)
+        {
+            json["containerFormat"] = CreateJsonValue(containerFormat.ToString());
+        }
+        if (value.IngestMethod is { } ingestMethod)
+        {
+            json["ingestMethod"] = CreateJsonValue(ingestMethod.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateTransportConfigurationStructJson(TransportConfigurationStruct value)
+    {
+        var json = new JsonObject();
+        json["connectionID"] = CreateJsonValue(value.ConnectionID);
+        if (value.TransportStatus is { } transportStatus)
+        {
+            json["transportStatus"] = CreateJsonValue(transportStatus.ToString());
+        }
+        if (value.TransportOptions is { } transportOptions)
+        {
+            json["transportOptions"] = CreateTransportOptionsStructJson(transportOptions);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateTransportMotionTriggerTimeControlStructJson(TransportMotionTriggerTimeControlStruct value)
+    {
+        var json = new JsonObject();
+        json["initialDuration"] = CreateJsonValue(value.InitialDuration);
+        json["augmentationDuration"] = CreateJsonValue(value.AugmentationDuration);
+        json["maxDuration"] = CreateJsonValue(value.MaxDuration);
+        json["blindDuration"] = CreateJsonValue(value.BlindDuration);
+        return json;
+    }
+
+    private static JsonObject CreateTransportOptionsStructJson(TransportOptionsStruct value)
+    {
+        var json = new JsonObject();
+        if (value.StreamUsage is { } streamUsage)
+        {
+            json["streamUsage"] = CreateJsonValue(streamUsage.ToString());
+        }
+        if (value.VideoStreamID is { } videoStreamID)
+        {
+            json["videoStreamID"] = CreateJsonValue(videoStreamID);
+        }
+        if (value.AudioStreamID is { } audioStreamID)
+        {
+            json["audioStreamID"] = CreateJsonValue(audioStreamID);
+        }
+        json["tLSEndpointID"] = CreateJsonValue(value.TLSEndpointID);
+        if (value.URL is { } uRL)
+        {
+            json["uRL"] = CreateJsonValue(uRL);
+        }
+        if (value.TriggerOptions is { } triggerOptions)
+        {
+            json["triggerOptions"] = CreateTransportTriggerOptionsStructJson(triggerOptions);
+        }
+        if (value.IngestMethod is { } ingestMethod)
+        {
+            json["ingestMethod"] = CreateJsonValue(ingestMethod.ToString());
+        }
+        if (value.ContainerOptions is { } containerOptions)
+        {
+            json["containerOptions"] = CreateContainerOptionsStructJson(containerOptions);
+        }
+        if (value.ExpiryTime is { } expiryTime)
+        {
+            json["expiryTime"] = CreateJsonValue(expiryTime);
+        }
+        if (value.VideoStreams is { } videoStreamsValues)
+        {
+            var videoStreamsItems = new JsonArray();
+            foreach (var item in videoStreamsValues)
+            {
+                videoStreamsItems.Add((JsonNode?)CreateVideoStreamStructJson(item));
+            }
+            json["videoStreams"] = videoStreamsItems;
+        }
+        if (value.AudioStreams is { } audioStreamsValues)
+        {
+            var audioStreamsItems = new JsonArray();
+            foreach (var item in audioStreamsValues)
+            {
+                audioStreamsItems.Add((JsonNode?)CreateAudioStreamStructJson(item));
+            }
+            json["audioStreams"] = audioStreamsItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateTransportTriggerOptionsStructJson(TransportTriggerOptionsStruct value)
+    {
+        var json = new JsonObject();
+        if (value.TriggerType is { } triggerType)
+        {
+            json["triggerType"] = CreateJsonValue(triggerType.ToString());
+        }
+        if (value.MotionZones is { } motionZonesValues)
+        {
+            var motionZonesItems = new JsonArray();
+            foreach (var item in motionZonesValues)
+            {
+                motionZonesItems.Add((JsonNode?)CreateTransportZoneOptionsStructJson(item));
+            }
+            json["motionZones"] = motionZonesItems;
+        }
+        if (value.MotionSensitivity is { } motionSensitivity)
+        {
+            json["motionSensitivity"] = CreateJsonValue(motionSensitivity);
+        }
+        if (value.MotionTimeControl is { } motionTimeControl)
+        {
+            json["motionTimeControl"] = CreateTransportMotionTriggerTimeControlStructJson(motionTimeControl);
+        }
+        if (value.MaxPreRollLen is { } maxPreRollLen)
+        {
+            json["maxPreRollLen"] = CreateJsonValue(maxPreRollLen);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateTransportZoneOptionsStructJson(TransportZoneOptionsStruct value)
+    {
+        var json = new JsonObject();
+        if (value.Zone is { } zone)
+        {
+            json["zone"] = CreateJsonValue(zone);
+        }
+        if (value.Sensitivity is { } sensitivity)
+        {
+            json["sensitivity"] = CreateJsonValue(sensitivity);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateVideoStreamStructJson(VideoStreamStruct value)
+    {
+        var json = new JsonObject();
+        if (value.VideoStreamName is { } videoStreamName)
+        {
+            json["videoStreamName"] = CreateJsonValue(videoStreamName);
+        }
+        json["videoStreamID"] = CreateJsonValue(value.VideoStreamID);
+        return json;
+    }
+
+    private static JsonObject CreatePushTransportBeginEventDataJson(PushTransportBeginEventData value)
+    {
+        var json = new JsonObject();
+        json["connectionID"] = CreateJsonValue(value.ConnectionID);
+        if (value.TriggerType is { } triggerType)
+        {
+            json["triggerType"] = CreateJsonValue(triggerType.ToString());
+        }
+        if (value.ActivationReason is { } activationReason)
+        {
+            json["activationReason"] = CreateJsonValue(activationReason.ToString());
+        }
+        if (value.ContainerType is { } containerType)
+        {
+            json["containerType"] = CreateJsonValue(containerType.ToString());
+        }
+        if (value.CMAFSessionNumber is { } cMAFSessionNumber)
+        {
+            json["cMAFSessionNumber"] = CreateJsonValue(cMAFSessionNumber);
+        }
+        return json;
+    }
+
+    private static JsonObject CreatePushTransportEndEventDataJson(PushTransportEndEventData value)
+    {
+        var json = new JsonObject();
+        json["connectionID"] = CreateJsonValue(value.ConnectionID);
+        if (value.ContainerType is { } containerType)
+        {
+            json["containerType"] = CreateJsonValue(containerType.ToString());
+        }
+        if (value.CMAFSessionNumber is { } cMAFSessionNumber)
+        {
+            json["cMAFSessionNumber"] = CreateJsonValue(cMAFSessionNumber);
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            PushTransportBeginEvent typed => CreatePushTransportBeginEventDataJson(typed.Payload),
+            PushTransportEndEvent typed => CreatePushTransportEndEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.PushTransportBegin when TryReadPushTransportBeginEventData(report, out var pushTransportBeginEventData, out _) => new PushTransportBeginEvent(report, pushTransportBeginEventData!),
+            Events.PushTransportBegin when TryReadPushTransportBeginEventData(report, out _, out var pushTransportBeginReason) => new UnknownClusterEvent(report, pushTransportBeginReason),
+            Events.PushTransportEnd when TryReadPushTransportEndEventData(report, out var pushTransportEndEventData, out _) => new PushTransportEndEvent(report, pushTransportEndEventData!),
+            Events.PushTransportEnd when TryReadPushTransportEndEventData(report, out _, out var pushTransportEndReason) => new UnknownClusterEvent(report, pushTransportEndReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

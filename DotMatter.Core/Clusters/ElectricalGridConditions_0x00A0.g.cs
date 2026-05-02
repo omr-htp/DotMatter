@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -89,6 +90,44 @@ public class ElectricalGridConditionsCluster : ClusterBase
         tlv.AddUInt8(5, (byte)value.LocalCarbonLevel);
     }
 
+    // TLV struct deserializers
+
+    private static ElectricalGridConditionsStruct ReadElectricalGridConditionsStruct(MatterTLV tlv)
+    {
+        var value = new ElectricalGridConditionsStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.PeriodStart = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.PeriodEnd = tlv.GetUnsignedIntAny(1); }
+                    break;
+                case 2:
+                    value.GridCarbonIntensity = (short)tlv.GetSignedInt(2);
+                    break;
+                case 3:
+                    value.GridCarbonLevel = (ThreeLevelEnum)tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    value.LocalCarbonIntensity = (short)tlv.GetSignedInt(4);
+                    break;
+                case 5:
+                    value.LocalCarbonLevel = (ThreeLevelEnum)tlv.GetUnsignedIntAny(5);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -105,6 +144,41 @@ public class ElectricalGridConditionsCluster : ClusterBase
     {
         /// <summary>CurrentConditionsChanged (0x0000).</summary>
         public const uint CurrentConditionsChanged = 0x0000;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Electrical Grid Conditions", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>CurrentConditionsChanged event payload.</summary>
+    public sealed class CurrentConditionsChangedEventData
+    {
+        /// <summary>Gets or sets CurrentConditions.</summary>
+        public ElectricalGridConditionsStruct CurrentConditions { get; set; } = default!;
+    }
+
+    /// <summary>CurrentConditionsChanged event report.</summary>
+    public sealed class CurrentConditionsChangedEvent(MatterEventReport report, CurrentConditionsChangedEventData payload)
+        : ClusterEvent(report, "CurrentConditionsChanged")
+    {
+        /// <summary>Gets the typed CurrentConditionsChanged payload.</summary>
+        public CurrentConditionsChangedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Attribute readers
@@ -133,4 +207,138 @@ public class ElectricalGridConditionsCluster : ClusterBase
         {
             if (localGenerationAvailable != null) { tlv.AddBool(2, localGenerationAvailable.Value); } else { tlv.AddNull(2); }
         }, timedRequest, timedTimeoutMs, ct);
+
+    // Event payload parsers
+
+    private static CurrentConditionsChangedEventData ReadCurrentConditionsChangedEventData(MatterTLV tlv)
+    {
+        var value = new CurrentConditionsChangedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.CurrentConditions = ReadElectricalGridConditionsStruct(tlv); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadCurrentConditionsChangedEventData(MatterEventReport report, out CurrentConditionsChangedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadCurrentConditionsChangedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "CurrentConditionsChanged payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateElectricalGridConditionsStructJson(ElectricalGridConditionsStruct value)
+    {
+        var json = new JsonObject();
+        json["periodStart"] = CreateJsonValue(value.PeriodStart);
+        if (value.PeriodEnd is { } periodEnd)
+        {
+            json["periodEnd"] = CreateJsonValue(periodEnd);
+        }
+        json["gridCarbonIntensity"] = CreateJsonValue(value.GridCarbonIntensity);
+        if (value.GridCarbonLevel is { } gridCarbonLevel)
+        {
+            json["gridCarbonLevel"] = CreateJsonValue(gridCarbonLevel.ToString());
+        }
+        json["localCarbonIntensity"] = CreateJsonValue(value.LocalCarbonIntensity);
+        if (value.LocalCarbonLevel is { } localCarbonLevel)
+        {
+            json["localCarbonLevel"] = CreateJsonValue(localCarbonLevel.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateCurrentConditionsChangedEventDataJson(CurrentConditionsChangedEventData value)
+    {
+        var json = new JsonObject();
+        if (value.CurrentConditions is { } currentConditions)
+        {
+            json["currentConditions"] = CreateElectricalGridConditionsStructJson(currentConditions);
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            CurrentConditionsChangedEvent typed => CreateCurrentConditionsChangedEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.CurrentConditionsChanged when TryReadCurrentConditionsChangedEventData(report, out var currentConditionsChangedEventData, out _) => new CurrentConditionsChangedEvent(report, currentConditionsChangedEventData!),
+            Events.CurrentConditionsChanged when TryReadCurrentConditionsChangedEventData(report, out _, out var currentConditionsChangedReason) => new UnknownClusterEvent(report, currentConditionsChangedReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -726,6 +727,32 @@ public class DoorLockCluster : ClusterBase
         tlv.AddUInt16(1, value.CredentialIndex);
     }
 
+    // TLV struct deserializers
+
+    private static CredentialStruct ReadCredentialStruct(MatterTLV tlv)
+    {
+        var value = new CredentialStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.CredentialType = (CredentialTypeEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.CredentialIndex = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -881,6 +908,147 @@ public class DoorLockCluster : ClusterBase
         public const uint LockOperationError = 0x0003;
         /// <summary>LockUserChange (0x0004).</summary>
         public const uint LockUserChange = 0x0004;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Door Lock", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>DoorLockAlarm event payload.</summary>
+    public sealed class DoorLockAlarmEventData
+    {
+        /// <summary>Gets or sets AlarmCode.</summary>
+        public AlarmCodeEnum AlarmCode { get; set; } = default!;
+    }
+
+    /// <summary>DoorLockAlarm event report.</summary>
+    public sealed class DoorLockAlarmEvent(MatterEventReport report, DoorLockAlarmEventData payload)
+        : ClusterEvent(report, "DoorLockAlarm")
+    {
+        /// <summary>Gets the typed DoorLockAlarm payload.</summary>
+        public DoorLockAlarmEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>DoorStateChange event payload.</summary>
+    public sealed class DoorStateChangeEventData
+    {
+        /// <summary>Gets or sets DoorState.</summary>
+        public DoorStateEnum DoorState { get; set; } = default!;
+    }
+
+    /// <summary>DoorStateChange event report.</summary>
+    public sealed class DoorStateChangeEvent(MatterEventReport report, DoorStateChangeEventData payload)
+        : ClusterEvent(report, "DoorStateChange")
+    {
+        /// <summary>Gets the typed DoorStateChange payload.</summary>
+        public DoorStateChangeEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>LockOperation event payload.</summary>
+    public sealed class LockOperationEventData
+    {
+        /// <summary>Gets or sets LockOperationType.</summary>
+        public LockOperationTypeEnum LockOperationType { get; set; } = default!;
+        /// <summary>Gets or sets OperationSource.</summary>
+        public OperationSourceEnum OperationSource { get; set; } = default!;
+        /// <summary>Gets or sets UserIndex.</summary>
+        public ushort? UserIndex { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte? FabricIndex { get; set; }
+        /// <summary>Gets or sets SourceNode.</summary>
+        public ulong? SourceNode { get; set; }
+        /// <summary>Gets or sets Credentials.</summary>
+        public CredentialStruct[]? Credentials { get; set; }
+    }
+
+    /// <summary>LockOperation event report.</summary>
+    public sealed class LockOperationEvent(MatterEventReport report, LockOperationEventData payload)
+        : ClusterEvent(report, "LockOperation")
+    {
+        /// <summary>Gets the typed LockOperation payload.</summary>
+        public LockOperationEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>LockOperationError event payload.</summary>
+    public sealed class LockOperationErrorEventData
+    {
+        /// <summary>Gets or sets LockOperationType.</summary>
+        public LockOperationTypeEnum LockOperationType { get; set; } = default!;
+        /// <summary>Gets or sets OperationSource.</summary>
+        public OperationSourceEnum OperationSource { get; set; } = default!;
+        /// <summary>Gets or sets OperationError.</summary>
+        public OperationErrorEnum OperationError { get; set; } = default!;
+        /// <summary>Gets or sets UserIndex.</summary>
+        public ushort? UserIndex { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte? FabricIndex { get; set; }
+        /// <summary>Gets or sets SourceNode.</summary>
+        public ulong? SourceNode { get; set; }
+        /// <summary>Gets or sets Credentials.</summary>
+        public CredentialStruct[]? Credentials { get; set; }
+    }
+
+    /// <summary>LockOperationError event report.</summary>
+    public sealed class LockOperationErrorEvent(MatterEventReport report, LockOperationErrorEventData payload)
+        : ClusterEvent(report, "LockOperationError")
+    {
+        /// <summary>Gets the typed LockOperationError payload.</summary>
+        public LockOperationErrorEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>LockUserChange event payload.</summary>
+    public sealed class LockUserChangeEventData
+    {
+        /// <summary>Gets or sets LockDataType.</summary>
+        public LockDataTypeEnum LockDataType { get; set; } = default!;
+        /// <summary>Gets or sets DataOperationType.</summary>
+        public DataOperationTypeEnum DataOperationType { get; set; } = default!;
+        /// <summary>Gets or sets OperationSource.</summary>
+        public OperationSourceEnum OperationSource { get; set; } = default!;
+        /// <summary>Gets or sets UserIndex.</summary>
+        public ushort? UserIndex { get; set; }
+        /// <summary>Gets or sets FabricIndex.</summary>
+        public byte? FabricIndex { get; set; }
+        /// <summary>Gets or sets SourceNode.</summary>
+        public ulong? SourceNode { get; set; }
+        /// <summary>Gets or sets DataIndex.</summary>
+        public ushort? DataIndex { get; set; }
+    }
+
+    /// <summary>LockUserChange event report.</summary>
+    public sealed class LockUserChangeEvent(MatterEventReport report, LockUserChangeEventData payload)
+        : ClusterEvent(report, "LockUserChange")
+    {
+        /// <summary>Gets the typed LockUserChange payload.</summary>
+        public LockUserChangeEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Async command methods
@@ -1488,4 +1656,497 @@ public class DoorLockCluster : ClusterBase
         {
             tlv.AddUInt16(2, expiringUserTimeout);
         }, timedRequest, timedTimeoutMs, ct);
+
+    // Event payload parsers
+
+    private static DoorLockAlarmEventData ReadDoorLockAlarmEventData(MatterTLV tlv)
+    {
+        var value = new DoorLockAlarmEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.AlarmCode = (AlarmCodeEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadDoorLockAlarmEventData(MatterEventReport report, out DoorLockAlarmEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadDoorLockAlarmEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "DoorLockAlarm payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static DoorStateChangeEventData ReadDoorStateChangeEventData(MatterTLV tlv)
+    {
+        var value = new DoorStateChangeEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.DoorState = (DoorStateEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadDoorStateChangeEventData(MatterEventReport report, out DoorStateChangeEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadDoorStateChangeEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "DoorStateChange payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static LockOperationEventData ReadLockOperationEventData(MatterTLV tlv)
+    {
+        var value = new LockOperationEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.LockOperationType = (LockOperationTypeEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.OperationSource = (OperationSourceEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.UserIndex = (ushort)tlv.GetUnsignedIntAny(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.FabricIndex = (byte)tlv.GetUnsignedIntAny(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.SourceNode = tlv.GetUnsignedInt(4); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); value.Credentials = null; break; }
+                    var items5 = new List<CredentialStruct>();
+                    tlv.OpenArray(5);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items5.Add(ReadCredentialStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.Credentials = [.. items5];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadLockOperationEventData(MatterEventReport report, out LockOperationEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadLockOperationEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "LockOperation payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static LockOperationErrorEventData ReadLockOperationErrorEventData(MatterTLV tlv)
+    {
+        var value = new LockOperationErrorEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.LockOperationType = (LockOperationTypeEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.OperationSource = (OperationSourceEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.OperationError = (OperationErrorEnum)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.UserIndex = (ushort)tlv.GetUnsignedIntAny(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.FabricIndex = (byte)tlv.GetUnsignedIntAny(4); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.SourceNode = tlv.GetUnsignedInt(5); }
+                    break;
+                case 6:
+                    if (tlv.IsNextNull()) { tlv.GetNull(6); value.Credentials = null; break; }
+                    var items6 = new List<CredentialStruct>();
+                    tlv.OpenArray(6);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items6.Add(ReadCredentialStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.Credentials = [.. items6];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadLockOperationErrorEventData(MatterEventReport report, out LockOperationErrorEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadLockOperationErrorEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "LockOperationError payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static LockUserChangeEventData ReadLockUserChangeEventData(MatterTLV tlv)
+    {
+        var value = new LockUserChangeEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.LockDataType = (LockDataTypeEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.DataOperationType = (DataOperationTypeEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.OperationSource = (OperationSourceEnum)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.UserIndex = (ushort)tlv.GetUnsignedIntAny(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.FabricIndex = (byte)tlv.GetUnsignedIntAny(4); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.SourceNode = tlv.GetUnsignedInt(5); }
+                    break;
+                case 6:
+                    if (tlv.IsNextNull()) { tlv.GetNull(6); } else { value.DataIndex = (ushort)tlv.GetUnsignedIntAny(6); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadLockUserChangeEventData(MatterEventReport report, out LockUserChangeEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadLockUserChangeEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "LockUserChange payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateCredentialStructJson(CredentialStruct value)
+    {
+        var json = new JsonObject();
+        if (value.CredentialType is { } credentialType)
+        {
+            json["credentialType"] = CreateJsonValue(credentialType.ToString());
+        }
+        json["credentialIndex"] = CreateJsonValue(value.CredentialIndex);
+        return json;
+    }
+
+    private static JsonObject CreateDoorLockAlarmEventDataJson(DoorLockAlarmEventData value)
+    {
+        var json = new JsonObject();
+        if (value.AlarmCode is { } alarmCode)
+        {
+            json["alarmCode"] = CreateJsonValue(alarmCode.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateDoorStateChangeEventDataJson(DoorStateChangeEventData value)
+    {
+        var json = new JsonObject();
+        if (value.DoorState is { } doorState)
+        {
+            json["doorState"] = CreateJsonValue(doorState.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateLockOperationEventDataJson(LockOperationEventData value)
+    {
+        var json = new JsonObject();
+        if (value.LockOperationType is { } lockOperationType)
+        {
+            json["lockOperationType"] = CreateJsonValue(lockOperationType.ToString());
+        }
+        if (value.OperationSource is { } operationSource)
+        {
+            json["operationSource"] = CreateJsonValue(operationSource.ToString());
+        }
+        if (value.UserIndex is { } userIndex)
+        {
+            json["userIndex"] = CreateJsonValue(userIndex);
+        }
+        if (value.FabricIndex is { } fabricIndex)
+        {
+            json["fabricIndex"] = CreateJsonValue(fabricIndex);
+        }
+        if (value.SourceNode is { } sourceNode)
+        {
+            json["sourceNode"] = CreateJsonValue(sourceNode);
+        }
+        if (value.Credentials is { } credentialsValues)
+        {
+            var credentialsItems = new JsonArray();
+            foreach (var item in credentialsValues)
+            {
+                credentialsItems.Add((JsonNode?)CreateCredentialStructJson(item));
+            }
+            json["credentials"] = credentialsItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateLockOperationErrorEventDataJson(LockOperationErrorEventData value)
+    {
+        var json = new JsonObject();
+        if (value.LockOperationType is { } lockOperationType)
+        {
+            json["lockOperationType"] = CreateJsonValue(lockOperationType.ToString());
+        }
+        if (value.OperationSource is { } operationSource)
+        {
+            json["operationSource"] = CreateJsonValue(operationSource.ToString());
+        }
+        if (value.OperationError is { } operationError)
+        {
+            json["operationError"] = CreateJsonValue(operationError.ToString());
+        }
+        if (value.UserIndex is { } userIndex)
+        {
+            json["userIndex"] = CreateJsonValue(userIndex);
+        }
+        if (value.FabricIndex is { } fabricIndex)
+        {
+            json["fabricIndex"] = CreateJsonValue(fabricIndex);
+        }
+        if (value.SourceNode is { } sourceNode)
+        {
+            json["sourceNode"] = CreateJsonValue(sourceNode);
+        }
+        if (value.Credentials is { } credentialsValues)
+        {
+            var credentialsItems = new JsonArray();
+            foreach (var item in credentialsValues)
+            {
+                credentialsItems.Add((JsonNode?)CreateCredentialStructJson(item));
+            }
+            json["credentials"] = credentialsItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateLockUserChangeEventDataJson(LockUserChangeEventData value)
+    {
+        var json = new JsonObject();
+        if (value.LockDataType is { } lockDataType)
+        {
+            json["lockDataType"] = CreateJsonValue(lockDataType.ToString());
+        }
+        if (value.DataOperationType is { } dataOperationType)
+        {
+            json["dataOperationType"] = CreateJsonValue(dataOperationType.ToString());
+        }
+        if (value.OperationSource is { } operationSource)
+        {
+            json["operationSource"] = CreateJsonValue(operationSource.ToString());
+        }
+        if (value.UserIndex is { } userIndex)
+        {
+            json["userIndex"] = CreateJsonValue(userIndex);
+        }
+        if (value.FabricIndex is { } fabricIndex)
+        {
+            json["fabricIndex"] = CreateJsonValue(fabricIndex);
+        }
+        if (value.SourceNode is { } sourceNode)
+        {
+            json["sourceNode"] = CreateJsonValue(sourceNode);
+        }
+        if (value.DataIndex is { } dataIndex)
+        {
+            json["dataIndex"] = CreateJsonValue(dataIndex);
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            DoorLockAlarmEvent typed => CreateDoorLockAlarmEventDataJson(typed.Payload),
+            DoorStateChangeEvent typed => CreateDoorStateChangeEventDataJson(typed.Payload),
+            LockOperationEvent typed => CreateLockOperationEventDataJson(typed.Payload),
+            LockOperationErrorEvent typed => CreateLockOperationErrorEventDataJson(typed.Payload),
+            LockUserChangeEvent typed => CreateLockUserChangeEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.DoorLockAlarm when TryReadDoorLockAlarmEventData(report, out var doorLockAlarmEventData, out _) => new DoorLockAlarmEvent(report, doorLockAlarmEventData!),
+            Events.DoorLockAlarm when TryReadDoorLockAlarmEventData(report, out _, out var doorLockAlarmReason) => new UnknownClusterEvent(report, doorLockAlarmReason),
+            Events.DoorStateChange when TryReadDoorStateChangeEventData(report, out var doorStateChangeEventData, out _) => new DoorStateChangeEvent(report, doorStateChangeEventData!),
+            Events.DoorStateChange when TryReadDoorStateChangeEventData(report, out _, out var doorStateChangeReason) => new UnknownClusterEvent(report, doorStateChangeReason),
+            Events.LockOperation when TryReadLockOperationEventData(report, out var lockOperationEventData, out _) => new LockOperationEvent(report, lockOperationEventData!),
+            Events.LockOperation when TryReadLockOperationEventData(report, out _, out var lockOperationReason) => new UnknownClusterEvent(report, lockOperationReason),
+            Events.LockOperationError when TryReadLockOperationErrorEventData(report, out var lockOperationErrorEventData, out _) => new LockOperationErrorEvent(report, lockOperationErrorEventData!),
+            Events.LockOperationError when TryReadLockOperationErrorEventData(report, out _, out var lockOperationErrorReason) => new UnknownClusterEvent(report, lockOperationErrorReason),
+            Events.LockUserChange when TryReadLockUserChangeEventData(report, out var lockUserChangeEventData, out _) => new LockUserChangeEvent(report, lockUserChangeEventData!),
+            Events.LockUserChange when TryReadLockUserChangeEventData(report, out _, out var lockUserChangeReason) => new UnknownClusterEvent(report, lockUserChangeReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

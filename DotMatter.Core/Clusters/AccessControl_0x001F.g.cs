@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -546,6 +547,111 @@ public class AccessControlCluster : ClusterBase
         public const uint AuxiliaryAccessUpdated = 0x0003;
     }
 
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Access Control", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>AccessControlEntryChanged event payload.</summary>
+    public sealed class AccessControlEntryChangedEventData
+    {
+        /// <summary>Gets or sets AdminNodeID.</summary>
+        public ulong? AdminNodeID { get; set; }
+        /// <summary>Gets or sets AdminPasscodeID.</summary>
+        public ushort? AdminPasscodeID { get; set; }
+        /// <summary>Gets or sets ChangeType.</summary>
+        public ChangeTypeEnum ChangeType { get; set; } = default!;
+        /// <summary>Gets or sets LatestValue.</summary>
+        public AccessControlEntryStruct LatestValue { get; set; } = default!;
+    }
+
+    /// <summary>AccessControlEntryChanged event report.</summary>
+    public sealed class AccessControlEntryChangedEvent(MatterEventReport report, AccessControlEntryChangedEventData payload)
+        : ClusterEvent(report, "AccessControlEntryChanged")
+    {
+        /// <summary>Gets the typed AccessControlEntryChanged payload.</summary>
+        public AccessControlEntryChangedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>AccessControlExtensionChanged event payload.</summary>
+    public sealed class AccessControlExtensionChangedEventData
+    {
+        /// <summary>Gets or sets AdminNodeID.</summary>
+        public ulong? AdminNodeID { get; set; }
+        /// <summary>Gets or sets AdminPasscodeID.</summary>
+        public ushort? AdminPasscodeID { get; set; }
+        /// <summary>Gets or sets ChangeType.</summary>
+        public ChangeTypeEnum ChangeType { get; set; } = default!;
+        /// <summary>Gets or sets LatestValue.</summary>
+        public AccessControlExtensionStruct LatestValue { get; set; } = default!;
+    }
+
+    /// <summary>AccessControlExtensionChanged event report.</summary>
+    public sealed class AccessControlExtensionChangedEvent(MatterEventReport report, AccessControlExtensionChangedEventData payload)
+        : ClusterEvent(report, "AccessControlExtensionChanged")
+    {
+        /// <summary>Gets the typed AccessControlExtensionChanged payload.</summary>
+        public AccessControlExtensionChangedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>FabricRestrictionReviewUpdate event payload.</summary>
+    public sealed class FabricRestrictionReviewUpdateEventData
+    {
+        /// <summary>Gets or sets Token.</summary>
+        public ulong Token { get; set; }
+        /// <summary>Gets or sets Instruction.</summary>
+        public string? Instruction { get; set; }
+        /// <summary>Gets or sets ARLRequestFlowUrl.</summary>
+        public string? ARLRequestFlowUrl { get; set; }
+    }
+
+    /// <summary>FabricRestrictionReviewUpdate event report.</summary>
+    public sealed class FabricRestrictionReviewUpdateEvent(MatterEventReport report, FabricRestrictionReviewUpdateEventData payload)
+        : ClusterEvent(report, "FabricRestrictionReviewUpdate")
+    {
+        /// <summary>Gets the typed FabricRestrictionReviewUpdate payload.</summary>
+        public FabricRestrictionReviewUpdateEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>AuxiliaryAccessUpdated event payload.</summary>
+    public sealed class AuxiliaryAccessUpdatedEventData
+    {
+        /// <summary>Gets or sets AdminNodeID.</summary>
+        public ulong? AdminNodeID { get; set; }
+    }
+
+    /// <summary>AuxiliaryAccessUpdated event report.</summary>
+    public sealed class AuxiliaryAccessUpdatedEvent(MatterEventReport report, AuxiliaryAccessUpdatedEventData payload)
+        : ClusterEvent(report, "AuxiliaryAccessUpdated")
+    {
+        /// <summary>Gets the typed AuxiliaryAccessUpdated payload.</summary>
+        public AuxiliaryAccessUpdatedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
     // Async command methods
 
     /// <summary>Send ReviewFabricRestrictions command (0x0000).</summary>
@@ -613,4 +719,450 @@ public class AccessControlCluster : ClusterBase
             ArgumentNullException.ThrowIfNull(extension);
             if (extension != null) { tlv.AddArray(2); foreach (var item in extension) { WriteAccessControlExtensionStruct(tlv, item); } tlv.EndContainer(); }
         }, timedRequest, timedTimeoutMs, ct);
+
+    // Event payload parsers
+
+    private static AccessControlEntryChangedEventData ReadAccessControlEntryChangedEventData(MatterTLV tlv)
+    {
+        var value = new AccessControlEntryChangedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.AdminNodeID = tlv.GetUnsignedInt(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.AdminPasscodeID = (ushort)tlv.GetUnsignedIntAny(2); }
+                    break;
+                case 3:
+                    value.ChangeType = (ChangeTypeEnum)tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.LatestValue = ReadAccessControlEntryStruct(tlv); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadAccessControlEntryChangedEventData(MatterEventReport report, out AccessControlEntryChangedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadAccessControlEntryChangedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "AccessControlEntryChanged payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static AccessControlExtensionChangedEventData ReadAccessControlExtensionChangedEventData(MatterTLV tlv)
+    {
+        var value = new AccessControlExtensionChangedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.AdminNodeID = tlv.GetUnsignedInt(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.AdminPasscodeID = (ushort)tlv.GetUnsignedIntAny(2); }
+                    break;
+                case 3:
+                    value.ChangeType = (ChangeTypeEnum)tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.LatestValue = ReadAccessControlExtensionStruct(tlv); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadAccessControlExtensionChangedEventData(MatterEventReport report, out AccessControlExtensionChangedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadAccessControlExtensionChangedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "AccessControlExtensionChanged payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static FabricRestrictionReviewUpdateEventData ReadFabricRestrictionReviewUpdateEventData(MatterTLV tlv)
+    {
+        var value = new FabricRestrictionReviewUpdateEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Token = tlv.GetUnsignedInt(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Instruction = tlv.GetUTF8String(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.ARLRequestFlowUrl = tlv.GetUTF8String(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadFabricRestrictionReviewUpdateEventData(MatterEventReport report, out FabricRestrictionReviewUpdateEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadFabricRestrictionReviewUpdateEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "FabricRestrictionReviewUpdate payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static AuxiliaryAccessUpdatedEventData ReadAuxiliaryAccessUpdatedEventData(MatterTLV tlv)
+    {
+        var value = new AuxiliaryAccessUpdatedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.AdminNodeID = tlv.GetUnsignedInt(0); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadAuxiliaryAccessUpdatedEventData(MatterEventReport report, out AuxiliaryAccessUpdatedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadAuxiliaryAccessUpdatedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "AuxiliaryAccessUpdated payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateAccessControlTargetStructJson(AccessControlTargetStruct value)
+    {
+        var json = new JsonObject();
+        if (value.Cluster is { } cluster)
+        {
+            json["cluster"] = CreateJsonValue(cluster);
+        }
+        if (value.Endpoint is { } endpoint)
+        {
+            json["endpoint"] = CreateJsonValue(endpoint);
+        }
+        if (value.DeviceType is { } deviceType)
+        {
+            json["deviceType"] = CreateJsonValue(deviceType);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateAccessControlEntryStructJson(AccessControlEntryStruct value)
+    {
+        var json = new JsonObject();
+        if (value.Privilege is { } privilege)
+        {
+            json["privilege"] = CreateJsonValue(privilege.ToString());
+        }
+        if (value.AuthMode is { } authMode)
+        {
+            json["authMode"] = CreateJsonValue(authMode.ToString());
+        }
+        if (value.Subjects is { } subjectsValues)
+        {
+            var subjectsItems = new JsonArray();
+            foreach (var item in subjectsValues)
+            {
+                subjectsItems.Add((JsonNode?)CreateJsonValue(item));
+            }
+            json["subjects"] = subjectsItems;
+        }
+        if (value.Targets is { } targetsValues)
+        {
+            var targetsItems = new JsonArray();
+            foreach (var item in targetsValues)
+            {
+                targetsItems.Add((JsonNode?)CreateAccessControlTargetStructJson(item));
+            }
+            json["targets"] = targetsItems;
+        }
+        if (value.AuxiliaryType is { } auxiliaryType)
+        {
+            json["auxiliaryType"] = CreateJsonValue(auxiliaryType.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateAccessControlExtensionStructJson(AccessControlExtensionStruct value)
+    {
+        var json = new JsonObject();
+        if (value.Data is { } data)
+        {
+            json["data"] = CreateJsonValue(data);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateAccessRestrictionEntryStructJson(AccessRestrictionEntryStruct value)
+    {
+        var json = new JsonObject();
+        json["endpoint"] = CreateJsonValue(value.Endpoint);
+        json["cluster"] = CreateJsonValue(value.Cluster);
+        if (value.Restrictions is { } restrictionsValues)
+        {
+            var restrictionsItems = new JsonArray();
+            foreach (var item in restrictionsValues)
+            {
+                restrictionsItems.Add((JsonNode?)CreateAccessRestrictionStructJson(item));
+            }
+            json["restrictions"] = restrictionsItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateAccessRestrictionStructJson(AccessRestrictionStruct value)
+    {
+        var json = new JsonObject();
+        if (value.Type is { } type)
+        {
+            json["type"] = CreateJsonValue(type.ToString());
+        }
+        if (value.ID is { } iD)
+        {
+            json["iD"] = CreateJsonValue(iD);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateCommissioningAccessRestrictionEntryStructJson(CommissioningAccessRestrictionEntryStruct value)
+    {
+        var json = new JsonObject();
+        json["endpoint"] = CreateJsonValue(value.Endpoint);
+        json["cluster"] = CreateJsonValue(value.Cluster);
+        if (value.Restrictions is { } restrictionsValues)
+        {
+            var restrictionsItems = new JsonArray();
+            foreach (var item in restrictionsValues)
+            {
+                restrictionsItems.Add((JsonNode?)CreateAccessRestrictionStructJson(item));
+            }
+            json["restrictions"] = restrictionsItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateAccessControlEntryChangedEventDataJson(AccessControlEntryChangedEventData value)
+    {
+        var json = new JsonObject();
+        if (value.AdminNodeID is { } adminNodeID)
+        {
+            json["adminNodeID"] = CreateJsonValue(adminNodeID);
+        }
+        if (value.AdminPasscodeID is { } adminPasscodeID)
+        {
+            json["adminPasscodeID"] = CreateJsonValue(adminPasscodeID);
+        }
+        if (value.ChangeType is { } changeType)
+        {
+            json["changeType"] = CreateJsonValue(changeType.ToString());
+        }
+        if (value.LatestValue is { } latestValue)
+        {
+            json["latestValue"] = CreateAccessControlEntryStructJson(latestValue);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateAccessControlExtensionChangedEventDataJson(AccessControlExtensionChangedEventData value)
+    {
+        var json = new JsonObject();
+        if (value.AdminNodeID is { } adminNodeID)
+        {
+            json["adminNodeID"] = CreateJsonValue(adminNodeID);
+        }
+        if (value.AdminPasscodeID is { } adminPasscodeID)
+        {
+            json["adminPasscodeID"] = CreateJsonValue(adminPasscodeID);
+        }
+        if (value.ChangeType is { } changeType)
+        {
+            json["changeType"] = CreateJsonValue(changeType.ToString());
+        }
+        if (value.LatestValue is { } latestValue)
+        {
+            json["latestValue"] = CreateAccessControlExtensionStructJson(latestValue);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateFabricRestrictionReviewUpdateEventDataJson(FabricRestrictionReviewUpdateEventData value)
+    {
+        var json = new JsonObject();
+        json["token"] = CreateJsonValue(value.Token);
+        if (value.Instruction is { } instruction)
+        {
+            json["instruction"] = CreateJsonValue(instruction);
+        }
+        if (value.ARLRequestFlowUrl is { } aRLRequestFlowUrl)
+        {
+            json["aRLRequestFlowUrl"] = CreateJsonValue(aRLRequestFlowUrl);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateAuxiliaryAccessUpdatedEventDataJson(AuxiliaryAccessUpdatedEventData value)
+    {
+        var json = new JsonObject();
+        if (value.AdminNodeID is { } adminNodeID)
+        {
+            json["adminNodeID"] = CreateJsonValue(adminNodeID);
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            AccessControlEntryChangedEvent typed => CreateAccessControlEntryChangedEventDataJson(typed.Payload),
+            AccessControlExtensionChangedEvent typed => CreateAccessControlExtensionChangedEventDataJson(typed.Payload),
+            FabricRestrictionReviewUpdateEvent typed => CreateFabricRestrictionReviewUpdateEventDataJson(typed.Payload),
+            AuxiliaryAccessUpdatedEvent typed => CreateAuxiliaryAccessUpdatedEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.AccessControlEntryChanged when TryReadAccessControlEntryChangedEventData(report, out var accessControlEntryChangedEventData, out _) => new AccessControlEntryChangedEvent(report, accessControlEntryChangedEventData!),
+            Events.AccessControlEntryChanged when TryReadAccessControlEntryChangedEventData(report, out _, out var accessControlEntryChangedReason) => new UnknownClusterEvent(report, accessControlEntryChangedReason),
+            Events.AccessControlExtensionChanged when TryReadAccessControlExtensionChangedEventData(report, out var accessControlExtensionChangedEventData, out _) => new AccessControlExtensionChangedEvent(report, accessControlExtensionChangedEventData!),
+            Events.AccessControlExtensionChanged when TryReadAccessControlExtensionChangedEventData(report, out _, out var accessControlExtensionChangedReason) => new UnknownClusterEvent(report, accessControlExtensionChangedReason),
+            Events.FabricRestrictionReviewUpdate when TryReadFabricRestrictionReviewUpdateEventData(report, out var fabricRestrictionReviewUpdateEventData, out _) => new FabricRestrictionReviewUpdateEvent(report, fabricRestrictionReviewUpdateEventData!),
+            Events.FabricRestrictionReviewUpdate when TryReadFabricRestrictionReviewUpdateEventData(report, out _, out var fabricRestrictionReviewUpdateReason) => new UnknownClusterEvent(report, fabricRestrictionReviewUpdateReason),
+            Events.AuxiliaryAccessUpdated when TryReadAuxiliaryAccessUpdatedEventData(report, out var auxiliaryAccessUpdatedEventData, out _) => new AuxiliaryAccessUpdatedEvent(report, auxiliaryAccessUpdatedEventData!),
+            Events.AuxiliaryAccessUpdated when TryReadAuxiliaryAccessUpdatedEventData(report, out _, out var auxiliaryAccessUpdatedReason) => new UnknownClusterEvent(report, auxiliaryAccessUpdatedReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

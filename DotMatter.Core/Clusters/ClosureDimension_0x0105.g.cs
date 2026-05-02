@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -282,6 +283,83 @@ public class ClosureDimensionCluster : ClusterBase
     {
         tlv.AddInt16(0, value.Min);
         tlv.AddInt16(1, value.Max);
+    }
+
+    // TLV struct deserializers
+
+    private static DimensionStateStruct ReadDimensionStateStruct(MatterTLV tlv)
+    {
+        var value = new DimensionStateStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.Position = (ushort)tlv.GetUnsignedIntAny(0); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Latch = tlv.GetBoolean(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Speed = (ThreeLevelAutoEnum)tlv.GetUnsignedIntAny(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static RangePercent100thsStruct ReadRangePercent100thsStruct(MatterTLV tlv)
+    {
+        var value = new RangePercent100thsStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Min = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Max = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static UnitRangeStruct ReadUnitRangeStruct(MatterTLV tlv)
+    {
+        var value = new UnitRangeStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Min = (short)tlv.GetSignedInt(0);
+                    break;
+                case 1:
+                    value.Max = (short)tlv.GetSignedInt(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

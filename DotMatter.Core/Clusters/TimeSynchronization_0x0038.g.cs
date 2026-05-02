@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -246,6 +247,113 @@ public class TimeSynchronizationCluster : ClusterBase
         if (value.ValidUntil != null) { tlv.AddUInt64(2, value.ValidUntil.Value); } else { tlv.AddNull(2); }
     }
 
+    // TLV struct deserializers
+
+    private static TrustedTimeSourceStruct ReadTrustedTimeSourceStruct(MatterTLV tlv)
+    {
+        var value = new TrustedTimeSourceStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.NodeID = tlv.GetUnsignedInt(1);
+                    break;
+                case 2:
+                    value.Endpoint = (ushort)tlv.GetUnsignedIntAny(2);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static FabricScopedTrustedTimeSourceStruct ReadFabricScopedTrustedTimeSourceStruct(MatterTLV tlv)
+    {
+        var value = new FabricScopedTrustedTimeSourceStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.NodeID = tlv.GetUnsignedInt(0);
+                    break;
+                case 1:
+                    value.Endpoint = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static TimeZoneStruct ReadTimeZoneStruct(MatterTLV tlv)
+    {
+        var value = new TimeZoneStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Offset = (int)tlv.GetSignedInt(0);
+                    break;
+                case 1:
+                    value.ValidAt = tlv.GetUnsignedInt(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Name = tlv.GetUTF8String(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static DSTOffsetStruct ReadDSTOffsetStruct(MatterTLV tlv)
+    {
+        var value = new DSTOffsetStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Offset = (int)tlv.GetSignedInt(0);
+                    break;
+                case 1:
+                    value.ValidStarting = tlv.GetUnsignedInt(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.ValidUntil = tlv.GetUnsignedInt(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -305,6 +413,109 @@ public class TimeSynchronizationCluster : ClusterBase
         public const uint TimeFailure = 0x0003;
         /// <summary>MissingTrustedTimeSource (0x0004).</summary>
         public const uint MissingTrustedTimeSource = 0x0004;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Time Synchronization", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>DSTTableEmpty event payload.</summary>
+    public sealed class DSTTableEmptyEventData
+    {
+    }
+
+    /// <summary>DSTTableEmpty event report.</summary>
+    public sealed class DSTTableEmptyEvent(MatterEventReport report, DSTTableEmptyEventData payload)
+        : ClusterEvent(report, "DSTTableEmpty")
+    {
+        /// <summary>Gets the typed DSTTableEmpty payload.</summary>
+        public DSTTableEmptyEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>DSTStatus event payload.</summary>
+    public sealed class DSTStatusEventData
+    {
+        /// <summary>Gets or sets DSTOffsetActive.</summary>
+        public bool DSTOffsetActive { get; set; }
+    }
+
+    /// <summary>DSTStatus event report.</summary>
+    public sealed class DSTStatusEvent(MatterEventReport report, DSTStatusEventData payload)
+        : ClusterEvent(report, "DSTStatus")
+    {
+        /// <summary>Gets the typed DSTStatus payload.</summary>
+        public DSTStatusEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>TimeZoneStatus event payload.</summary>
+    public sealed class TimeZoneStatusEventData
+    {
+        /// <summary>Gets or sets Offset.</summary>
+        public int Offset { get; set; }
+        /// <summary>Gets or sets Name.</summary>
+        public string? Name { get; set; }
+    }
+
+    /// <summary>TimeZoneStatus event report.</summary>
+    public sealed class TimeZoneStatusEvent(MatterEventReport report, TimeZoneStatusEventData payload)
+        : ClusterEvent(report, "TimeZoneStatus")
+    {
+        /// <summary>Gets the typed TimeZoneStatus payload.</summary>
+        public TimeZoneStatusEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>TimeFailure event payload.</summary>
+    public sealed class TimeFailureEventData
+    {
+    }
+
+    /// <summary>TimeFailure event report.</summary>
+    public sealed class TimeFailureEvent(MatterEventReport report, TimeFailureEventData payload)
+        : ClusterEvent(report, "TimeFailure")
+    {
+        /// <summary>Gets the typed TimeFailure payload.</summary>
+        public TimeFailureEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>MissingTrustedTimeSource event payload.</summary>
+    public sealed class MissingTrustedTimeSourceEventData
+    {
+    }
+
+    /// <summary>MissingTrustedTimeSource event report.</summary>
+    public sealed class MissingTrustedTimeSourceEvent(MatterEventReport report, MissingTrustedTimeSourceEventData payload)
+        : ClusterEvent(report, "MissingTrustedTimeSource")
+    {
+        /// <summary>Gets the typed MissingTrustedTimeSource payload.</summary>
+        public MissingTrustedTimeSourceEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Async command methods
@@ -399,4 +610,362 @@ public class TimeSynchronizationCluster : ClusterBase
     /// <summary>Read SupportsDNSResolve attribute (0x000C).</summary>
     public Task<bool> ReadSupportsDNSResolveAsync(CancellationToken ct = default)
         => ReadAttributeAsync<bool>(0x000C, ct);
+
+    // Event payload parsers
+
+    private static DSTTableEmptyEventData ReadDSTTableEmptyEventData(MatterTLV tlv)
+    {
+        var value = new DSTTableEmptyEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadDSTTableEmptyEventData(MatterEventReport report, out DSTTableEmptyEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadDSTTableEmptyEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "DSTTableEmpty payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static DSTStatusEventData ReadDSTStatusEventData(MatterTLV tlv)
+    {
+        var value = new DSTStatusEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.DSTOffsetActive = tlv.GetBoolean(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadDSTStatusEventData(MatterEventReport report, out DSTStatusEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadDSTStatusEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "DSTStatus payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static TimeZoneStatusEventData ReadTimeZoneStatusEventData(MatterTLV tlv)
+    {
+        var value = new TimeZoneStatusEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Offset = (int)tlv.GetSignedInt(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Name = tlv.GetUTF8String(1); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadTimeZoneStatusEventData(MatterEventReport report, out TimeZoneStatusEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadTimeZoneStatusEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "TimeZoneStatus payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static TimeFailureEventData ReadTimeFailureEventData(MatterTLV tlv)
+    {
+        var value = new TimeFailureEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadTimeFailureEventData(MatterEventReport report, out TimeFailureEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadTimeFailureEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "TimeFailure payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static MissingTrustedTimeSourceEventData ReadMissingTrustedTimeSourceEventData(MatterTLV tlv)
+    {
+        var value = new MissingTrustedTimeSourceEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadMissingTrustedTimeSourceEventData(MatterEventReport report, out MissingTrustedTimeSourceEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadMissingTrustedTimeSourceEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "MissingTrustedTimeSource payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateTrustedTimeSourceStructJson(TrustedTimeSourceStruct value)
+    {
+        var json = new JsonObject();
+        json["fabricIndex"] = CreateJsonValue(value.FabricIndex);
+        json["nodeID"] = CreateJsonValue(value.NodeID);
+        json["endpoint"] = CreateJsonValue(value.Endpoint);
+        return json;
+    }
+
+    private static JsonObject CreateFabricScopedTrustedTimeSourceStructJson(FabricScopedTrustedTimeSourceStruct value)
+    {
+        var json = new JsonObject();
+        json["nodeID"] = CreateJsonValue(value.NodeID);
+        json["endpoint"] = CreateJsonValue(value.Endpoint);
+        return json;
+    }
+
+    private static JsonObject CreateTimeZoneStructJson(TimeZoneStruct value)
+    {
+        var json = new JsonObject();
+        json["offset"] = CreateJsonValue(value.Offset);
+        json["validAt"] = CreateJsonValue(value.ValidAt);
+        if (value.Name is { } name)
+        {
+            json["name"] = CreateJsonValue(name);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateDSTOffsetStructJson(DSTOffsetStruct value)
+    {
+        var json = new JsonObject();
+        json["offset"] = CreateJsonValue(value.Offset);
+        json["validStarting"] = CreateJsonValue(value.ValidStarting);
+        if (value.ValidUntil is { } validUntil)
+        {
+            json["validUntil"] = CreateJsonValue(validUntil);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateDSTTableEmptyEventDataJson(DSTTableEmptyEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateDSTStatusEventDataJson(DSTStatusEventData value)
+    {
+        var json = new JsonObject();
+        json["dSTOffsetActive"] = CreateJsonValue(value.DSTOffsetActive);
+        return json;
+    }
+
+    private static JsonObject CreateTimeZoneStatusEventDataJson(TimeZoneStatusEventData value)
+    {
+        var json = new JsonObject();
+        json["offset"] = CreateJsonValue(value.Offset);
+        if (value.Name is { } name)
+        {
+            json["name"] = CreateJsonValue(name);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateTimeFailureEventDataJson(TimeFailureEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateMissingTrustedTimeSourceEventDataJson(MissingTrustedTimeSourceEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            DSTTableEmptyEvent typed => CreateDSTTableEmptyEventDataJson(typed.Payload),
+            DSTStatusEvent typed => CreateDSTStatusEventDataJson(typed.Payload),
+            TimeZoneStatusEvent typed => CreateTimeZoneStatusEventDataJson(typed.Payload),
+            TimeFailureEvent typed => CreateTimeFailureEventDataJson(typed.Payload),
+            MissingTrustedTimeSourceEvent typed => CreateMissingTrustedTimeSourceEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.DSTTableEmpty when TryReadDSTTableEmptyEventData(report, out var dSTTableEmptyEventData, out _) => new DSTTableEmptyEvent(report, dSTTableEmptyEventData!),
+            Events.DSTTableEmpty when TryReadDSTTableEmptyEventData(report, out _, out var dSTTableEmptyReason) => new UnknownClusterEvent(report, dSTTableEmptyReason),
+            Events.DSTStatus when TryReadDSTStatusEventData(report, out var dSTStatusEventData, out _) => new DSTStatusEvent(report, dSTStatusEventData!),
+            Events.DSTStatus when TryReadDSTStatusEventData(report, out _, out var dSTStatusReason) => new UnknownClusterEvent(report, dSTStatusReason),
+            Events.TimeZoneStatus when TryReadTimeZoneStatusEventData(report, out var timeZoneStatusEventData, out _) => new TimeZoneStatusEvent(report, timeZoneStatusEventData!),
+            Events.TimeZoneStatus when TryReadTimeZoneStatusEventData(report, out _, out var timeZoneStatusReason) => new UnknownClusterEvent(report, timeZoneStatusReason),
+            Events.TimeFailure when TryReadTimeFailureEventData(report, out var timeFailureEventData, out _) => new TimeFailureEvent(report, timeFailureEventData!),
+            Events.TimeFailure when TryReadTimeFailureEventData(report, out _, out var timeFailureReason) => new UnknownClusterEvent(report, timeFailureReason),
+            Events.MissingTrustedTimeSource when TryReadMissingTrustedTimeSourceEventData(report, out var missingTrustedTimeSourceEventData, out _) => new MissingTrustedTimeSourceEvent(report, missingTrustedTimeSourceEventData!),
+            Events.MissingTrustedTimeSource when TryReadMissingTrustedTimeSourceEventData(report, out _, out var missingTrustedTimeSourceReason) => new UnknownClusterEvent(report, missingTrustedTimeSourceReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -177,6 +178,64 @@ public class GeneralDiagnosticsCluster : ClusterBase
         tlv.AddUInt8(7, (byte)value.Type);
     }
 
+    // TLV struct deserializers
+
+    private static NetworkInterface ReadNetworkInterface(MatterTLV tlv)
+    {
+        var value = new NetworkInterface();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Name = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    value.IsOperational = tlv.GetBoolean(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.OffPremiseServicesReachableIPv4 = tlv.GetBoolean(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.OffPremiseServicesReachableIPv6 = tlv.GetBoolean(3); }
+                    break;
+                case 4:
+                    value.HardwareAddress = tlv.GetOctetString(4);
+                    break;
+                case 5:
+                    var items5 = new List<byte[]>();
+                    tlv.OpenArray(5);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items5.Add((byte[])tlv.GetData(null)!);
+                    }
+                    tlv.CloseContainer();
+                    value.IPv4Addresses = [.. items5];
+                    break;
+                case 6:
+                    var items6 = new List<byte[]>();
+                    tlv.OpenArray(6);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items6.Add((byte[])tlv.GetData(null)!);
+                    }
+                    tlv.CloseContainer();
+                    value.IPv6Addresses = [.. items6];
+                    break;
+                case 7:
+                    value.Type = (InterfaceTypeEnum)tlv.GetUnsignedIntAny(7);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -222,6 +281,101 @@ public class GeneralDiagnosticsCluster : ClusterBase
         public const uint NetworkFaultChange = 0x0002;
         /// <summary>BootReason (0x0003).</summary>
         public const uint BootReason = 0x0003;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "General Diagnostics", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>HardwareFaultChange event payload.</summary>
+    public sealed class HardwareFaultChangeEventData
+    {
+        /// <summary>Gets or sets Current.</summary>
+        public HardwareFaultEnum[] Current { get; set; } = default!;
+        /// <summary>Gets or sets Previous.</summary>
+        public HardwareFaultEnum[] Previous { get; set; } = default!;
+    }
+
+    /// <summary>HardwareFaultChange event report.</summary>
+    public sealed class HardwareFaultChangeEvent(MatterEventReport report, HardwareFaultChangeEventData payload)
+        : ClusterEvent(report, "HardwareFaultChange")
+    {
+        /// <summary>Gets the typed HardwareFaultChange payload.</summary>
+        public HardwareFaultChangeEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>RadioFaultChange event payload.</summary>
+    public sealed class RadioFaultChangeEventData
+    {
+        /// <summary>Gets or sets Current.</summary>
+        public RadioFaultEnum[] Current { get; set; } = default!;
+        /// <summary>Gets or sets Previous.</summary>
+        public RadioFaultEnum[] Previous { get; set; } = default!;
+    }
+
+    /// <summary>RadioFaultChange event report.</summary>
+    public sealed class RadioFaultChangeEvent(MatterEventReport report, RadioFaultChangeEventData payload)
+        : ClusterEvent(report, "RadioFaultChange")
+    {
+        /// <summary>Gets the typed RadioFaultChange payload.</summary>
+        public RadioFaultChangeEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>NetworkFaultChange event payload.</summary>
+    public sealed class NetworkFaultChangeEventData
+    {
+        /// <summary>Gets or sets Current.</summary>
+        public NetworkFaultEnum[] Current { get; set; } = default!;
+        /// <summary>Gets or sets Previous.</summary>
+        public NetworkFaultEnum[] Previous { get; set; } = default!;
+    }
+
+    /// <summary>NetworkFaultChange event report.</summary>
+    public sealed class NetworkFaultChangeEvent(MatterEventReport report, NetworkFaultChangeEventData payload)
+        : ClusterEvent(report, "NetworkFaultChange")
+    {
+        /// <summary>Gets the typed NetworkFaultChange payload.</summary>
+        public NetworkFaultChangeEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>BootReason event payload.</summary>
+    public sealed class BootReasonEventData
+    {
+        /// <summary>Gets or sets BootReason.</summary>
+        public BootReasonEnum BootReason { get; set; } = default!;
+    }
+
+    /// <summary>BootReason event report.</summary>
+    public sealed class BootReasonEvent(MatterEventReport report, BootReasonEventData payload)
+        : ClusterEvent(report, "BootReason")
+    {
+        /// <summary>Gets the typed BootReason payload.</summary>
+        public BootReasonEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Async command methods
@@ -291,4 +445,423 @@ public class GeneralDiagnosticsCluster : ClusterBase
     /// <summary>Read TestEventTriggersEnabled attribute (0x0008).</summary>
     public Task<bool> ReadTestEventTriggersEnabledAsync(CancellationToken ct = default)
         => ReadAttributeAsync<bool>(0x0008, ct);
+
+    // Event payload parsers
+
+    private static HardwareFaultChangeEventData ReadHardwareFaultChangeEventData(MatterTLV tlv)
+    {
+        var value = new HardwareFaultChangeEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    var items0 = new List<HardwareFaultEnum>();
+                    tlv.OpenArray(0);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items0.Add((HardwareFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Current = [.. items0];
+                    break;
+                case 1:
+                    var items1 = new List<HardwareFaultEnum>();
+                    tlv.OpenArray(1);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items1.Add((HardwareFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Previous = [.. items1];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadHardwareFaultChangeEventData(MatterEventReport report, out HardwareFaultChangeEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadHardwareFaultChangeEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "HardwareFaultChange payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static RadioFaultChangeEventData ReadRadioFaultChangeEventData(MatterTLV tlv)
+    {
+        var value = new RadioFaultChangeEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    var items0 = new List<RadioFaultEnum>();
+                    tlv.OpenArray(0);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items0.Add((RadioFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Current = [.. items0];
+                    break;
+                case 1:
+                    var items1 = new List<RadioFaultEnum>();
+                    tlv.OpenArray(1);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items1.Add((RadioFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Previous = [.. items1];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadRadioFaultChangeEventData(MatterEventReport report, out RadioFaultChangeEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadRadioFaultChangeEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "RadioFaultChange payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static NetworkFaultChangeEventData ReadNetworkFaultChangeEventData(MatterTLV tlv)
+    {
+        var value = new NetworkFaultChangeEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    var items0 = new List<NetworkFaultEnum>();
+                    tlv.OpenArray(0);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items0.Add((NetworkFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Current = [.. items0];
+                    break;
+                case 1:
+                    var items1 = new List<NetworkFaultEnum>();
+                    tlv.OpenArray(1);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items1.Add((NetworkFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Previous = [.. items1];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadNetworkFaultChangeEventData(MatterEventReport report, out NetworkFaultChangeEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadNetworkFaultChangeEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "NetworkFaultChange payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static BootReasonEventData ReadBootReasonEventData(MatterTLV tlv)
+    {
+        var value = new BootReasonEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.BootReason = (BootReasonEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadBootReasonEventData(MatterEventReport report, out BootReasonEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadBootReasonEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "BootReason payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateNetworkInterfaceJson(NetworkInterface value)
+    {
+        var json = new JsonObject();
+        if (value.Name is { } name)
+        {
+            json["name"] = CreateJsonValue(name);
+        }
+        json["isOperational"] = CreateJsonValue(value.IsOperational);
+        if (value.OffPremiseServicesReachableIPv4 is { } offPremiseServicesReachableIPv4)
+        {
+            json["offPremiseServicesReachableIPv4"] = CreateJsonValue(offPremiseServicesReachableIPv4);
+        }
+        if (value.OffPremiseServicesReachableIPv6 is { } offPremiseServicesReachableIPv6)
+        {
+            json["offPremiseServicesReachableIPv6"] = CreateJsonValue(offPremiseServicesReachableIPv6);
+        }
+        if (value.HardwareAddress is { } hardwareAddress)
+        {
+            json["hardwareAddress"] = CreateJsonValue(hardwareAddress);
+        }
+        if (value.IPv4Addresses is { } iPv4AddressesValues)
+        {
+            var iPv4AddressesItems = new JsonArray();
+            foreach (var item in iPv4AddressesValues)
+            {
+                iPv4AddressesItems.Add((JsonNode?)CreateJsonValue(item));
+            }
+            json["iPv4Addresses"] = iPv4AddressesItems;
+        }
+        if (value.IPv6Addresses is { } iPv6AddressesValues)
+        {
+            var iPv6AddressesItems = new JsonArray();
+            foreach (var item in iPv6AddressesValues)
+            {
+                iPv6AddressesItems.Add((JsonNode?)CreateJsonValue(item));
+            }
+            json["iPv6Addresses"] = iPv6AddressesItems;
+        }
+        if (value.Type is { } type)
+        {
+            json["type"] = CreateJsonValue(type.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateHardwareFaultChangeEventDataJson(HardwareFaultChangeEventData value)
+    {
+        var json = new JsonObject();
+        if (value.Current is { } currentValues)
+        {
+            var currentItems = new JsonArray();
+            foreach (var item in currentValues)
+            {
+                currentItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["current"] = currentItems;
+        }
+        if (value.Previous is { } previousValues)
+        {
+            var previousItems = new JsonArray();
+            foreach (var item in previousValues)
+            {
+                previousItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["previous"] = previousItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateRadioFaultChangeEventDataJson(RadioFaultChangeEventData value)
+    {
+        var json = new JsonObject();
+        if (value.Current is { } currentValues)
+        {
+            var currentItems = new JsonArray();
+            foreach (var item in currentValues)
+            {
+                currentItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["current"] = currentItems;
+        }
+        if (value.Previous is { } previousValues)
+        {
+            var previousItems = new JsonArray();
+            foreach (var item in previousValues)
+            {
+                previousItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["previous"] = previousItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateNetworkFaultChangeEventDataJson(NetworkFaultChangeEventData value)
+    {
+        var json = new JsonObject();
+        if (value.Current is { } currentValues)
+        {
+            var currentItems = new JsonArray();
+            foreach (var item in currentValues)
+            {
+                currentItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["current"] = currentItems;
+        }
+        if (value.Previous is { } previousValues)
+        {
+            var previousItems = new JsonArray();
+            foreach (var item in previousValues)
+            {
+                previousItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["previous"] = previousItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateBootReasonEventDataJson(BootReasonEventData value)
+    {
+        var json = new JsonObject();
+        if (value.BootReason is { } bootReason)
+        {
+            json["bootReason"] = CreateJsonValue(bootReason.ToString());
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            HardwareFaultChangeEvent typed => CreateHardwareFaultChangeEventDataJson(typed.Payload),
+            RadioFaultChangeEvent typed => CreateRadioFaultChangeEventDataJson(typed.Payload),
+            NetworkFaultChangeEvent typed => CreateNetworkFaultChangeEventDataJson(typed.Payload),
+            BootReasonEvent typed => CreateBootReasonEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.HardwareFaultChange when TryReadHardwareFaultChangeEventData(report, out var hardwareFaultChangeEventData, out _) => new HardwareFaultChangeEvent(report, hardwareFaultChangeEventData!),
+            Events.HardwareFaultChange when TryReadHardwareFaultChangeEventData(report, out _, out var hardwareFaultChangeReason) => new UnknownClusterEvent(report, hardwareFaultChangeReason),
+            Events.RadioFaultChange when TryReadRadioFaultChangeEventData(report, out var radioFaultChangeEventData, out _) => new RadioFaultChangeEvent(report, radioFaultChangeEventData!),
+            Events.RadioFaultChange when TryReadRadioFaultChangeEventData(report, out _, out var radioFaultChangeReason) => new UnknownClusterEvent(report, radioFaultChangeReason),
+            Events.NetworkFaultChange when TryReadNetworkFaultChangeEventData(report, out var networkFaultChangeEventData, out _) => new NetworkFaultChangeEvent(report, networkFaultChangeEventData!),
+            Events.NetworkFaultChange when TryReadNetworkFaultChangeEventData(report, out _, out var networkFaultChangeReason) => new UnknownClusterEvent(report, networkFaultChangeReason),
+            Events.BootReason when TryReadBootReasonEventData(report, out var bootReasonEventData, out _) => new BootReasonEvent(report, bootReasonEventData!),
+            Events.BootReason when TryReadBootReasonEventData(report, out _, out var bootReasonReason) => new UnknownClusterEvent(report, bootReasonReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -573,6 +574,426 @@ public class JointFabricDatastoreCluster : ClusterBase
         tlv.AddUInt8(0, (byte)value.State);
         tlv.AddUInt32(1, value.UpdateTimestamp);
         tlv.AddUInt8(2, value.FailureCode);
+    }
+
+    // TLV struct deserializers
+
+    private static DatastoreACLEntryStruct ReadDatastoreACLEntryStruct(MatterTLV tlv)
+    {
+        var value = new DatastoreACLEntryStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.NodeID = tlv.GetUnsignedInt(0);
+                    break;
+                case 1:
+                    value.ListID = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.ACLEntry = ReadDatastoreAccessControlEntryStruct(tlv);
+                    break;
+                case 3:
+                    value.StatusEntry = ReadDatastoreStatusEntryStruct(tlv);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static DatastoreAccessControlEntryStruct ReadDatastoreAccessControlEntryStruct(MatterTLV tlv)
+    {
+        var value = new DatastoreAccessControlEntryStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 1:
+                    value.Privilege = (DatastoreAccessControlEntryPrivilegeEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.AuthMode = (DatastoreAccessControlEntryAuthModeEnum)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); value.Subjects = null; break; }
+                    var items3 = new List<ulong>();
+                    tlv.OpenArray(3);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items3.Add(tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Subjects = [.. items3];
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); value.Targets = null; break; }
+                    var items4 = new List<DatastoreAccessControlTargetStruct>();
+                    tlv.OpenArray(4);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items4.Add(ReadDatastoreAccessControlTargetStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.Targets = [.. items4];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static DatastoreAccessControlTargetStruct ReadDatastoreAccessControlTargetStruct(MatterTLV tlv)
+    {
+        var value = new DatastoreAccessControlTargetStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.Cluster = tlv.GetUnsignedIntAny(0); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Endpoint = (ushort)tlv.GetUnsignedIntAny(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.DeviceType = tlv.GetUnsignedIntAny(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static DatastoreAdministratorInformationEntryStruct ReadDatastoreAdministratorInformationEntryStruct(MatterTLV tlv)
+    {
+        var value = new DatastoreAdministratorInformationEntryStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 1:
+                    value.NodeID = tlv.GetUnsignedInt(1);
+                    break;
+                case 2:
+                    value.FriendlyName = tlv.GetUTF8String(2);
+                    break;
+                case 3:
+                    value.VendorID = (ushort)tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    value.ICAC = tlv.GetOctetString(4);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static DatastoreBindingTargetStruct ReadDatastoreBindingTargetStruct(MatterTLV tlv)
+    {
+        var value = new DatastoreBindingTargetStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Node = tlv.GetUnsignedInt(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Group = (ushort)tlv.GetUnsignedIntAny(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.Endpoint = (ushort)tlv.GetUnsignedIntAny(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.Cluster = tlv.GetUnsignedIntAny(4); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static DatastoreEndpointBindingEntryStruct ReadDatastoreEndpointBindingEntryStruct(MatterTLV tlv)
+    {
+        var value = new DatastoreEndpointBindingEntryStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.NodeID = tlv.GetUnsignedInt(0);
+                    break;
+                case 1:
+                    value.EndpointID = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.ListID = (ushort)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.Binding = ReadDatastoreBindingTargetStruct(tlv);
+                    break;
+                case 4:
+                    value.StatusEntry = ReadDatastoreStatusEntryStruct(tlv);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static DatastoreEndpointEntryStruct ReadDatastoreEndpointEntryStruct(MatterTLV tlv)
+    {
+        var value = new DatastoreEndpointEntryStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.EndpointID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.NodeID = tlv.GetUnsignedInt(1);
+                    break;
+                case 2:
+                    value.FriendlyName = tlv.GetUTF8String(2);
+                    break;
+                case 3:
+                    value.StatusEntry = ReadDatastoreStatusEntryStruct(tlv);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static DatastoreEndpointGroupIDEntryStruct ReadDatastoreEndpointGroupIDEntryStruct(MatterTLV tlv)
+    {
+        var value = new DatastoreEndpointGroupIDEntryStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.NodeID = tlv.GetUnsignedInt(0);
+                    break;
+                case 1:
+                    value.EndpointID = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.GroupID = (ushort)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.StatusEntry = ReadDatastoreStatusEntryStruct(tlv);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static DatastoreGroupInformationEntryStruct ReadDatastoreGroupInformationEntryStruct(MatterTLV tlv)
+    {
+        var value = new DatastoreGroupInformationEntryStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.GroupID = tlv.GetUnsignedInt(0);
+                    break;
+                case 1:
+                    value.FriendlyName = tlv.GetUTF8String(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.GroupKeySetID = (ushort)tlv.GetUnsignedIntAny(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.GroupCAT = (ushort)tlv.GetUnsignedIntAny(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.GroupCATVersion = (ushort)tlv.GetUnsignedIntAny(4); }
+                    break;
+                case 5:
+                    value.GroupPermission = (DatastoreAccessControlEntryPrivilegeEnum)tlv.GetUnsignedIntAny(5);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static DatastoreGroupKeySetStruct ReadDatastoreGroupKeySetStruct(MatterTLV tlv)
+    {
+        var value = new DatastoreGroupKeySetStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.GroupKeySetID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.GroupKeySecurityPolicy = (DatastoreGroupKeySecurityPolicyEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.EpochKey0 = tlv.GetOctetString(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.EpochStartTime0 = tlv.GetUnsignedInt(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.EpochKey1 = tlv.GetOctetString(4); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.EpochStartTime1 = tlv.GetUnsignedInt(5); }
+                    break;
+                case 6:
+                    if (tlv.IsNextNull()) { tlv.GetNull(6); } else { value.EpochKey2 = tlv.GetOctetString(6); }
+                    break;
+                case 7:
+                    if (tlv.IsNextNull()) { tlv.GetNull(7); } else { value.EpochStartTime2 = tlv.GetUnsignedInt(7); }
+                    break;
+                case 8:
+                    value.GroupKeyMulticastPolicy = (DatastoreGroupKeyMulticastPolicyEnum)tlv.GetUnsignedIntAny(8);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static DatastoreNodeInformationEntryStruct ReadDatastoreNodeInformationEntryStruct(MatterTLV tlv)
+    {
+        var value = new DatastoreNodeInformationEntryStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 1:
+                    value.NodeID = tlv.GetUnsignedInt(1);
+                    break;
+                case 2:
+                    value.FriendlyName = tlv.GetUTF8String(2);
+                    break;
+                case 3:
+                    value.CommissioningStatusEntry = ReadDatastoreStatusEntryStruct(tlv);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static DatastoreNodeKeySetEntryStruct ReadDatastoreNodeKeySetEntryStruct(MatterTLV tlv)
+    {
+        var value = new DatastoreNodeKeySetEntryStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.NodeID = tlv.GetUnsignedInt(0);
+                    break;
+                case 1:
+                    value.GroupKeySetID = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.StatusEntry = ReadDatastoreStatusEntryStruct(tlv);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static DatastoreStatusEntryStruct ReadDatastoreStatusEntryStruct(MatterTLV tlv)
+    {
+        var value = new DatastoreStatusEntryStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.State = (DatastoreStateEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.UpdateTimestamp = tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.FailureCode = (byte)tlv.GetUnsignedIntAny(2);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

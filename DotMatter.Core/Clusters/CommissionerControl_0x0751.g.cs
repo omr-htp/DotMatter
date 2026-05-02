@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -56,6 +57,45 @@ public class CommissionerControlCluster : ClusterBase
         public const uint CommissioningRequestResult = 0x0000;
     }
 
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Commissioner Control", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>CommissioningRequestResult event payload.</summary>
+    public sealed class CommissioningRequestResultEventData
+    {
+        /// <summary>Gets or sets RequestID.</summary>
+        public ulong RequestID { get; set; }
+        /// <summary>Gets or sets ClientNodeID.</summary>
+        public ulong ClientNodeID { get; set; }
+        /// <summary>Gets or sets StatusCode.</summary>
+        public byte StatusCode { get; set; }
+    }
+
+    /// <summary>CommissioningRequestResult event report.</summary>
+    public sealed class CommissioningRequestResultEvent(MatterEventReport report, CommissioningRequestResultEventData payload)
+        : ClusterEvent(report, "CommissioningRequestResult")
+    {
+        /// <summary>Gets the typed CommissioningRequestResult payload.</summary>
+        public CommissioningRequestResultEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
     // Async command methods
 
     /// <summary>Send RequestCommissioningApproval command (0x0000).</summary>
@@ -89,4 +129,122 @@ public class CommissionerControlCluster : ClusterBase
     /// <summary>Read SupportedDeviceCategories attribute (0x0000).</summary>
     public Task<SupportedDeviceCategoryBitmap> ReadSupportedDeviceCategoriesAsync(CancellationToken ct = default)
         => ReadAttributeAsync<SupportedDeviceCategoryBitmap>(0x0000, ct);
+
+    // Event payload parsers
+
+    private static CommissioningRequestResultEventData ReadCommissioningRequestResultEventData(MatterTLV tlv)
+    {
+        var value = new CommissioningRequestResultEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.RequestID = tlv.GetUnsignedInt(0);
+                    break;
+                case 1:
+                    value.ClientNodeID = tlv.GetUnsignedInt(1);
+                    break;
+                case 2:
+                    value.StatusCode = (byte)tlv.GetUnsignedIntAny(2);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadCommissioningRequestResultEventData(MatterEventReport report, out CommissioningRequestResultEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadCommissioningRequestResultEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "CommissioningRequestResult payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateCommissioningRequestResultEventDataJson(CommissioningRequestResultEventData value)
+    {
+        var json = new JsonObject();
+        json["requestID"] = CreateJsonValue(value.RequestID);
+        json["clientNodeID"] = CreateJsonValue(value.ClientNodeID);
+        json["statusCode"] = CreateJsonValue(value.StatusCode);
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            CommissioningRequestResultEvent typed => CreateCommissioningRequestResultEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.CommissioningRequestResult when TryReadCommissioningRequestResultEventData(report, out var commissioningRequestResultEventData, out _) => new CommissioningRequestResultEvent(report, commissioningRequestResultEventData!),
+            Events.CommissioningRequestResult when TryReadCommissioningRequestResultEventData(report, out _, out var commissioningRequestResultReason) => new UnknownClusterEvent(report, commissioningRequestResultReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

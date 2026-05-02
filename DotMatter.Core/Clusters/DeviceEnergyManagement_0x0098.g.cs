@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -479,6 +480,292 @@ public class DeviceEnergyManagementCluster : ClusterBase
         if (value.LoadControl != null) tlv.AddInt8(4, value.LoadControl.Value);
     }
 
+    // TLV struct deserializers
+
+    private static CostStruct ReadCostStruct(MatterTLV tlv)
+    {
+        var value = new CostStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.CostType = (CostTypeEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Value = (int)tlv.GetSignedInt(1);
+                    break;
+                case 2:
+                    value.DecimalPoints = (byte)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.Currency = (ushort)tlv.GetUnsignedIntAny(3); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static PowerAdjustCapabilityStruct ReadPowerAdjustCapabilityStruct(MatterTLV tlv)
+    {
+        var value = new PowerAdjustCapabilityStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); value.PowerAdjustCapability = null; break; }
+                    var items0 = new List<PowerAdjustStruct>();
+                    tlv.OpenArray(0);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items0.Add(ReadPowerAdjustStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.PowerAdjustCapability = [.. items0];
+                    break;
+                case 1:
+                    value.Cause = (PowerAdjustReasonEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static PowerAdjustStruct ReadPowerAdjustStruct(MatterTLV tlv)
+    {
+        var value = new PowerAdjustStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.MinPower = tlv.GetUnsignedInt(0);
+                    break;
+                case 1:
+                    value.MaxPower = tlv.GetUnsignedInt(1);
+                    break;
+                case 2:
+                    value.MinDuration = tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.MaxDuration = tlv.GetUnsignedIntAny(3);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ForecastStruct ReadForecastStruct(MatterTLV tlv)
+    {
+        var value = new ForecastStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ForecastID = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.ActiveSlotNumber = (ushort)tlv.GetUnsignedIntAny(1); }
+                    break;
+                case 2:
+                    value.StartTime = tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.EndTime = tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.EarliestStartTime = tlv.GetUnsignedIntAny(4); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.LatestEndTime = tlv.GetUnsignedIntAny(5); }
+                    break;
+                case 6:
+                    value.IsPausable = tlv.GetBoolean(6);
+                    break;
+                case 7:
+                    var items7 = new List<SlotStruct>();
+                    tlv.OpenArray(7);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items7.Add(ReadSlotStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.Slots = [.. items7];
+                    break;
+                case 8:
+                    value.ForecastUpdateReason = (ForecastUpdateReasonEnum)tlv.GetUnsignedIntAny(8);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static SlotStruct ReadSlotStruct(MatterTLV tlv)
+    {
+        var value = new SlotStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.MinDuration = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.MaxDuration = tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.DefaultDuration = tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.ElapsedSlotTime = tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    value.RemainingSlotTime = tlv.GetUnsignedIntAny(4);
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.SlotIsPausable = tlv.GetBoolean(5); }
+                    break;
+                case 6:
+                    if (tlv.IsNextNull()) { tlv.GetNull(6); } else { value.MinPauseDuration = tlv.GetUnsignedIntAny(6); }
+                    break;
+                case 7:
+                    if (tlv.IsNextNull()) { tlv.GetNull(7); } else { value.MaxPauseDuration = tlv.GetUnsignedIntAny(7); }
+                    break;
+                case 8:
+                    if (tlv.IsNextNull()) { tlv.GetNull(8); } else { value.ManufacturerESAState = (ushort)tlv.GetUnsignedIntAny(8); }
+                    break;
+                case 9:
+                    if (tlv.IsNextNull()) { tlv.GetNull(9); } else { value.NominalPower = tlv.GetUnsignedInt(9); }
+                    break;
+                case 10:
+                    if (tlv.IsNextNull()) { tlv.GetNull(10); } else { value.MinPower = tlv.GetUnsignedInt(10); }
+                    break;
+                case 11:
+                    if (tlv.IsNextNull()) { tlv.GetNull(11); } else { value.MaxPower = tlv.GetUnsignedInt(11); }
+                    break;
+                case 12:
+                    if (tlv.IsNextNull()) { tlv.GetNull(12); } else { value.NominalEnergy = tlv.GetUnsignedInt(12); }
+                    break;
+                case 13:
+                    if (tlv.IsNextNull()) { tlv.GetNull(13); value.Costs = null; break; }
+                    var items13 = new List<CostStruct>();
+                    tlv.OpenArray(13);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items13.Add(ReadCostStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.Costs = [.. items13];
+                    break;
+                case 14:
+                    if (tlv.IsNextNull()) { tlv.GetNull(14); } else { value.MinPowerAdjustment = tlv.GetUnsignedInt(14); }
+                    break;
+                case 15:
+                    if (tlv.IsNextNull()) { tlv.GetNull(15); } else { value.MaxPowerAdjustment = tlv.GetUnsignedInt(15); }
+                    break;
+                case 16:
+                    if (tlv.IsNextNull()) { tlv.GetNull(16); } else { value.MinDurationAdjustment = tlv.GetUnsignedIntAny(16); }
+                    break;
+                case 17:
+                    if (tlv.IsNextNull()) { tlv.GetNull(17); } else { value.MaxDurationAdjustment = tlv.GetUnsignedIntAny(17); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static SlotAdjustmentStruct ReadSlotAdjustmentStruct(MatterTLV tlv)
+    {
+        var value = new SlotAdjustmentStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.SlotIndex = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.NominalPower = tlv.GetUnsignedInt(1); }
+                    break;
+                case 2:
+                    value.Duration = tlv.GetUnsignedIntAny(2);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ConstraintsStruct ReadConstraintsStruct(MatterTLV tlv)
+    {
+        var value = new ConstraintsStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.StartTime = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Duration = tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.NominalPower = tlv.GetUnsignedInt(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.MaximumEnergy = tlv.GetUnsignedInt(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.LoadControl = (sbyte)tlv.GetSignedInt(4); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -532,6 +819,95 @@ public class DeviceEnergyManagementCluster : ClusterBase
         public const uint Paused = 0x0002;
         /// <summary>Resumed (0x0003).</summary>
         public const uint Resumed = 0x0003;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Device Energy Management", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>PowerAdjustStart event payload.</summary>
+    public sealed class PowerAdjustStartEventData
+    {
+    }
+
+    /// <summary>PowerAdjustStart event report.</summary>
+    public sealed class PowerAdjustStartEvent(MatterEventReport report, PowerAdjustStartEventData payload)
+        : ClusterEvent(report, "PowerAdjustStart")
+    {
+        /// <summary>Gets the typed PowerAdjustStart payload.</summary>
+        public PowerAdjustStartEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>PowerAdjustEnd event payload.</summary>
+    public sealed class PowerAdjustEndEventData
+    {
+        /// <summary>Gets or sets Cause.</summary>
+        public CauseEnum Cause { get; set; } = default!;
+        /// <summary>Gets or sets Duration.</summary>
+        public uint Duration { get; set; }
+        /// <summary>Gets or sets EnergyUse.</summary>
+        public ulong EnergyUse { get; set; }
+    }
+
+    /// <summary>PowerAdjustEnd event report.</summary>
+    public sealed class PowerAdjustEndEvent(MatterEventReport report, PowerAdjustEndEventData payload)
+        : ClusterEvent(report, "PowerAdjustEnd")
+    {
+        /// <summary>Gets the typed PowerAdjustEnd payload.</summary>
+        public PowerAdjustEndEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>Paused event payload.</summary>
+    public sealed class PausedEventData
+    {
+    }
+
+    /// <summary>Paused event report.</summary>
+    public sealed class PausedEvent(MatterEventReport report, PausedEventData payload)
+        : ClusterEvent(report, "Paused")
+    {
+        /// <summary>Gets the typed Paused payload.</summary>
+        public PausedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>Resumed event payload.</summary>
+    public sealed class ResumedEventData
+    {
+        /// <summary>Gets or sets Cause.</summary>
+        public CauseEnum Cause { get; set; } = default!;
+    }
+
+    /// <summary>Resumed event report.</summary>
+    public sealed class ResumedEvent(MatterEventReport report, ResumedEventData payload)
+        : ClusterEvent(report, "Resumed")
+    {
+        /// <summary>Gets the typed Resumed payload.</summary>
+        public ResumedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Async command methods
@@ -640,4 +1016,459 @@ public class DeviceEnergyManagementCluster : ClusterBase
     /// <summary>Read OptOutState attribute (0x0007).</summary>
     public Task<OptOutStateEnum> ReadOptOutStateAsync(CancellationToken ct = default)
         => ReadAttributeAsync<OptOutStateEnum>(0x0007, ct);
+
+    // Event payload parsers
+
+    private static PowerAdjustStartEventData ReadPowerAdjustStartEventData(MatterTLV tlv)
+    {
+        var value = new PowerAdjustStartEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadPowerAdjustStartEventData(MatterEventReport report, out PowerAdjustStartEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadPowerAdjustStartEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "PowerAdjustStart payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static PowerAdjustEndEventData ReadPowerAdjustEndEventData(MatterTLV tlv)
+    {
+        var value = new PowerAdjustEndEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Cause = (CauseEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Duration = tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.EnergyUse = tlv.GetUnsignedInt(2);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadPowerAdjustEndEventData(MatterEventReport report, out PowerAdjustEndEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadPowerAdjustEndEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "PowerAdjustEnd payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static PausedEventData ReadPausedEventData(MatterTLV tlv)
+    {
+        var value = new PausedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadPausedEventData(MatterEventReport report, out PausedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadPausedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "Paused payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static ResumedEventData ReadResumedEventData(MatterTLV tlv)
+    {
+        var value = new ResumedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Cause = (CauseEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadResumedEventData(MatterEventReport report, out ResumedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadResumedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "Resumed payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateCostStructJson(CostStruct value)
+    {
+        var json = new JsonObject();
+        if (value.CostType is { } costType)
+        {
+            json["costType"] = CreateJsonValue(costType.ToString());
+        }
+        json["value"] = CreateJsonValue(value.Value);
+        json["decimalPoints"] = CreateJsonValue(value.DecimalPoints);
+        if (value.Currency is { } currency)
+        {
+            json["currency"] = CreateJsonValue(currency);
+        }
+        return json;
+    }
+
+    private static JsonObject CreatePowerAdjustCapabilityStructJson(PowerAdjustCapabilityStruct value)
+    {
+        var json = new JsonObject();
+        if (value.PowerAdjustCapability is { } powerAdjustCapabilityValues)
+        {
+            var powerAdjustCapabilityItems = new JsonArray();
+            foreach (var item in powerAdjustCapabilityValues)
+            {
+                powerAdjustCapabilityItems.Add((JsonNode?)CreatePowerAdjustStructJson(item));
+            }
+            json["powerAdjustCapability"] = powerAdjustCapabilityItems;
+        }
+        if (value.Cause is { } cause)
+        {
+            json["cause"] = CreateJsonValue(cause.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreatePowerAdjustStructJson(PowerAdjustStruct value)
+    {
+        var json = new JsonObject();
+        json["minPower"] = CreateJsonValue(value.MinPower);
+        json["maxPower"] = CreateJsonValue(value.MaxPower);
+        json["minDuration"] = CreateJsonValue(value.MinDuration);
+        json["maxDuration"] = CreateJsonValue(value.MaxDuration);
+        return json;
+    }
+
+    private static JsonObject CreateForecastStructJson(ForecastStruct value)
+    {
+        var json = new JsonObject();
+        json["forecastID"] = CreateJsonValue(value.ForecastID);
+        if (value.ActiveSlotNumber is { } activeSlotNumber)
+        {
+            json["activeSlotNumber"] = CreateJsonValue(activeSlotNumber);
+        }
+        json["startTime"] = CreateJsonValue(value.StartTime);
+        json["endTime"] = CreateJsonValue(value.EndTime);
+        if (value.EarliestStartTime is { } earliestStartTime)
+        {
+            json["earliestStartTime"] = CreateJsonValue(earliestStartTime);
+        }
+        if (value.LatestEndTime is { } latestEndTime)
+        {
+            json["latestEndTime"] = CreateJsonValue(latestEndTime);
+        }
+        json["isPausable"] = CreateJsonValue(value.IsPausable);
+        if (value.Slots is { } slotsValues)
+        {
+            var slotsItems = new JsonArray();
+            foreach (var item in slotsValues)
+            {
+                slotsItems.Add((JsonNode?)CreateSlotStructJson(item));
+            }
+            json["slots"] = slotsItems;
+        }
+        if (value.ForecastUpdateReason is { } forecastUpdateReason)
+        {
+            json["forecastUpdateReason"] = CreateJsonValue(forecastUpdateReason.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateSlotStructJson(SlotStruct value)
+    {
+        var json = new JsonObject();
+        json["minDuration"] = CreateJsonValue(value.MinDuration);
+        json["maxDuration"] = CreateJsonValue(value.MaxDuration);
+        json["defaultDuration"] = CreateJsonValue(value.DefaultDuration);
+        json["elapsedSlotTime"] = CreateJsonValue(value.ElapsedSlotTime);
+        json["remainingSlotTime"] = CreateJsonValue(value.RemainingSlotTime);
+        if (value.SlotIsPausable is { } slotIsPausable)
+        {
+            json["slotIsPausable"] = CreateJsonValue(slotIsPausable);
+        }
+        if (value.MinPauseDuration is { } minPauseDuration)
+        {
+            json["minPauseDuration"] = CreateJsonValue(minPauseDuration);
+        }
+        if (value.MaxPauseDuration is { } maxPauseDuration)
+        {
+            json["maxPauseDuration"] = CreateJsonValue(maxPauseDuration);
+        }
+        if (value.ManufacturerESAState is { } manufacturerESAState)
+        {
+            json["manufacturerESAState"] = CreateJsonValue(manufacturerESAState);
+        }
+        if (value.NominalPower is { } nominalPower)
+        {
+            json["nominalPower"] = CreateJsonValue(nominalPower);
+        }
+        if (value.MinPower is { } minPower)
+        {
+            json["minPower"] = CreateJsonValue(minPower);
+        }
+        if (value.MaxPower is { } maxPower)
+        {
+            json["maxPower"] = CreateJsonValue(maxPower);
+        }
+        if (value.NominalEnergy is { } nominalEnergy)
+        {
+            json["nominalEnergy"] = CreateJsonValue(nominalEnergy);
+        }
+        if (value.Costs is { } costsValues)
+        {
+            var costsItems = new JsonArray();
+            foreach (var item in costsValues)
+            {
+                costsItems.Add((JsonNode?)CreateCostStructJson(item));
+            }
+            json["costs"] = costsItems;
+        }
+        if (value.MinPowerAdjustment is { } minPowerAdjustment)
+        {
+            json["minPowerAdjustment"] = CreateJsonValue(minPowerAdjustment);
+        }
+        if (value.MaxPowerAdjustment is { } maxPowerAdjustment)
+        {
+            json["maxPowerAdjustment"] = CreateJsonValue(maxPowerAdjustment);
+        }
+        if (value.MinDurationAdjustment is { } minDurationAdjustment)
+        {
+            json["minDurationAdjustment"] = CreateJsonValue(minDurationAdjustment);
+        }
+        if (value.MaxDurationAdjustment is { } maxDurationAdjustment)
+        {
+            json["maxDurationAdjustment"] = CreateJsonValue(maxDurationAdjustment);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateSlotAdjustmentStructJson(SlotAdjustmentStruct value)
+    {
+        var json = new JsonObject();
+        json["slotIndex"] = CreateJsonValue(value.SlotIndex);
+        if (value.NominalPower is { } nominalPower)
+        {
+            json["nominalPower"] = CreateJsonValue(nominalPower);
+        }
+        json["duration"] = CreateJsonValue(value.Duration);
+        return json;
+    }
+
+    private static JsonObject CreateConstraintsStructJson(ConstraintsStruct value)
+    {
+        var json = new JsonObject();
+        json["startTime"] = CreateJsonValue(value.StartTime);
+        json["duration"] = CreateJsonValue(value.Duration);
+        if (value.NominalPower is { } nominalPower)
+        {
+            json["nominalPower"] = CreateJsonValue(nominalPower);
+        }
+        if (value.MaximumEnergy is { } maximumEnergy)
+        {
+            json["maximumEnergy"] = CreateJsonValue(maximumEnergy);
+        }
+        if (value.LoadControl is { } loadControl)
+        {
+            json["loadControl"] = CreateJsonValue(loadControl);
+        }
+        return json;
+    }
+
+    private static JsonObject CreatePowerAdjustStartEventDataJson(PowerAdjustStartEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreatePowerAdjustEndEventDataJson(PowerAdjustEndEventData value)
+    {
+        var json = new JsonObject();
+        if (value.Cause is { } cause)
+        {
+            json["cause"] = CreateJsonValue(cause.ToString());
+        }
+        json["duration"] = CreateJsonValue(value.Duration);
+        json["energyUse"] = CreateJsonValue(value.EnergyUse);
+        return json;
+    }
+
+    private static JsonObject CreatePausedEventDataJson(PausedEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateResumedEventDataJson(ResumedEventData value)
+    {
+        var json = new JsonObject();
+        if (value.Cause is { } cause)
+        {
+            json["cause"] = CreateJsonValue(cause.ToString());
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            PowerAdjustStartEvent typed => CreatePowerAdjustStartEventDataJson(typed.Payload),
+            PowerAdjustEndEvent typed => CreatePowerAdjustEndEventDataJson(typed.Payload),
+            PausedEvent typed => CreatePausedEventDataJson(typed.Payload),
+            ResumedEvent typed => CreateResumedEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.PowerAdjustStart when TryReadPowerAdjustStartEventData(report, out var powerAdjustStartEventData, out _) => new PowerAdjustStartEvent(report, powerAdjustStartEventData!),
+            Events.PowerAdjustStart when TryReadPowerAdjustStartEventData(report, out _, out var powerAdjustStartReason) => new UnknownClusterEvent(report, powerAdjustStartReason),
+            Events.PowerAdjustEnd when TryReadPowerAdjustEndEventData(report, out var powerAdjustEndEventData, out _) => new PowerAdjustEndEvent(report, powerAdjustEndEventData!),
+            Events.PowerAdjustEnd when TryReadPowerAdjustEndEventData(report, out _, out var powerAdjustEndReason) => new UnknownClusterEvent(report, powerAdjustEndReason),
+            Events.Paused when TryReadPausedEventData(report, out var pausedEventData, out _) => new PausedEvent(report, pausedEventData!),
+            Events.Paused when TryReadPausedEventData(report, out _, out var pausedReason) => new UnknownClusterEvent(report, pausedReason),
+            Events.Resumed when TryReadResumedEventData(report, out var resumedEventData, out _) => new ResumedEvent(report, resumedEventData!),
+            Events.Resumed when TryReadResumedEventData(report, out _, out var resumedReason) => new UnknownClusterEvent(report, resumedReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

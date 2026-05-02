@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -69,6 +70,32 @@ public class ApplicationBasicCluster : ClusterBase
     {
         tlv.AddUInt16(0, value.CatalogVendorID);
         tlv.AddUTF8String(1, value.ApplicationID);
+    }
+
+    // TLV struct deserializers
+
+    private static ApplicationStruct ReadApplicationStruct(MatterTLV tlv)
+    {
+        var value = new ApplicationStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.CatalogVendorID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.ApplicationID = tlv.GetUTF8String(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

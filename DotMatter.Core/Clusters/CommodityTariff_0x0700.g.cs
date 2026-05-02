@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -584,6 +585,382 @@ public class CommodityTariffCluster : ClusterBase
     {
         tlv.AddUInt16(0, value.Currency);
         tlv.AddUInt8(1, value.DecimalPoints);
+    }
+
+    // TLV struct deserializers
+
+    private static AuxiliaryLoadSwitchSettingsStruct ReadAuxiliaryLoadSwitchSettingsStruct(MatterTLV tlv)
+    {
+        var value = new AuxiliaryLoadSwitchSettingsStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Number = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.RequiredState = (AuxiliaryLoadSettingEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static CalendarPeriodStruct ReadCalendarPeriodStruct(MatterTLV tlv)
+    {
+        var value = new CalendarPeriodStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.StartDate = tlv.GetUnsignedIntAny(0); }
+                    break;
+                case 1:
+                    var items1 = new List<uint>();
+                    tlv.OpenArray(1);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items1.Add((uint)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.DayPatternIDs = [.. items1];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static DayEntryStruct ReadDayEntryStruct(MatterTLV tlv)
+    {
+        var value = new DayEntryStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.DayEntryID = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.StartTime = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Duration = (ushort)tlv.GetUnsignedIntAny(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.RandomizationOffset = (short)tlv.GetSignedInt(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.RandomizationType = (DayEntryRandomizationTypeEnum)tlv.GetUnsignedIntAny(4); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static DayPatternStruct ReadDayPatternStruct(MatterTLV tlv)
+    {
+        var value = new DayPatternStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.DayPatternID = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.DaysOfWeek = (DayPatternDayOfWeekBitmap)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    var items2 = new List<uint>();
+                    tlv.OpenArray(2);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items2.Add((uint)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.DayEntryIDs = [.. items2];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static DayStruct ReadDayStruct(MatterTLV tlv)
+    {
+        var value = new DayStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Date = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.DayType = (DayTypeEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    var items2 = new List<uint>();
+                    tlv.OpenArray(2);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items2.Add((uint)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.DayEntryIDs = [.. items2];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static PeakPeriodStruct ReadPeakPeriodStruct(MatterTLV tlv)
+    {
+        var value = new PeakPeriodStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Severity = (PeakPeriodSeverityEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.PeakPeriod = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static TariffComponentStruct ReadTariffComponentStruct(MatterTLV tlv)
+    {
+        var value = new TariffComponentStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.TariffComponentID = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Price = ReadTariffPriceStruct(tlv); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.FriendlyCredit = tlv.GetBoolean(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.AuxiliaryLoad = ReadAuxiliaryLoadSwitchSettingsStruct(tlv); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.PeakPeriod = ReadPeakPeriodStruct(tlv); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.PowerThreshold = ReadPowerThresholdStruct(tlv); }
+                    break;
+                case 6:
+                    if (tlv.IsNextNull()) { tlv.GetNull(6); } else { value.Threshold = tlv.GetSignedInt(6); }
+                    break;
+                case 7:
+                    if (tlv.IsNextNull()) { tlv.GetNull(7); } else { value.Label = tlv.GetUTF8String(7); }
+                    break;
+                case 8:
+                    if (tlv.IsNextNull()) { tlv.GetNull(8); } else { value.Predicted = tlv.GetBoolean(8); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static TariffInformationStruct ReadTariffInformationStruct(MatterTLV tlv)
+    {
+        var value = new TariffInformationStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.TariffLabel = tlv.GetUTF8String(0); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.ProviderName = tlv.GetUTF8String(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Currency = ReadCurrencyStruct(tlv); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.BlockMode = (BlockModeEnum)tlv.GetUnsignedIntAny(3); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static TariffPeriodStruct ReadTariffPeriodStruct(MatterTLV tlv)
+    {
+        var value = new TariffPeriodStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.Label = tlv.GetUTF8String(0); }
+                    break;
+                case 1:
+                    var items1 = new List<uint>();
+                    tlv.OpenArray(1);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items1.Add((uint)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.DayEntryIDs = [.. items1];
+                    break;
+                case 2:
+                    var items2 = new List<uint>();
+                    tlv.OpenArray(2);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items2.Add((uint)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.TariffComponentIDs = [.. items2];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static TariffPriceStruct ReadTariffPriceStruct(MatterTLV tlv)
+    {
+        var value = new TariffPriceStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.PriceType = (TariffPriceTypeEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Price = tlv.GetSignedInt(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.PriceLevel = (short)tlv.GetSignedInt(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static PowerThresholdStruct ReadPowerThresholdStruct(MatterTLV tlv)
+    {
+        var value = new PowerThresholdStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.PowerThreshold = tlv.GetUnsignedInt(0); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.ApparentPowerThreshold = tlv.GetSignedInt(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.PowerThresholdSource = (PowerThresholdSourceEnum)tlv.GetUnsignedIntAny(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static CurrencyStruct ReadCurrencyStruct(MatterTLV tlv)
+    {
+        var value = new CurrencyStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Currency = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.DecimalPoints = (byte)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

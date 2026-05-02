@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -591,6 +592,164 @@ public class ServiceAreaCluster : ClusterBase
         tlv.AddUTF8String(0, value.LocationName);
         if (value.FloorNumber != null) { tlv.AddInt16(1, value.FloorNumber.Value); } else { tlv.AddNull(1); }
         tlv.AddUInt8(2, (byte)value.AreaType);
+    }
+
+    // TLV struct deserializers
+
+    private static LandmarkInfoStruct ReadLandmarkInfoStruct(MatterTLV tlv)
+    {
+        var value = new LandmarkInfoStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.LandmarkTag = (LandmarkTag)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.RelativePositionTag = (RelativePositionTag)tlv.GetUnsignedIntAny(1); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static AreaInfoStruct ReadAreaInfoStruct(MatterTLV tlv)
+    {
+        var value = new AreaInfoStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.LocationInfo = ReadLocationDescriptorStruct(tlv); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.LandmarkInfo = ReadLandmarkInfoStruct(tlv); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static MapStruct ReadMapStruct(MatterTLV tlv)
+    {
+        var value = new MapStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.MapID = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Name = tlv.GetUTF8String(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static AreaStruct ReadAreaStruct(MatterTLV tlv)
+    {
+        var value = new AreaStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.AreaID = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.MapID = tlv.GetUnsignedIntAny(1); }
+                    break;
+                case 2:
+                    value.AreaInfo = ReadAreaInfoStruct(tlv);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ProgressStruct ReadProgressStruct(MatterTLV tlv)
+    {
+        var value = new ProgressStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.AreaID = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Status = (OperationalStatusEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.TotalOperationalTime = tlv.GetUnsignedIntAny(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.EstimatedTime = tlv.GetUnsignedIntAny(3); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static LocationDescriptorStruct ReadLocationDescriptorStruct(MatterTLV tlv)
+    {
+        var value = new LocationDescriptorStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.LocationName = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.FloorNumber = (short)tlv.GetSignedInt(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.AreaType = (AreaTypeTag)tlv.GetUnsignedIntAny(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

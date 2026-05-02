@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -427,6 +428,255 @@ public class ContentLauncherCluster : ClusterBase
         tlv.AddUTF8String(0, value.LanguageCode);
         if (value.Characteristics != null) { tlv.AddArray(1); foreach (var item in value.Characteristics) { tlv.AddUInt8((byte)item); } tlv.EndContainer(); }
         tlv.AddUInt8(2, value.AudioOutputIndex);
+    }
+
+    // TLV struct deserializers
+
+    private static ContentSearchStruct ReadContentSearchStruct(MatterTLV tlv)
+    {
+        var value = new ContentSearchStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    var items0 = new List<ParameterStruct>();
+                    tlv.OpenArray(0);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items0.Add(ReadParameterStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.ParameterList = [.. items0];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static AdditionalInfoStruct ReadAdditionalInfoStruct(MatterTLV tlv)
+    {
+        var value = new AdditionalInfoStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Name = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    value.Value = tlv.GetUTF8String(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static DimensionStruct ReadDimensionStruct(MatterTLV tlv)
+    {
+        var value = new DimensionStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Width = tlv.GetDouble(0);
+                    break;
+                case 1:
+                    value.Height = tlv.GetDouble(1);
+                    break;
+                case 2:
+                    value.Metric = (MetricTypeEnum)tlv.GetUnsignedIntAny(2);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static StyleInformationStruct ReadStyleInformationStruct(MatterTLV tlv)
+    {
+        var value = new StyleInformationStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.ImageURL = tlv.GetUTF8String(0); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Color = tlv.GetUTF8String(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Size = ReadDimensionStruct(tlv); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static BrandingInformationStruct ReadBrandingInformationStruct(MatterTLV tlv)
+    {
+        var value = new BrandingInformationStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ProviderName = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Background = ReadStyleInformationStruct(tlv); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Logo = ReadStyleInformationStruct(tlv); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.ProgressBar = ReadStyleInformationStruct(tlv); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.Splash = ReadStyleInformationStruct(tlv); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.WaterMark = ReadStyleInformationStruct(tlv); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ParameterStruct ReadParameterStruct(MatterTLV tlv)
+    {
+        var value = new ParameterStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Type = (ParameterEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Value = tlv.GetUTF8String(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); value.ExternalIDList = null; break; }
+                    var items2 = new List<AdditionalInfoStruct>();
+                    tlv.OpenArray(2);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items2.Add(ReadAdditionalInfoStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.ExternalIDList = [.. items2];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static PlaybackPreferencesStruct ReadPlaybackPreferencesStruct(MatterTLV tlv)
+    {
+        var value = new PlaybackPreferencesStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.PlaybackPosition = tlv.GetUnsignedInt(0);
+                    break;
+                case 1:
+                    value.TextTrack = ReadTrackPreferenceStruct(tlv);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); value.AudioTracks = null; break; }
+                    var items2 = new List<TrackPreferenceStruct>();
+                    tlv.OpenArray(2);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items2.Add(ReadTrackPreferenceStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.AudioTracks = [.. items2];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static TrackPreferenceStruct ReadTrackPreferenceStruct(MatterTLV tlv)
+    {
+        var value = new TrackPreferenceStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.LanguageCode = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); value.Characteristics = null; break; }
+                    var items1 = new List<CharacteristicEnum>();
+                    tlv.OpenArray(1);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items1.Add((CharacteristicEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Characteristics = [.. items1];
+                    break;
+                case 2:
+                    value.AudioOutputIndex = (byte)tlv.GetUnsignedIntAny(2);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

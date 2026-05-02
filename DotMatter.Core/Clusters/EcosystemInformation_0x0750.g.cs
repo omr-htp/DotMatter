@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -365,6 +366,145 @@ public class EcosystemInformationCluster : ClusterBase
         tlv.AddUTF8String(0, value.LocationName);
         if (value.FloorNumber != null) { tlv.AddInt16(1, value.FloorNumber.Value); } else { tlv.AddNull(1); }
         tlv.AddUInt8(2, (byte)value.AreaType);
+    }
+
+    // TLV struct deserializers
+
+    private static DeviceTypeStruct ReadDeviceTypeStruct(MatterTLV tlv)
+    {
+        var value = new DeviceTypeStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.DeviceType = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Revision = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static EcosystemDeviceStruct ReadEcosystemDeviceStruct(MatterTLV tlv)
+    {
+        var value = new EcosystemDeviceStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.DeviceName = tlv.GetUTF8String(0); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.DeviceNameLastEdit = tlv.GetUnsignedInt(1); }
+                    break;
+                case 2:
+                    value.BridgedEndpoint = (ushort)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.OriginalEndpoint = (ushort)tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    var items4 = new List<DeviceTypeStruct>();
+                    tlv.OpenArray(4);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items4.Add(ReadDeviceTypeStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.DeviceTypes = [.. items4];
+                    break;
+                case 5:
+                    var items5 = new List<string>();
+                    tlv.OpenArray(5);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items5.Add((string)tlv.GetData(null)!);
+                    }
+                    tlv.CloseContainer();
+                    value.UniqueLocationIDs = [.. items5];
+                    break;
+                case 6:
+                    value.UniqueLocationIDsLastEdit = tlv.GetUnsignedInt(6);
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static EcosystemLocationStruct ReadEcosystemLocationStruct(MatterTLV tlv)
+    {
+        var value = new EcosystemLocationStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.UniqueLocationID = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    value.LocationDescriptor = ReadLocationDescriptorStruct(tlv);
+                    break;
+                case 2:
+                    value.LocationDescriptorLastEdit = tlv.GetUnsignedInt(2);
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static LocationDescriptorStruct ReadLocationDescriptorStruct(MatterTLV tlv)
+    {
+        var value = new LocationDescriptorStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.LocationName = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.FloorNumber = (short)tlv.GetSignedInt(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.AreaType = (AreaTypeTag)tlv.GetUnsignedIntAny(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

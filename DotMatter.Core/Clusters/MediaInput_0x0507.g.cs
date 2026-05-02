@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -99,6 +100,38 @@ public class MediaInputCluster : ClusterBase
         tlv.AddUInt8(1, (byte)value.InputType);
         tlv.AddUTF8String(2, value.Name);
         tlv.AddUTF8String(3, value.Description);
+    }
+
+    // TLV struct deserializers
+
+    private static InputInfoStruct ReadInputInfoStruct(MatterTLV tlv)
+    {
+        var value = new InputInfoStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Index = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.InputType = (InputTypeEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.Name = tlv.GetUTF8String(2);
+                    break;
+                case 3:
+                    value.Description = tlv.GetUTF8String(3);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

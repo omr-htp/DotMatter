@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -94,6 +95,73 @@ public class TLSCertificateManagementCluster : ClusterBase
         tlv.AddUInt16(0, value.CCDID);
         if (value.ClientCertificate != null) tlv.AddOctetString(1, value.ClientCertificate);
         if (value.IntermediateCertificates != null) { tlv.AddArray(2); foreach (var item in value.IntermediateCertificates) { tlv.AddOctetString(item); } tlv.EndContainer(); }
+    }
+
+    // TLV struct deserializers
+
+    private static TLSCertStruct ReadTLSCertStruct(MatterTLV tlv)
+    {
+        var value = new TLSCertStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.CAID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Certificate = tlv.GetOctetString(1); }
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static TLSClientCertificateDetailStruct ReadTLSClientCertificateDetailStruct(MatterTLV tlv)
+    {
+        var value = new TLSClientCertificateDetailStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.CCDID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.ClientCertificate = tlv.GetOctetString(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); value.IntermediateCertificates = null; break; }
+                    var items2 = new List<byte[]>();
+                    tlv.OpenArray(2);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items2.Add((byte[])tlv.GetData(null)!);
+                    }
+                    tlv.CloseContainer();
+                    value.IntermediateCertificates = [.. items2];
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

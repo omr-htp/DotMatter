@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -1137,6 +1138,185 @@ public class ThermostatCluster : ClusterBase
         public const uint ActivePresetChange = 0x0007;
     }
 
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Thermostat", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>SystemModeChange event payload.</summary>
+    public sealed class SystemModeChangeEventData
+    {
+        /// <summary>Gets or sets PreviousSystemMode.</summary>
+        public SystemModeEnum? PreviousSystemMode { get; set; }
+        /// <summary>Gets or sets CurrentSystemMode.</summary>
+        public SystemModeEnum CurrentSystemMode { get; set; } = default!;
+    }
+
+    /// <summary>SystemModeChange event report.</summary>
+    public sealed class SystemModeChangeEvent(MatterEventReport report, SystemModeChangeEventData payload)
+        : ClusterEvent(report, "SystemModeChange")
+    {
+        /// <summary>Gets the typed SystemModeChange payload.</summary>
+        public SystemModeChangeEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>LocalTemperatureChange event payload.</summary>
+    public sealed class LocalTemperatureChangeEventData
+    {
+        /// <summary>Gets or sets CurrentLocalTemperature.</summary>
+        public short? CurrentLocalTemperature { get; set; }
+    }
+
+    /// <summary>LocalTemperatureChange event report.</summary>
+    public sealed class LocalTemperatureChangeEvent(MatterEventReport report, LocalTemperatureChangeEventData payload)
+        : ClusterEvent(report, "LocalTemperatureChange")
+    {
+        /// <summary>Gets the typed LocalTemperatureChange payload.</summary>
+        public LocalTemperatureChangeEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>OccupancyChange event payload.</summary>
+    public sealed class OccupancyChangeEventData
+    {
+        /// <summary>Gets or sets PreviousOccupancy.</summary>
+        public OccupancyBitmap? PreviousOccupancy { get; set; }
+        /// <summary>Gets or sets CurrentOccupancy.</summary>
+        public OccupancyBitmap CurrentOccupancy { get; set; } = default!;
+    }
+
+    /// <summary>OccupancyChange event report.</summary>
+    public sealed class OccupancyChangeEvent(MatterEventReport report, OccupancyChangeEventData payload)
+        : ClusterEvent(report, "OccupancyChange")
+    {
+        /// <summary>Gets the typed OccupancyChange payload.</summary>
+        public OccupancyChangeEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>SetpointChange event payload.</summary>
+    public sealed class SetpointChangeEventData
+    {
+        /// <summary>Gets or sets SystemMode.</summary>
+        public SystemModeEnum SystemMode { get; set; } = default!;
+        /// <summary>Gets or sets Occupancy.</summary>
+        public OccupancyBitmap? Occupancy { get; set; }
+        /// <summary>Gets or sets PreviousSetpoint.</summary>
+        public short? PreviousSetpoint { get; set; }
+        /// <summary>Gets or sets CurrentSetpoint.</summary>
+        public short CurrentSetpoint { get; set; }
+    }
+
+    /// <summary>SetpointChange event report.</summary>
+    public sealed class SetpointChangeEvent(MatterEventReport report, SetpointChangeEventData payload)
+        : ClusterEvent(report, "SetpointChange")
+    {
+        /// <summary>Gets the typed SetpointChange payload.</summary>
+        public SetpointChangeEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>RunningStateChange event payload.</summary>
+    public sealed class RunningStateChangeEventData
+    {
+        /// <summary>Gets or sets PreviousRunningState.</summary>
+        public RelayStateBitmap? PreviousRunningState { get; set; }
+        /// <summary>Gets or sets CurrentRunningState.</summary>
+        public RelayStateBitmap CurrentRunningState { get; set; } = default!;
+    }
+
+    /// <summary>RunningStateChange event report.</summary>
+    public sealed class RunningStateChangeEvent(MatterEventReport report, RunningStateChangeEventData payload)
+        : ClusterEvent(report, "RunningStateChange")
+    {
+        /// <summary>Gets the typed RunningStateChange payload.</summary>
+        public RunningStateChangeEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>RunningModeChange event payload.</summary>
+    public sealed class RunningModeChangeEventData
+    {
+        /// <summary>Gets or sets PreviousRunningMode.</summary>
+        public ThermostatRunningModeEnum? PreviousRunningMode { get; set; }
+        /// <summary>Gets or sets CurrentRunningMode.</summary>
+        public ThermostatRunningModeEnum CurrentRunningMode { get; set; } = default!;
+    }
+
+    /// <summary>RunningModeChange event report.</summary>
+    public sealed class RunningModeChangeEvent(MatterEventReport report, RunningModeChangeEventData payload)
+        : ClusterEvent(report, "RunningModeChange")
+    {
+        /// <summary>Gets the typed RunningModeChange payload.</summary>
+        public RunningModeChangeEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>ActiveScheduleChange event payload.</summary>
+    public sealed class ActiveScheduleChangeEventData
+    {
+        /// <summary>Gets or sets PreviousScheduleHandle.</summary>
+        public byte[]? PreviousScheduleHandle { get; set; }
+        /// <summary>Gets or sets CurrentScheduleHandle.</summary>
+        public byte[] CurrentScheduleHandle { get; set; } = default!;
+    }
+
+    /// <summary>ActiveScheduleChange event report.</summary>
+    public sealed class ActiveScheduleChangeEvent(MatterEventReport report, ActiveScheduleChangeEventData payload)
+        : ClusterEvent(report, "ActiveScheduleChange")
+    {
+        /// <summary>Gets the typed ActiveScheduleChange payload.</summary>
+        public ActiveScheduleChangeEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>ActivePresetChange event payload.</summary>
+    public sealed class ActivePresetChangeEventData
+    {
+        /// <summary>Gets or sets PreviousPresetHandle.</summary>
+        public byte[]? PreviousPresetHandle { get; set; }
+        /// <summary>Gets or sets CurrentPresetHandle.</summary>
+        public byte[] CurrentPresetHandle { get; set; } = default!;
+    }
+
+    /// <summary>ActivePresetChange event report.</summary>
+    public sealed class ActivePresetChangeEvent(MatterEventReport report, ActivePresetChangeEventData payload)
+        : ClusterEvent(report, "ActivePresetChange")
+    {
+        /// <summary>Gets the typed ActivePresetChange payload.</summary>
+        public ActivePresetChangeEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
     // Async command methods
 
     /// <summary>Send SetpointRaiseLower command (0x0000).</summary>
@@ -1816,4 +1996,727 @@ public class ThermostatCluster : ClusterBase
             ArgumentNullException.ThrowIfNull(schedules);
             if (schedules != null) { tlv.AddArray(2); foreach (var item in schedules) { WriteScheduleStruct(tlv, item); } tlv.EndContainer(); }
         }, timedRequest, timedTimeoutMs, ct);
+
+    // Event payload parsers
+
+    private static SystemModeChangeEventData ReadSystemModeChangeEventData(MatterTLV tlv)
+    {
+        var value = new SystemModeChangeEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.PreviousSystemMode = (SystemModeEnum)tlv.GetUnsignedIntAny(0); }
+                    break;
+                case 1:
+                    value.CurrentSystemMode = (SystemModeEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadSystemModeChangeEventData(MatterEventReport report, out SystemModeChangeEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadSystemModeChangeEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "SystemModeChange payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static LocalTemperatureChangeEventData ReadLocalTemperatureChangeEventData(MatterTLV tlv)
+    {
+        var value = new LocalTemperatureChangeEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.CurrentLocalTemperature = (short)tlv.GetSignedInt(0); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadLocalTemperatureChangeEventData(MatterEventReport report, out LocalTemperatureChangeEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadLocalTemperatureChangeEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "LocalTemperatureChange payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static OccupancyChangeEventData ReadOccupancyChangeEventData(MatterTLV tlv)
+    {
+        var value = new OccupancyChangeEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.PreviousOccupancy = (OccupancyBitmap)tlv.GetUnsignedIntAny(0); }
+                    break;
+                case 1:
+                    value.CurrentOccupancy = (OccupancyBitmap)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadOccupancyChangeEventData(MatterEventReport report, out OccupancyChangeEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadOccupancyChangeEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "OccupancyChange payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static SetpointChangeEventData ReadSetpointChangeEventData(MatterTLV tlv)
+    {
+        var value = new SetpointChangeEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.SystemMode = (SystemModeEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Occupancy = (OccupancyBitmap)tlv.GetUnsignedIntAny(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.PreviousSetpoint = (short)tlv.GetSignedInt(2); }
+                    break;
+                case 3:
+                    value.CurrentSetpoint = (short)tlv.GetSignedInt(3);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadSetpointChangeEventData(MatterEventReport report, out SetpointChangeEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadSetpointChangeEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "SetpointChange payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static RunningStateChangeEventData ReadRunningStateChangeEventData(MatterTLV tlv)
+    {
+        var value = new RunningStateChangeEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.PreviousRunningState = (RelayStateBitmap)tlv.GetUnsignedIntAny(0); }
+                    break;
+                case 1:
+                    value.CurrentRunningState = (RelayStateBitmap)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadRunningStateChangeEventData(MatterEventReport report, out RunningStateChangeEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadRunningStateChangeEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "RunningStateChange payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static RunningModeChangeEventData ReadRunningModeChangeEventData(MatterTLV tlv)
+    {
+        var value = new RunningModeChangeEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.PreviousRunningMode = (ThermostatRunningModeEnum)tlv.GetUnsignedIntAny(0); }
+                    break;
+                case 1:
+                    value.CurrentRunningMode = (ThermostatRunningModeEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadRunningModeChangeEventData(MatterEventReport report, out RunningModeChangeEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadRunningModeChangeEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "RunningModeChange payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static ActiveScheduleChangeEventData ReadActiveScheduleChangeEventData(MatterTLV tlv)
+    {
+        var value = new ActiveScheduleChangeEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.PreviousScheduleHandle = tlv.GetOctetString(0); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.CurrentScheduleHandle = tlv.GetOctetString(1); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadActiveScheduleChangeEventData(MatterEventReport report, out ActiveScheduleChangeEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadActiveScheduleChangeEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "ActiveScheduleChange payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static ActivePresetChangeEventData ReadActivePresetChangeEventData(MatterTLV tlv)
+    {
+        var value = new ActivePresetChangeEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.PreviousPresetHandle = tlv.GetOctetString(0); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.CurrentPresetHandle = tlv.GetOctetString(1); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadActivePresetChangeEventData(MatterEventReport report, out ActivePresetChangeEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadActivePresetChangeEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "ActivePresetChange payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateThermostatSuggestionStructJson(ThermostatSuggestionStruct value)
+    {
+        var json = new JsonObject();
+        json["uniqueID"] = CreateJsonValue(value.UniqueID);
+        if (value.PresetHandle is { } presetHandle)
+        {
+            json["presetHandle"] = CreateJsonValue(presetHandle);
+        }
+        json["effectiveTime"] = CreateJsonValue(value.EffectiveTime);
+        json["expirationTime"] = CreateJsonValue(value.ExpirationTime);
+        return json;
+    }
+
+    private static JsonObject CreateWeeklyScheduleTransitionStructJson(WeeklyScheduleTransitionStruct value)
+    {
+        var json = new JsonObject();
+        json["transitionTime"] = CreateJsonValue(value.TransitionTime);
+        if (value.HeatSetpoint is { } heatSetpoint)
+        {
+            json["heatSetpoint"] = CreateJsonValue(heatSetpoint);
+        }
+        if (value.CoolSetpoint is { } coolSetpoint)
+        {
+            json["coolSetpoint"] = CreateJsonValue(coolSetpoint);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateScheduleTypeStructJson(ScheduleTypeStruct value)
+    {
+        var json = new JsonObject();
+        if (value.SystemMode is { } systemMode)
+        {
+            json["systemMode"] = CreateJsonValue(systemMode.ToString());
+        }
+        json["numberOfSchedules"] = CreateJsonValue(value.NumberOfSchedules);
+        if (value.ScheduleTypeFeatures is { } scheduleTypeFeatures)
+        {
+            json["scheduleTypeFeatures"] = CreateJsonValue(scheduleTypeFeatures.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreatePresetStructJson(PresetStruct value)
+    {
+        var json = new JsonObject();
+        if (value.PresetHandle is { } presetHandle)
+        {
+            json["presetHandle"] = CreateJsonValue(presetHandle);
+        }
+        if (value.PresetScenario is { } presetScenario)
+        {
+            json["presetScenario"] = CreateJsonValue(presetScenario.ToString());
+        }
+        if (value.Name is { } name)
+        {
+            json["name"] = CreateJsonValue(name);
+        }
+        if (value.CoolingSetpoint is { } coolingSetpoint)
+        {
+            json["coolingSetpoint"] = CreateJsonValue(coolingSetpoint);
+        }
+        if (value.HeatingSetpoint is { } heatingSetpoint)
+        {
+            json["heatingSetpoint"] = CreateJsonValue(heatingSetpoint);
+        }
+        if (value.BuiltIn is { } builtIn)
+        {
+            json["builtIn"] = CreateJsonValue(builtIn);
+        }
+        return json;
+    }
+
+    private static JsonObject CreatePresetTypeStructJson(PresetTypeStruct value)
+    {
+        var json = new JsonObject();
+        if (value.PresetScenario is { } presetScenario)
+        {
+            json["presetScenario"] = CreateJsonValue(presetScenario.ToString());
+        }
+        json["numberOfPresets"] = CreateJsonValue(value.NumberOfPresets);
+        if (value.PresetTypeFeatures is { } presetTypeFeatures)
+        {
+            json["presetTypeFeatures"] = CreateJsonValue(presetTypeFeatures.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateScheduleStructJson(ScheduleStruct value)
+    {
+        var json = new JsonObject();
+        if (value.ScheduleHandle is { } scheduleHandle)
+        {
+            json["scheduleHandle"] = CreateJsonValue(scheduleHandle);
+        }
+        if (value.SystemMode is { } systemMode)
+        {
+            json["systemMode"] = CreateJsonValue(systemMode.ToString());
+        }
+        if (value.Name is { } name)
+        {
+            json["name"] = CreateJsonValue(name);
+        }
+        if (value.PresetHandle is { } presetHandle)
+        {
+            json["presetHandle"] = CreateJsonValue(presetHandle);
+        }
+        if (value.Transitions is { } transitionsValues)
+        {
+            var transitionsItems = new JsonArray();
+            foreach (var item in transitionsValues)
+            {
+                transitionsItems.Add((JsonNode?)CreateScheduleTransitionStructJson(item));
+            }
+            json["transitions"] = transitionsItems;
+        }
+        if (value.BuiltIn is { } builtIn)
+        {
+            json["builtIn"] = CreateJsonValue(builtIn);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateScheduleTransitionStructJson(ScheduleTransitionStruct value)
+    {
+        var json = new JsonObject();
+        if (value.DayOfWeek is { } dayOfWeek)
+        {
+            json["dayOfWeek"] = CreateJsonValue(dayOfWeek.ToString());
+        }
+        json["transitionTime"] = CreateJsonValue(value.TransitionTime);
+        if (value.PresetHandle is { } presetHandle)
+        {
+            json["presetHandle"] = CreateJsonValue(presetHandle);
+        }
+        if (value.SystemMode is { } systemMode)
+        {
+            json["systemMode"] = CreateJsonValue(systemMode.ToString());
+        }
+        if (value.CoolingSetpoint is { } coolingSetpoint)
+        {
+            json["coolingSetpoint"] = CreateJsonValue(coolingSetpoint);
+        }
+        if (value.HeatingSetpoint is { } heatingSetpoint)
+        {
+            json["heatingSetpoint"] = CreateJsonValue(heatingSetpoint);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateAtomicAttributeStatusStructJson(AtomicAttributeStatusStruct value)
+    {
+        var json = new JsonObject();
+        json["attributeID"] = CreateJsonValue(value.AttributeID);
+        json["statusCode"] = CreateJsonValue(value.StatusCode);
+        return json;
+    }
+
+    private static JsonObject CreateSystemModeChangeEventDataJson(SystemModeChangeEventData value)
+    {
+        var json = new JsonObject();
+        if (value.PreviousSystemMode is { } previousSystemMode)
+        {
+            json["previousSystemMode"] = CreateJsonValue(previousSystemMode.ToString());
+        }
+        if (value.CurrentSystemMode is { } currentSystemMode)
+        {
+            json["currentSystemMode"] = CreateJsonValue(currentSystemMode.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateLocalTemperatureChangeEventDataJson(LocalTemperatureChangeEventData value)
+    {
+        var json = new JsonObject();
+        if (value.CurrentLocalTemperature is { } currentLocalTemperature)
+        {
+            json["currentLocalTemperature"] = CreateJsonValue(currentLocalTemperature);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateOccupancyChangeEventDataJson(OccupancyChangeEventData value)
+    {
+        var json = new JsonObject();
+        if (value.PreviousOccupancy is { } previousOccupancy)
+        {
+            json["previousOccupancy"] = CreateJsonValue(previousOccupancy.ToString());
+        }
+        if (value.CurrentOccupancy is { } currentOccupancy)
+        {
+            json["currentOccupancy"] = CreateJsonValue(currentOccupancy.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateSetpointChangeEventDataJson(SetpointChangeEventData value)
+    {
+        var json = new JsonObject();
+        if (value.SystemMode is { } systemMode)
+        {
+            json["systemMode"] = CreateJsonValue(systemMode.ToString());
+        }
+        if (value.Occupancy is { } occupancy)
+        {
+            json["occupancy"] = CreateJsonValue(occupancy.ToString());
+        }
+        if (value.PreviousSetpoint is { } previousSetpoint)
+        {
+            json["previousSetpoint"] = CreateJsonValue(previousSetpoint);
+        }
+        json["currentSetpoint"] = CreateJsonValue(value.CurrentSetpoint);
+        return json;
+    }
+
+    private static JsonObject CreateRunningStateChangeEventDataJson(RunningStateChangeEventData value)
+    {
+        var json = new JsonObject();
+        if (value.PreviousRunningState is { } previousRunningState)
+        {
+            json["previousRunningState"] = CreateJsonValue(previousRunningState.ToString());
+        }
+        if (value.CurrentRunningState is { } currentRunningState)
+        {
+            json["currentRunningState"] = CreateJsonValue(currentRunningState.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateRunningModeChangeEventDataJson(RunningModeChangeEventData value)
+    {
+        var json = new JsonObject();
+        if (value.PreviousRunningMode is { } previousRunningMode)
+        {
+            json["previousRunningMode"] = CreateJsonValue(previousRunningMode.ToString());
+        }
+        if (value.CurrentRunningMode is { } currentRunningMode)
+        {
+            json["currentRunningMode"] = CreateJsonValue(currentRunningMode.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateActiveScheduleChangeEventDataJson(ActiveScheduleChangeEventData value)
+    {
+        var json = new JsonObject();
+        if (value.PreviousScheduleHandle is { } previousScheduleHandle)
+        {
+            json["previousScheduleHandle"] = CreateJsonValue(previousScheduleHandle);
+        }
+        if (value.CurrentScheduleHandle is { } currentScheduleHandle)
+        {
+            json["currentScheduleHandle"] = CreateJsonValue(currentScheduleHandle);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateActivePresetChangeEventDataJson(ActivePresetChangeEventData value)
+    {
+        var json = new JsonObject();
+        if (value.PreviousPresetHandle is { } previousPresetHandle)
+        {
+            json["previousPresetHandle"] = CreateJsonValue(previousPresetHandle);
+        }
+        if (value.CurrentPresetHandle is { } currentPresetHandle)
+        {
+            json["currentPresetHandle"] = CreateJsonValue(currentPresetHandle);
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            SystemModeChangeEvent typed => CreateSystemModeChangeEventDataJson(typed.Payload),
+            LocalTemperatureChangeEvent typed => CreateLocalTemperatureChangeEventDataJson(typed.Payload),
+            OccupancyChangeEvent typed => CreateOccupancyChangeEventDataJson(typed.Payload),
+            SetpointChangeEvent typed => CreateSetpointChangeEventDataJson(typed.Payload),
+            RunningStateChangeEvent typed => CreateRunningStateChangeEventDataJson(typed.Payload),
+            RunningModeChangeEvent typed => CreateRunningModeChangeEventDataJson(typed.Payload),
+            ActiveScheduleChangeEvent typed => CreateActiveScheduleChangeEventDataJson(typed.Payload),
+            ActivePresetChangeEvent typed => CreateActivePresetChangeEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.SystemModeChange when TryReadSystemModeChangeEventData(report, out var systemModeChangeEventData, out _) => new SystemModeChangeEvent(report, systemModeChangeEventData!),
+            Events.SystemModeChange when TryReadSystemModeChangeEventData(report, out _, out var systemModeChangeReason) => new UnknownClusterEvent(report, systemModeChangeReason),
+            Events.LocalTemperatureChange when TryReadLocalTemperatureChangeEventData(report, out var localTemperatureChangeEventData, out _) => new LocalTemperatureChangeEvent(report, localTemperatureChangeEventData!),
+            Events.LocalTemperatureChange when TryReadLocalTemperatureChangeEventData(report, out _, out var localTemperatureChangeReason) => new UnknownClusterEvent(report, localTemperatureChangeReason),
+            Events.OccupancyChange when TryReadOccupancyChangeEventData(report, out var occupancyChangeEventData, out _) => new OccupancyChangeEvent(report, occupancyChangeEventData!),
+            Events.OccupancyChange when TryReadOccupancyChangeEventData(report, out _, out var occupancyChangeReason) => new UnknownClusterEvent(report, occupancyChangeReason),
+            Events.SetpointChange when TryReadSetpointChangeEventData(report, out var setpointChangeEventData, out _) => new SetpointChangeEvent(report, setpointChangeEventData!),
+            Events.SetpointChange when TryReadSetpointChangeEventData(report, out _, out var setpointChangeReason) => new UnknownClusterEvent(report, setpointChangeReason),
+            Events.RunningStateChange when TryReadRunningStateChangeEventData(report, out var runningStateChangeEventData, out _) => new RunningStateChangeEvent(report, runningStateChangeEventData!),
+            Events.RunningStateChange when TryReadRunningStateChangeEventData(report, out _, out var runningStateChangeReason) => new UnknownClusterEvent(report, runningStateChangeReason),
+            Events.RunningModeChange when TryReadRunningModeChangeEventData(report, out var runningModeChangeEventData, out _) => new RunningModeChangeEvent(report, runningModeChangeEventData!),
+            Events.RunningModeChange when TryReadRunningModeChangeEventData(report, out _, out var runningModeChangeReason) => new UnknownClusterEvent(report, runningModeChangeReason),
+            Events.ActiveScheduleChange when TryReadActiveScheduleChangeEventData(report, out var activeScheduleChangeEventData, out _) => new ActiveScheduleChangeEvent(report, activeScheduleChangeEventData!),
+            Events.ActiveScheduleChange when TryReadActiveScheduleChangeEventData(report, out _, out var activeScheduleChangeReason) => new UnknownClusterEvent(report, activeScheduleChangeReason),
+            Events.ActivePresetChange when TryReadActivePresetChangeEventData(report, out var activePresetChangeEventData, out _) => new ActivePresetChangeEvent(report, activePresetChangeEventData!),
+            Events.ActivePresetChange when TryReadActivePresetChangeEventData(report, out _, out var activePresetChangeReason) => new UnknownClusterEvent(report, activePresetChangeReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

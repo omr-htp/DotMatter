@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -105,6 +106,44 @@ public class WaterHeaterManagementCluster : ClusterBase
         if (value.TargetReheat != null) tlv.AddUInt8(5, value.TargetReheat.Value);
     }
 
+    // TLV struct deserializers
+
+    private static WaterHeaterBoostInfoStruct ReadWaterHeaterBoostInfoStruct(MatterTLV tlv)
+    {
+        var value = new WaterHeaterBoostInfoStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Duration = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.OneShot = tlv.GetBoolean(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.EmergencyBoost = tlv.GetBoolean(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.TemporarySetpoint = (short)tlv.GetSignedInt(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.TargetPercentage = (byte)tlv.GetUnsignedIntAny(4); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.TargetReheat = (byte)tlv.GetUnsignedIntAny(5); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -138,6 +177,57 @@ public class WaterHeaterManagementCluster : ClusterBase
         public const uint BoostStarted = 0x0000;
         /// <summary>BoostEnded (0x0001).</summary>
         public const uint BoostEnded = 0x0001;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Water Heater Management", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>BoostStarted event payload.</summary>
+    public sealed class BoostStartedEventData
+    {
+        /// <summary>Gets or sets BoostInfo.</summary>
+        public WaterHeaterBoostInfoStruct BoostInfo { get; set; } = default!;
+    }
+
+    /// <summary>BoostStarted event report.</summary>
+    public sealed class BoostStartedEvent(MatterEventReport report, BoostStartedEventData payload)
+        : ClusterEvent(report, "BoostStarted")
+    {
+        /// <summary>Gets the typed BoostStarted payload.</summary>
+        public BoostStartedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>BoostEnded event payload.</summary>
+    public sealed class BoostEndedEventData
+    {
+    }
+
+    /// <summary>BoostEnded event report.</summary>
+    public sealed class BoostEndedEvent(MatterEventReport report, BoostEndedEventData payload)
+        : ClusterEvent(report, "BoostEnded")
+    {
+        /// <summary>Gets the typed BoostEnded payload.</summary>
+        public BoostEndedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Async command methods
@@ -177,4 +267,193 @@ public class WaterHeaterManagementCluster : ClusterBase
     /// <summary>Read BoostState attribute (0x0005).</summary>
     public Task<BoostStateEnum> ReadBoostStateAsync(CancellationToken ct = default)
         => ReadAttributeAsync<BoostStateEnum>(0x0005, ct);
+
+    // Event payload parsers
+
+    private static BoostStartedEventData ReadBoostStartedEventData(MatterTLV tlv)
+    {
+        var value = new BoostStartedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.BoostInfo = ReadWaterHeaterBoostInfoStruct(tlv);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadBoostStartedEventData(MatterEventReport report, out BoostStartedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadBoostStartedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "BoostStarted payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static BoostEndedEventData ReadBoostEndedEventData(MatterTLV tlv)
+    {
+        var value = new BoostEndedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadBoostEndedEventData(MatterEventReport report, out BoostEndedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadBoostEndedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "BoostEnded payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateWaterHeaterBoostInfoStructJson(WaterHeaterBoostInfoStruct value)
+    {
+        var json = new JsonObject();
+        json["duration"] = CreateJsonValue(value.Duration);
+        if (value.OneShot is { } oneShot)
+        {
+            json["oneShot"] = CreateJsonValue(oneShot);
+        }
+        if (value.EmergencyBoost is { } emergencyBoost)
+        {
+            json["emergencyBoost"] = CreateJsonValue(emergencyBoost);
+        }
+        if (value.TemporarySetpoint is { } temporarySetpoint)
+        {
+            json["temporarySetpoint"] = CreateJsonValue(temporarySetpoint);
+        }
+        if (value.TargetPercentage is { } targetPercentage)
+        {
+            json["targetPercentage"] = CreateJsonValue(targetPercentage);
+        }
+        if (value.TargetReheat is { } targetReheat)
+        {
+            json["targetReheat"] = CreateJsonValue(targetReheat);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateBoostStartedEventDataJson(BoostStartedEventData value)
+    {
+        var json = new JsonObject();
+        if (value.BoostInfo is { } boostInfo)
+        {
+            json["boostInfo"] = CreateWaterHeaterBoostInfoStructJson(boostInfo);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateBoostEndedEventDataJson(BoostEndedEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            BoostStartedEvent typed => CreateBoostStartedEventDataJson(typed.Payload),
+            BoostEndedEvent typed => CreateBoostEndedEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.BoostStarted when TryReadBoostStartedEventData(report, out var boostStartedEventData, out _) => new BoostStartedEvent(report, boostStartedEventData!),
+            Events.BoostStarted when TryReadBoostStartedEventData(report, out _, out var boostStartedReason) => new UnknownClusterEvent(report, boostStartedReason),
+            Events.BoostEnded when TryReadBoostEndedEventData(report, out var boostEndedEventData, out _) => new BoostEndedEvent(report, boostEndedEventData!),
+            Events.BoostEnded when TryReadBoostEndedEventData(report, out _, out var boostEndedReason) => new UnknownClusterEvent(report, boostEndedReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

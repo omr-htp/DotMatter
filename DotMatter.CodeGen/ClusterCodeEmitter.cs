@@ -42,6 +42,7 @@ static class ClusterCodeEmitter
         sb.AppendLine("using DotMatter.Core.InteractionModel;");
         sb.AppendLine("using DotMatter.Core.Sessions;");
         sb.AppendLine("using DotMatter.Core.TLV;");
+        sb.AppendLine("using System.Text.Json.Nodes;");
         sb.AppendLine();
         sb.AppendLine("namespace DotMatter.Core.Clusters;");
         sb.AppendLine();
@@ -67,9 +68,11 @@ static class ClusterCodeEmitter
         EmitAttributeConstants(sb, cluster);
         EmitCommandConstants(sb, cluster);
         EmitEventConstants(sb, cluster);
+        EmitEventTypes(sb, cluster, localTypes);
         EmitAsyncCommands(sb, cluster, localTypes, enumNames, structNames, enumUnderlyingTypes, structMap);
         EmitAttributeReaders(sb, cluster, localTypes, enumNames, structNames);
         EmitAttributeWriters(sb, cluster, localTypes, enumNames, structNames, enumUnderlyingTypes, structMap);
+        EmitEventApis(sb, cluster, localTypes, enumNames, structNames, enumUnderlyingTypes, structMap);
 
         sb.AppendLine("}");
         return sb.ToString();
@@ -269,7 +272,7 @@ static class ClusterCodeEmitter
         HashSet<string> enumNames,
         HashSet<string> structNames)
     {
-        if (!HasWritableStructArrayAttribute(cluster, localTypes, structNames))
+        if (cluster.Structs.Count == 0)
         {
             return;
         }
@@ -491,6 +494,240 @@ static class ClusterCodeEmitter
             sb.AppendLine($"        /// <summary>{Naming.EscapeXml(e.Name)} (0x{e.Id:X4}).</summary>");
             sb.AppendLine($"        public const uint {Naming.ToPascalCase(e.Name)} = 0x{e.Id:X4};");
         }
+        sb.AppendLine("    }");
+    }
+
+    static void EmitEventTypes(
+        StringBuilder sb,
+        ClusterModel cluster,
+        HashSet<string> localTypes)
+    {
+        if (cluster.Events.Count == 0)
+        {
+            return;
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>Base type for this cluster's event reports.</summary>");
+        sb.AppendLine("    public abstract class ClusterEvent");
+        sb.AppendLine($"        : MatterClusterEvent");
+        sb.AppendLine("    {");
+        sb.AppendLine("        /// <summary>Initializes a new cluster event wrapper.</summary>");
+        sb.AppendLine("        protected ClusterEvent(MatterEventReport report, string eventName)");
+        sb.AppendLine($"            : base(report, \"{Naming.EscapeXml(cluster.Name)}\", eventName) {{ }}");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>");
+        sb.AppendLine("    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)");
+        sb.AppendLine("        : ClusterEvent(report, \"Unknown\")");
+        sb.AppendLine("    {");
+        sb.AppendLine("        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>");
+        sb.AppendLine("        public override string? Reason { get; } = reason;");
+        sb.AppendLine("    }");
+
+        foreach (var evt in cluster.Events)
+        {
+            string payloadType = $"{Naming.ToPascalCase(evt.Name)}EventData";
+            string wrapperType = $"{Naming.ToPascalCase(evt.Name)}Event";
+
+            sb.AppendLine();
+            sb.AppendLine($"    /// <summary>{Naming.EscapeXml(evt.Name)} event payload.</summary>");
+            sb.AppendLine($"    public sealed class {payloadType}");
+            sb.AppendLine("    {");
+            foreach (var field in evt.Fields)
+            {
+                string csType = Naming.MapCSharpType(field.Type, field.Nullable, field.Optional, field.IsArray, field.EntryType, localTypes);
+                string propertyName = Naming.ToPascalCase(field.Name);
+                string init = Naming.NeedsDefaultInit(csType) ? " = default!;" : "";
+                sb.AppendLine($"        /// <summary>Gets or sets {Naming.EscapeXml(field.Name)}.</summary>");
+                sb.AppendLine($"        public {csType} {propertyName} {{ get; set; }}{init}");
+            }
+            sb.AppendLine("    }");
+
+            sb.AppendLine();
+            sb.AppendLine($"    /// <summary>{Naming.EscapeXml(evt.Name)} event report.</summary>");
+            sb.AppendLine($"    public sealed class {wrapperType}(MatterEventReport report, {payloadType} payload)");
+            sb.AppendLine($"        : ClusterEvent(report, \"{Naming.EscapeXml(evt.Name)}\")");
+            sb.AppendLine("    {");
+            sb.AppendLine($"        /// <summary>Gets the typed {Naming.EscapeXml(evt.Name)} payload.</summary>");
+            sb.AppendLine($"        public {payloadType} Payload {{ get; }} = payload;");
+            sb.AppendLine();
+            sb.AppendLine("        /// <inheritdoc />");
+            sb.AppendLine("        public override object? TypedPayload => Payload;");
+            sb.AppendLine("    }");
+        }
+    }
+
+    static void EmitEventApis(
+        StringBuilder sb,
+        ClusterModel cluster,
+        HashSet<string> localTypes,
+        HashSet<string> enumNames,
+        HashSet<string> structNames,
+        Dictionary<string, string> enumUnderlyingTypes,
+        Dictionary<string, StructModel> structMap)
+    {
+        if (cluster.Events.Count == 0)
+        {
+            return;
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("    // Event payload parsers");
+
+        foreach (var evt in cluster.Events)
+        {
+            string payloadType = $"{Naming.ToPascalCase(evt.Name)}EventData";
+            string eventName = Naming.ToPascalCase(evt.Name);
+            var unsupportedFields = GetUnsupportedEventFields(evt, localTypes, enumNames, structNames, enumUnderlyingTypes, structMap);
+
+            if (unsupportedFields.Count == 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine($"    private static {payloadType} Read{payloadType}(MatterTLV tlv)");
+                sb.AppendLine("    {");
+                sb.AppendLine($"        var value = new {payloadType}();");
+                sb.AppendLine("        tlv.OpenStructure(7);");
+                sb.AppendLine("        while (!tlv.IsEndContainerNext())");
+                sb.AppendLine("        {");
+                sb.AppendLine("            switch (tlv.PeekTag())");
+                sb.AppendLine("            {");
+                foreach (var field in evt.Fields)
+                {
+                    string csType = Naming.MapCSharpType(field.Type, field.Nullable, field.Optional, field.IsArray, field.EntryType, localTypes);
+                    string property = Naming.ToPascalCase(field.Name);
+                    sb.AppendLine($"                case {field.Id}:");
+                    foreach (var line in EmitTlvReadLines(field, $"value.{property}", csType, enumNames, structNames))
+                    {
+                        sb.AppendLine($"                    {line}");
+                    }
+                    sb.AppendLine("                    break;");
+                }
+                sb.AppendLine("                default:");
+                sb.AppendLine("                    tlv.SkipElement();");
+                sb.AppendLine("                    break;");
+                sb.AppendLine("            }");
+                sb.AppendLine("        }");
+                sb.AppendLine();
+                sb.AppendLine("        tlv.CloseContainer();");
+                sb.AppendLine("        return value;");
+                sb.AppendLine("    }");
+            }
+
+            sb.AppendLine();
+            sb.AppendLine($"    private static bool TryRead{payloadType}(MatterEventReport report, out {payloadType}? payload, out string? reason)");
+            sb.AppendLine("    {");
+            if (unsupportedFields.Count > 0)
+            {
+                sb.AppendLine("        payload = null;");
+                sb.AppendLine($"        reason = \"{Naming.EscapeXml(BuildUnsupportedEventDetail(evt.Name, unsupportedFields))}\";");
+                sb.AppendLine("        return false;");
+            }
+            else
+            {
+                sb.AppendLine("        payload = null;");
+                sb.AppendLine("        if (report.RawData is null)");
+                sb.AppendLine("        {");
+                sb.AppendLine("            reason = \"Event payload TLV was not captured.\";");
+                sb.AppendLine("            return false;");
+                sb.AppendLine("        }");
+                sb.AppendLine();
+                sb.AppendLine("        try");
+                sb.AppendLine("        {");
+                sb.AppendLine($"            payload = Read{payloadType}(new MatterTLV(report.RawData.GetBytes()));");
+                sb.AppendLine("            reason = null;");
+                sb.AppendLine("            return true;");
+                sb.AppendLine("        }");
+                sb.AppendLine("        catch (Exception ex)");
+                sb.AppendLine("        {");
+                sb.AppendLine($"            reason = \"{Naming.EscapeXml(evt.Name)} payload parse failed: \" + ex.Message;");
+                sb.AppendLine("            return false;");
+                sb.AppendLine("        }");
+            }
+            sb.AppendLine("    }");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("    // Event payload JSON projectors");
+
+        foreach (var structModel in cluster.Structs)
+        {
+            EmitJsonObjectProjector(sb, structModel.Fields, Naming.ToPascalCase(structModel.Name), localTypes, enumNames, structNames);
+        }
+
+        foreach (var evt in cluster.Events)
+        {
+            EmitJsonObjectProjector(sb, evt.Fields, $"{Naming.ToPascalCase(evt.Name)}EventData", localTypes, enumNames, structNames);
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        return evt switch");
+        sb.AppendLine("        {");
+        foreach (var evt in cluster.Events)
+        {
+            var eventName = Naming.ToPascalCase(evt.Name);
+            var wrapperType = $"{eventName}Event";
+            var payloadType = $"{eventName}EventData";
+            sb.AppendLine($"            {wrapperType} typed => Create{payloadType}Json(typed.Payload),");
+        }
+        sb.AppendLine("            _ => null,");
+        sb.AppendLine("        };");
+        sb.AppendLine("    }");
+
+        sb.AppendLine();
+        sb.AppendLine("    // Event readers and subscriptions");
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>Read event reports from this cluster.</summary>");
+        sb.AppendLine("    public async Task<ClusterEvent[]> ReadEventsAsync(");
+        sb.AppendLine("        uint[]? eventIds = null,");
+        sb.AppendLine("        bool fabricFiltered = false,");
+        sb.AppendLine("        CancellationToken ct = default)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);");
+        sb.AppendLine("        return [.. events];");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>Subscribe to event reports from this cluster.</summary>");
+        sb.AppendLine("    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(");
+        sb.AppendLine("        uint[]? eventIds = null,");
+        sb.AppendLine("        ushort minInterval = 1,");
+        sb.AppendLine("        ushort maxInterval = 60,");
+        sb.AppendLine("        bool fabricFiltered = false,");
+        sb.AppendLine("        CancellationToken ct = default)");
+        sb.AppendLine("        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);");
+        sb.AppendLine();
+        sb.AppendLine("    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        if (reports.Count == 0)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            return [];");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.AppendLine("        var events = new List<ClusterEvent>(reports.Count);");
+        sb.AppendLine("        foreach (var report in reports)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            events.Add(MapEventReport(report));");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.AppendLine("        return [.. events];");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine("    internal static ClusterEvent MapEventReport(MatterEventReport report)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        return report.EventId switch");
+        sb.AppendLine("        {");
+        foreach (var evt in cluster.Events)
+        {
+            string eventName = Naming.ToPascalCase(evt.Name);
+            string payloadType = $"{eventName}EventData";
+            string wrapperType = $"{eventName}Event";
+            sb.AppendLine($"            Events.{eventName} when TryRead{payloadType}(report, out var {Naming.ToCamelCase(payloadType)}, out _) => new {wrapperType}(report, {Naming.ToCamelCase(payloadType)}!),");
+            sb.AppendLine($"            Events.{eventName} when TryRead{payloadType}(report, out _, out var {Naming.ToCamelCase(eventName)}Reason) => new UnknownClusterEvent(report, {Naming.ToCamelCase(eventName)}Reason),");
+        }
+        sb.AppendLine("            _ => new UnknownClusterEvent(report, \"Event ID is not recognized by this cluster.\"),");
+        sb.AppendLine("        };");
         sb.AppendLine("    }");
     }
 
@@ -876,8 +1113,35 @@ static class ClusterCodeEmitter
         return unsupported;
     }
 
+    static List<string> GetUnsupportedEventFields(
+        EventModel evt,
+        HashSet<string> localTypes,
+        HashSet<string> enumNames,
+        HashSet<string> structNames,
+        Dictionary<string, string> enumUnderlyingTypes,
+        Dictionary<string, StructModel> structMap)
+    {
+        var unsupported = new List<string>();
+
+        foreach (var field in evt.Fields)
+        {
+            string csType = Naming.MapCSharpType(field.Type, field.Nullable, field.Optional, field.IsArray, field.EntryType, localTypes);
+            if (!SupportsSerialization(field, csType, localTypes, enumNames, structNames, enumUnderlyingTypes, structMap, []))
+            {
+                unsupported.Add(field.IsArray
+                    ? $"{field.Name} ({GetElementTypeForUnsupportedMessage(csType)}[])"
+                    : $"{field.Name} ({csType})");
+            }
+        }
+
+        return unsupported;
+    }
+
     static string BuildUnsupportedCommandDetail(string commandName, List<string> unsupportedFields)
         => $"{commandName} requires serializer support for {string.Join(", ", unsupportedFields)}.";
+
+    static string BuildUnsupportedEventDetail(string eventName, List<string> unsupportedFields)
+        => $"{eventName} requires parser support for {string.Join(", ", unsupportedFields)}.";
 
     static string GetElementTypeForUnsupportedMessage(string csType)
         => csType.EndsWith("[]", StringComparison.Ordinal) ? csType[..^2] : csType;
@@ -986,4 +1250,107 @@ static class ClusterCodeEmitter
             "ulong" => $"0x{value:X}UL",
             _ => $"0x{value:X}",
         };
+
+    static void EmitJsonObjectProjector(
+        StringBuilder sb,
+        IReadOnlyList<FieldModel> fields,
+        string typeName,
+        HashSet<string> localTypes,
+        HashSet<string> enumNames,
+        HashSet<string> structNames)
+    {
+        sb.AppendLine();
+        sb.AppendLine($"    private static JsonObject Create{typeName}Json({typeName} value)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        var json = new JsonObject();");
+        foreach (var field in fields)
+        {
+            var csType = Naming.MapCSharpType(field.Type, field.Nullable, field.Optional, field.IsArray, field.EntryType, localTypes);
+            EmitJsonFieldAssignment(sb, field, csType, $"value.{Naming.ToPascalCase(field.Name)}", "json", "        ", enumNames, structNames);
+        }
+        sb.AppendLine("        return json;");
+        sb.AppendLine("    }");
+    }
+
+    static void EmitJsonFieldAssignment(
+        StringBuilder sb,
+        FieldModel field,
+        string csType,
+        string sourceExpression,
+        string jsonVar,
+        string indent,
+        HashSet<string> enumNames,
+        HashSet<string> structNames)
+    {
+        var jsonName = Naming.ToCamelCase(field.Name).TrimStart('@');
+        if (field.IsArray)
+        {
+            var itemType = GetArrayElementType(csType);
+            var valuesVar = $"{Naming.ToCamelCase(field.Name)}Values";
+            var itemsVar = $"{Naming.ToCamelCase(field.Name)}Items";
+            sb.AppendLine($"{indent}if ({sourceExpression} is {{ }} {valuesVar})");
+            sb.AppendLine($"{indent}{{");
+            sb.AppendLine($"{indent}    var {itemsVar} = new JsonArray();");
+            sb.AppendLine($"{indent}    foreach (var item in {valuesVar})");
+            sb.AppendLine($"{indent}    {{");
+            sb.AppendLine($"{indent}        {itemsVar}.Add((JsonNode?){BuildJsonNodeExpression(itemType, "item", enumNames, structNames)});");
+            sb.AppendLine($"{indent}    }}");
+            sb.AppendLine($"{indent}    {jsonVar}[\"{jsonName}\"] = {itemsVar};");
+            sb.AppendLine($"{indent}}}");
+            return;
+        }
+
+        if (csType.EndsWith("?", StringComparison.Ordinal) || !Naming.IsValueType(csType))
+        {
+            var valueVar = Naming.ToCamelCase(field.Name).TrimStart('@');
+            sb.AppendLine($"{indent}if ({sourceExpression} is {{ }} {valueVar})");
+            sb.AppendLine($"{indent}{{");
+            sb.AppendLine($"{indent}    {jsonVar}[\"{jsonName}\"] = {BuildJsonNodeExpression(TrimNullable(csType), valueVar, enumNames, structNames)};");
+            sb.AppendLine($"{indent}}}");
+            return;
+        }
+
+        sb.AppendLine($"{indent}{jsonVar}[\"{jsonName}\"] = {BuildJsonNodeExpression(csType, sourceExpression, enumNames, structNames)};");
+    }
+
+    static string BuildJsonNodeExpression(
+        string csType,
+        string sourceExpression,
+        HashSet<string> enumNames,
+        HashSet<string> structNames)
+    {
+        var normalized = TrimNullable(csType);
+        if (structNames.Contains(normalized))
+        {
+            return $"Create{normalized}Json({sourceExpression})";
+        }
+
+        if (enumNames.Contains(normalized))
+        {
+            return $"CreateJsonValue({sourceExpression}.ToString())";
+        }
+
+        if (normalized == "byte[]")
+        {
+            return $"CreateJsonValue({sourceExpression})";
+        }
+
+        if (normalized == "object")
+        {
+            return $"CreateJsonValue({sourceExpression}?.ToString())";
+        }
+
+        return $"CreateJsonValue({sourceExpression})";
+    }
+
+    static string TrimNullable(string csType)
+        => csType.EndsWith("?", StringComparison.Ordinal) ? csType[..^1] : csType;
+
+    static string GetArrayElementType(string csType)
+    {
+        var normalized = TrimNullable(csType);
+        return normalized.EndsWith("[]", StringComparison.Ordinal)
+            ? normalized[..^2]
+            : normalized;
+    }
 }

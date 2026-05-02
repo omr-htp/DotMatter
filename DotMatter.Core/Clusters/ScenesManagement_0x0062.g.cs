@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -166,6 +167,120 @@ public class ScenesManagementCluster : ClusterBase
     {
         tlv.AddUInt32(0, value.ClusterID);
         if (value.AttributeValueList != null) { tlv.AddArray(1); foreach (var item in value.AttributeValueList) { WriteAttributeValuePairStruct(tlv, item); } tlv.EndContainer(); }
+    }
+
+    // TLV struct deserializers
+
+    private static SceneInfoStruct ReadSceneInfoStruct(MatterTLV tlv)
+    {
+        var value = new SceneInfoStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.SceneCount = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.CurrentScene = (byte)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.CurrentGroup = (ushort)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.SceneValid = tlv.GetBoolean(3);
+                    break;
+                case 4:
+                    value.RemainingCapacity = (byte)tlv.GetUnsignedIntAny(4);
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static AttributeValuePairStruct ReadAttributeValuePairStruct(MatterTLV tlv)
+    {
+        var value = new AttributeValuePairStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.AttributeID = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.ValueUnsigned8 = (byte)tlv.GetUnsignedIntAny(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.ValueSigned8 = (sbyte)tlv.GetSignedInt(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.ValueUnsigned16 = (ushort)tlv.GetUnsignedIntAny(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.ValueSigned16 = (short)tlv.GetSignedInt(4); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.ValueUnsigned32 = tlv.GetUnsignedIntAny(5); }
+                    break;
+                case 6:
+                    if (tlv.IsNextNull()) { tlv.GetNull(6); } else { value.ValueSigned32 = (int)tlv.GetSignedInt(6); }
+                    break;
+                case 7:
+                    if (tlv.IsNextNull()) { tlv.GetNull(7); } else { value.ValueUnsigned64 = tlv.GetUnsignedInt(7); }
+                    break;
+                case 8:
+                    if (tlv.IsNextNull()) { tlv.GetNull(8); } else { value.ValueSigned64 = tlv.GetSignedInt(8); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ExtensionFieldSetStruct ReadExtensionFieldSetStruct(MatterTLV tlv)
+    {
+        var value = new ExtensionFieldSetStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ClusterID = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    var items1 = new List<AttributeValuePairStruct>();
+                    tlv.OpenArray(1);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items1.Add(ReadAttributeValuePairStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.AttributeValueList = [.. items1];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

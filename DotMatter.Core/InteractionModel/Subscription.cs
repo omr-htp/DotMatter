@@ -128,30 +128,8 @@ public sealed class Subscription : IAsyncDisposable
 
             await exchange.SendAsync(frame);
 
-            // Receive initial ReportData (priming report)
-            var reportFrame = await exchange.WaitForNextMessageAsync(ct);
-            if (reportFrame.MessagePayload.ProtocolOpCode != OpReportData)
-            {
-                throw new InvalidOperationException($"Expected ReportData (0x{OpReportData:X2}), got 0x{reportFrame.MessagePayload.ProtocolOpCode:X2}");
-            }
-
-            ReportDataAction? primingReport = null;
-            if (reportFrame.MessagePayload.ApplicationPayload is { } reportTlv)
-            {
-                primingReport = new ReportDataAction(reportTlv);
-            }
-
-            // Send StatusResponse (status = 0 = SUCCESS)
-            await SendStatusResponseAsync(exchange, 0);
-
-            // Receive SubscribeResponse
-            var subRespFrame = await exchange.WaitForNextMessageAsync(ct);
-            await exchange.AcknowledgeMessageAsync(subRespFrame.MessageCounter);
-
-            if (subRespFrame.MessagePayload.ProtocolOpCode != OpSubscribeResponse)
-            {
-                throw new InvalidOperationException($"Expected SubscribeResponse (0x{OpSubscribeResponse:X2}), got 0x{subRespFrame.MessagePayload.ProtocolOpCode:X2}");
-            }
+            var primingReports = new List<ReportDataAction>();
+            var subRespFrame = await WaitForSubscribeResponseAsync(exchange, primingReports, ct);
 
             if (subRespFrame.MessagePayload.ApplicationPayload is { } subTlv)
             {
@@ -168,15 +146,7 @@ public sealed class Subscription : IAsyncDisposable
             }
             sub.MinIntervalSeconds = minInterval;
 
-            // Deliver priming report
-            if (primingReport != null)
-            {
-                sub.OnReport?.Invoke(primingReport);
-                if (primingReport.EventReports.Count > 0)
-                {
-                    sub.OnEvent?.Invoke(primingReport.EventReports);
-                }
-            }
+            sub.DispatchReports(primingReports);
 
             // Start background listener for ongoing reports
             sub._cts = new CancellationTokenSource();
@@ -248,7 +218,6 @@ public sealed class Subscription : IAsyncDisposable
                 }
                 tlv.EndContainer();
             }
-            ;
 
             // Tag 4: EventRequests[] (optional)
             if (eventPaths is { Count: > 0 })
@@ -292,44 +261,8 @@ public sealed class Subscription : IAsyncDisposable
 
             await exchange.SendAsync(frame);
 
-            // Receive priming ReportData
-            var reportFrame = await exchange.WaitForNextMessageAsync(ct);
-            if (reportFrame.MessagePayload.ProtocolOpCode != OpReportData)
-            {
-                string detail = $"Expected ReportData (0x{OpReportData:X2}), got 0x{reportFrame.MessagePayload.ProtocolOpCode:X2}";
-                if (reportFrame.MessagePayload.ProtocolOpCode == OpStatusResponse &&
-                    reportFrame.MessagePayload.ApplicationPayload is { } errTlv)
-                {
-                    try
-                    {
-                        errTlv.OpenStructure();
-                        byte status = errTlv.IsNextTag(0) ? errTlv.GetUnsignedInt8(0) : (byte)0xFF;
-                        detail += $" (status=0x{status:X2})";
-                    }
-                    catch
-                    {
-                    }
-                }
-                throw new InvalidOperationException(detail);
-            }
-
-            ReportDataAction? primingReport = null;
-            if (reportFrame.MessagePayload.ApplicationPayload is { } reportTlv)
-            {
-                primingReport = new ReportDataAction(reportTlv);
-            }
-
-            await SendStatusResponseAsync(exchange, 0);
-
-            // Receive SubscribeResponse
-            var subRespFrame = await exchange.WaitForNextMessageAsync(ct);
-            await exchange.AcknowledgeMessageAsync(subRespFrame.MessageCounter);
-
-            if (subRespFrame.MessagePayload.ProtocolOpCode != OpSubscribeResponse)
-            {
-                throw new InvalidOperationException(
-                    $"Expected SubscribeResponse (0x{OpSubscribeResponse:X2}), got 0x{subRespFrame.MessagePayload.ProtocolOpCode:X2}");
-            }
+            var primingReports = new List<ReportDataAction>();
+            var subRespFrame = await WaitForSubscribeResponseAsync(exchange, primingReports, ct);
 
             if (subRespFrame.MessagePayload.ApplicationPayload is { } subTlv)
             {
@@ -346,15 +279,7 @@ public sealed class Subscription : IAsyncDisposable
             }
             sub.MinIntervalSeconds = minInterval;
 
-            // Deliver priming report
-            if (primingReport != null)
-            {
-                sub.OnReport?.Invoke(primingReport);
-                if (primingReport.EventReports.Count > 0)
-                {
-                    sub.OnEvent?.Invoke(primingReport.EventReports);
-                }
-            }
+            sub.DispatchReports(primingReports);
 
             // Close handshake exchange— ongoing reports arrive on new device-initiated exchanges
             // via the connection's UnroutedMessages channel. Use ProcessIncomingBytesAsync() to handle them.
@@ -411,11 +336,15 @@ public sealed class Subscription : IAsyncDisposable
                 return true;
             }
 
-            OnReport?.Invoke(report);
-            if (report.EventReports.Count > 0)
+            if (report.AttributeReports.Count == 0 && report.EventReports.Count == 0)
             {
-                OnEvent?.Invoke(report.EventReports);
+                MatterLog.Debug(
+                    "Received unsolicited ReportData with no attribute/event entries [E:{0}] TLV={1}",
+                    msgFrame.MessagePayload.ExchangeID,
+                    MatterLog.FormatBytes(payload.AsSpan()));
             }
+
+            DispatchReport(report);
 
             return true;
         }
@@ -506,11 +435,7 @@ public sealed class Subscription : IAsyncDisposable
 
                 if (report != null)
                 {
-                    OnReport?.Invoke(report);
-                    if (report.EventReports.Count > 0)
-                    {
-                        OnEvent?.Invoke(report.EventReports);
-                    }
+                    DispatchReport(report);
                 }
             }
         }
@@ -522,6 +447,73 @@ public sealed class Subscription : IAsyncDisposable
         {
             OnTerminated?.Invoke(ex);
         }
+    }
+
+    private static async Task<MessageFrame> WaitForSubscribeResponseAsync(
+        MessageExchange exchange,
+        List<ReportDataAction> primingReports,
+        CancellationToken ct)
+    {
+        while (true)
+        {
+            var frame = await exchange.WaitForNextMessageAsync(ct);
+            switch (frame.MessagePayload.ProtocolOpCode)
+            {
+                case OpReportData:
+                    if (frame.MessagePayload.ApplicationPayload is { } reportTlv)
+                    {
+                        primingReports.Add(new ReportDataAction(reportTlv));
+                    }
+
+                    await SendStatusResponseAsync(exchange, 0);
+                    continue;
+
+                case OpSubscribeResponse:
+                    await exchange.AcknowledgeMessageAsync(frame.MessageCounter);
+                    return frame;
+
+                default:
+                    throw new InvalidOperationException(BuildUnexpectedSubscribeHandshakeDetail(frame));
+            }
+        }
+    }
+
+    private void DispatchReports(IEnumerable<ReportDataAction> reports)
+    {
+        foreach (var report in reports)
+        {
+            DispatchReport(report);
+        }
+    }
+
+    private void DispatchReport(ReportDataAction report)
+    {
+        OnReport?.Invoke(report);
+        if (report.EventReports.Count > 0)
+        {
+            OnEvent?.Invoke(report.EventReports);
+        }
+    }
+
+    private static string BuildUnexpectedSubscribeHandshakeDetail(MessageFrame frame)
+    {
+        string detail =
+            $"Expected ReportData (0x{OpReportData:X2}) or SubscribeResponse (0x{OpSubscribeResponse:X2}), got 0x{frame.MessagePayload.ProtocolOpCode:X2}";
+        if (frame.MessagePayload.ProtocolOpCode == OpStatusResponse &&
+            frame.MessagePayload.ApplicationPayload is { } errTlv)
+        {
+            try
+            {
+                errTlv.OpenStructure();
+                byte status = errTlv.IsNextTag(0) ? errTlv.GetUnsignedInt8(0) : (byte)0xFF;
+                detail += $" (status=0x{status:X2})";
+            }
+            catch
+            {
+            }
+        }
+
+        return detail;
     }
 
     private static async Task SendStatusResponseAsync(MessageExchange exchange, byte status)

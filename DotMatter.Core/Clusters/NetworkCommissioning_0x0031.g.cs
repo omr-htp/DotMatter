@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -250,6 +251,116 @@ public class NetworkCommissioningCluster : ClusterBase
         tlv.AddBool(1, value.Connected);
         if (value.NetworkIdentifier != null) tlv.AddOctetString(2, value.NetworkIdentifier);
         if (value.ClientIdentifier != null) tlv.AddOctetString(3, value.ClientIdentifier);
+    }
+
+    // TLV struct deserializers
+
+    private static WiFiInterfaceScanResultStruct ReadWiFiInterfaceScanResultStruct(MatterTLV tlv)
+    {
+        var value = new WiFiInterfaceScanResultStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Security = (WiFiSecurityBitmap)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.SSID = tlv.GetOctetString(1);
+                    break;
+                case 2:
+                    value.BSSID = tlv.GetOctetString(2);
+                    break;
+                case 3:
+                    value.Channel = (ushort)tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    value.WiFiBand = (WiFiBandEnum)tlv.GetUnsignedIntAny(4);
+                    break;
+                case 5:
+                    value.RSSI = (sbyte)tlv.GetSignedInt(5);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ThreadInterfaceScanResultStruct ReadThreadInterfaceScanResultStruct(MatterTLV tlv)
+    {
+        var value = new ThreadInterfaceScanResultStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.PanId = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.ExtendedPanId = tlv.GetUnsignedInt(1);
+                    break;
+                case 2:
+                    value.NetworkName = tlv.GetUTF8String(2);
+                    break;
+                case 3:
+                    value.Channel = (ushort)tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    value.Version = (byte)tlv.GetUnsignedIntAny(4);
+                    break;
+                case 5:
+                    value.ExtendedAddress = tlv.GetOctetString(5);
+                    break;
+                case 6:
+                    value.RSSI = (sbyte)tlv.GetSignedInt(6);
+                    break;
+                case 7:
+                    value.LQI = (byte)tlv.GetUnsignedIntAny(7);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static NetworkInfoStruct ReadNetworkInfoStruct(MatterTLV tlv)
+    {
+        var value = new NetworkInfoStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.NetworkID = tlv.GetOctetString(0);
+                    break;
+                case 1:
+                    value.Connected = tlv.GetBoolean(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.NetworkIdentifier = tlv.GetOctetString(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.ClientIdentifier = tlv.GetOctetString(3); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

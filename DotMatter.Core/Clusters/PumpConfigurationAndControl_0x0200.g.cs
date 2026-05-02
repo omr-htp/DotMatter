@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -189,6 +190,295 @@ public class PumpConfigurationAndControlCluster : ClusterBase
         public const uint TurbineOperation = 0x0010;
     }
 
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Pump Configuration and Control", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>SupplyVoltageLow event payload.</summary>
+    public sealed class SupplyVoltageLowEventData
+    {
+    }
+
+    /// <summary>SupplyVoltageLow event report.</summary>
+    public sealed class SupplyVoltageLowEvent(MatterEventReport report, SupplyVoltageLowEventData payload)
+        : ClusterEvent(report, "SupplyVoltageLow")
+    {
+        /// <summary>Gets the typed SupplyVoltageLow payload.</summary>
+        public SupplyVoltageLowEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>SupplyVoltageHigh event payload.</summary>
+    public sealed class SupplyVoltageHighEventData
+    {
+    }
+
+    /// <summary>SupplyVoltageHigh event report.</summary>
+    public sealed class SupplyVoltageHighEvent(MatterEventReport report, SupplyVoltageHighEventData payload)
+        : ClusterEvent(report, "SupplyVoltageHigh")
+    {
+        /// <summary>Gets the typed SupplyVoltageHigh payload.</summary>
+        public SupplyVoltageHighEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>PowerMissingPhase event payload.</summary>
+    public sealed class PowerMissingPhaseEventData
+    {
+    }
+
+    /// <summary>PowerMissingPhase event report.</summary>
+    public sealed class PowerMissingPhaseEvent(MatterEventReport report, PowerMissingPhaseEventData payload)
+        : ClusterEvent(report, "PowerMissingPhase")
+    {
+        /// <summary>Gets the typed PowerMissingPhase payload.</summary>
+        public PowerMissingPhaseEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>SystemPressureLow event payload.</summary>
+    public sealed class SystemPressureLowEventData
+    {
+    }
+
+    /// <summary>SystemPressureLow event report.</summary>
+    public sealed class SystemPressureLowEvent(MatterEventReport report, SystemPressureLowEventData payload)
+        : ClusterEvent(report, "SystemPressureLow")
+    {
+        /// <summary>Gets the typed SystemPressureLow payload.</summary>
+        public SystemPressureLowEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>SystemPressureHigh event payload.</summary>
+    public sealed class SystemPressureHighEventData
+    {
+    }
+
+    /// <summary>SystemPressureHigh event report.</summary>
+    public sealed class SystemPressureHighEvent(MatterEventReport report, SystemPressureHighEventData payload)
+        : ClusterEvent(report, "SystemPressureHigh")
+    {
+        /// <summary>Gets the typed SystemPressureHigh payload.</summary>
+        public SystemPressureHighEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>DryRunning event payload.</summary>
+    public sealed class DryRunningEventData
+    {
+    }
+
+    /// <summary>DryRunning event report.</summary>
+    public sealed class DryRunningEvent(MatterEventReport report, DryRunningEventData payload)
+        : ClusterEvent(report, "DryRunning")
+    {
+        /// <summary>Gets the typed DryRunning payload.</summary>
+        public DryRunningEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>MotorTemperatureHigh event payload.</summary>
+    public sealed class MotorTemperatureHighEventData
+    {
+    }
+
+    /// <summary>MotorTemperatureHigh event report.</summary>
+    public sealed class MotorTemperatureHighEvent(MatterEventReport report, MotorTemperatureHighEventData payload)
+        : ClusterEvent(report, "MotorTemperatureHigh")
+    {
+        /// <summary>Gets the typed MotorTemperatureHigh payload.</summary>
+        public MotorTemperatureHighEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>PumpMotorFatalFailure event payload.</summary>
+    public sealed class PumpMotorFatalFailureEventData
+    {
+    }
+
+    /// <summary>PumpMotorFatalFailure event report.</summary>
+    public sealed class PumpMotorFatalFailureEvent(MatterEventReport report, PumpMotorFatalFailureEventData payload)
+        : ClusterEvent(report, "PumpMotorFatalFailure")
+    {
+        /// <summary>Gets the typed PumpMotorFatalFailure payload.</summary>
+        public PumpMotorFatalFailureEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>ElectronicTemperatureHigh event payload.</summary>
+    public sealed class ElectronicTemperatureHighEventData
+    {
+    }
+
+    /// <summary>ElectronicTemperatureHigh event report.</summary>
+    public sealed class ElectronicTemperatureHighEvent(MatterEventReport report, ElectronicTemperatureHighEventData payload)
+        : ClusterEvent(report, "ElectronicTemperatureHigh")
+    {
+        /// <summary>Gets the typed ElectronicTemperatureHigh payload.</summary>
+        public ElectronicTemperatureHighEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>PumpBlocked event payload.</summary>
+    public sealed class PumpBlockedEventData
+    {
+    }
+
+    /// <summary>PumpBlocked event report.</summary>
+    public sealed class PumpBlockedEvent(MatterEventReport report, PumpBlockedEventData payload)
+        : ClusterEvent(report, "PumpBlocked")
+    {
+        /// <summary>Gets the typed PumpBlocked payload.</summary>
+        public PumpBlockedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>SensorFailure event payload.</summary>
+    public sealed class SensorFailureEventData
+    {
+    }
+
+    /// <summary>SensorFailure event report.</summary>
+    public sealed class SensorFailureEvent(MatterEventReport report, SensorFailureEventData payload)
+        : ClusterEvent(report, "SensorFailure")
+    {
+        /// <summary>Gets the typed SensorFailure payload.</summary>
+        public SensorFailureEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>ElectronicNonFatalFailure event payload.</summary>
+    public sealed class ElectronicNonFatalFailureEventData
+    {
+    }
+
+    /// <summary>ElectronicNonFatalFailure event report.</summary>
+    public sealed class ElectronicNonFatalFailureEvent(MatterEventReport report, ElectronicNonFatalFailureEventData payload)
+        : ClusterEvent(report, "ElectronicNonFatalFailure")
+    {
+        /// <summary>Gets the typed ElectronicNonFatalFailure payload.</summary>
+        public ElectronicNonFatalFailureEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>ElectronicFatalFailure event payload.</summary>
+    public sealed class ElectronicFatalFailureEventData
+    {
+    }
+
+    /// <summary>ElectronicFatalFailure event report.</summary>
+    public sealed class ElectronicFatalFailureEvent(MatterEventReport report, ElectronicFatalFailureEventData payload)
+        : ClusterEvent(report, "ElectronicFatalFailure")
+    {
+        /// <summary>Gets the typed ElectronicFatalFailure payload.</summary>
+        public ElectronicFatalFailureEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>GeneralFault event payload.</summary>
+    public sealed class GeneralFaultEventData
+    {
+    }
+
+    /// <summary>GeneralFault event report.</summary>
+    public sealed class GeneralFaultEvent(MatterEventReport report, GeneralFaultEventData payload)
+        : ClusterEvent(report, "GeneralFault")
+    {
+        /// <summary>Gets the typed GeneralFault payload.</summary>
+        public GeneralFaultEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>Leakage event payload.</summary>
+    public sealed class LeakageEventData
+    {
+    }
+
+    /// <summary>Leakage event report.</summary>
+    public sealed class LeakageEvent(MatterEventReport report, LeakageEventData payload)
+        : ClusterEvent(report, "Leakage")
+    {
+        /// <summary>Gets the typed Leakage payload.</summary>
+        public LeakageEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>AirDetection event payload.</summary>
+    public sealed class AirDetectionEventData
+    {
+    }
+
+    /// <summary>AirDetection event report.</summary>
+    public sealed class AirDetectionEvent(MatterEventReport report, AirDetectionEventData payload)
+        : ClusterEvent(report, "AirDetection")
+    {
+        /// <summary>Gets the typed AirDetection payload.</summary>
+        public AirDetectionEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>TurbineOperation event payload.</summary>
+    public sealed class TurbineOperationEventData
+    {
+    }
+
+    /// <summary>TurbineOperation event report.</summary>
+    public sealed class TurbineOperationEvent(MatterEventReport report, TurbineOperationEventData payload)
+        : ClusterEvent(report, "TurbineOperation")
+    {
+        /// <summary>Gets the typed TurbineOperation payload.</summary>
+        public TurbineOperationEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
     // Attribute readers
 
     /// <summary>Read MaxPressure attribute (0x0000).</summary>
@@ -319,4 +609,894 @@ public class PumpConfigurationAndControlCluster : ClusterBase
             ArgumentNullException.ThrowIfNull(controlMode);
             tlv.AddUInt8(2, (byte)controlMode);
         }, timedRequest, timedTimeoutMs, ct);
+
+    // Event payload parsers
+
+    private static SupplyVoltageLowEventData ReadSupplyVoltageLowEventData(MatterTLV tlv)
+    {
+        var value = new SupplyVoltageLowEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadSupplyVoltageLowEventData(MatterEventReport report, out SupplyVoltageLowEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadSupplyVoltageLowEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "SupplyVoltageLow payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static SupplyVoltageHighEventData ReadSupplyVoltageHighEventData(MatterTLV tlv)
+    {
+        var value = new SupplyVoltageHighEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadSupplyVoltageHighEventData(MatterEventReport report, out SupplyVoltageHighEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadSupplyVoltageHighEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "SupplyVoltageHigh payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static PowerMissingPhaseEventData ReadPowerMissingPhaseEventData(MatterTLV tlv)
+    {
+        var value = new PowerMissingPhaseEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadPowerMissingPhaseEventData(MatterEventReport report, out PowerMissingPhaseEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadPowerMissingPhaseEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "PowerMissingPhase payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static SystemPressureLowEventData ReadSystemPressureLowEventData(MatterTLV tlv)
+    {
+        var value = new SystemPressureLowEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadSystemPressureLowEventData(MatterEventReport report, out SystemPressureLowEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadSystemPressureLowEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "SystemPressureLow payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static SystemPressureHighEventData ReadSystemPressureHighEventData(MatterTLV tlv)
+    {
+        var value = new SystemPressureHighEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadSystemPressureHighEventData(MatterEventReport report, out SystemPressureHighEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadSystemPressureHighEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "SystemPressureHigh payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static DryRunningEventData ReadDryRunningEventData(MatterTLV tlv)
+    {
+        var value = new DryRunningEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadDryRunningEventData(MatterEventReport report, out DryRunningEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadDryRunningEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "DryRunning payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static MotorTemperatureHighEventData ReadMotorTemperatureHighEventData(MatterTLV tlv)
+    {
+        var value = new MotorTemperatureHighEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadMotorTemperatureHighEventData(MatterEventReport report, out MotorTemperatureHighEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadMotorTemperatureHighEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "MotorTemperatureHigh payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static PumpMotorFatalFailureEventData ReadPumpMotorFatalFailureEventData(MatterTLV tlv)
+    {
+        var value = new PumpMotorFatalFailureEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadPumpMotorFatalFailureEventData(MatterEventReport report, out PumpMotorFatalFailureEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadPumpMotorFatalFailureEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "PumpMotorFatalFailure payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static ElectronicTemperatureHighEventData ReadElectronicTemperatureHighEventData(MatterTLV tlv)
+    {
+        var value = new ElectronicTemperatureHighEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadElectronicTemperatureHighEventData(MatterEventReport report, out ElectronicTemperatureHighEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadElectronicTemperatureHighEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "ElectronicTemperatureHigh payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static PumpBlockedEventData ReadPumpBlockedEventData(MatterTLV tlv)
+    {
+        var value = new PumpBlockedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadPumpBlockedEventData(MatterEventReport report, out PumpBlockedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadPumpBlockedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "PumpBlocked payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static SensorFailureEventData ReadSensorFailureEventData(MatterTLV tlv)
+    {
+        var value = new SensorFailureEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadSensorFailureEventData(MatterEventReport report, out SensorFailureEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadSensorFailureEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "SensorFailure payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static ElectronicNonFatalFailureEventData ReadElectronicNonFatalFailureEventData(MatterTLV tlv)
+    {
+        var value = new ElectronicNonFatalFailureEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadElectronicNonFatalFailureEventData(MatterEventReport report, out ElectronicNonFatalFailureEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadElectronicNonFatalFailureEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "ElectronicNonFatalFailure payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static ElectronicFatalFailureEventData ReadElectronicFatalFailureEventData(MatterTLV tlv)
+    {
+        var value = new ElectronicFatalFailureEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadElectronicFatalFailureEventData(MatterEventReport report, out ElectronicFatalFailureEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadElectronicFatalFailureEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "ElectronicFatalFailure payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static GeneralFaultEventData ReadGeneralFaultEventData(MatterTLV tlv)
+    {
+        var value = new GeneralFaultEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadGeneralFaultEventData(MatterEventReport report, out GeneralFaultEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadGeneralFaultEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "GeneralFault payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static LeakageEventData ReadLeakageEventData(MatterTLV tlv)
+    {
+        var value = new LeakageEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadLeakageEventData(MatterEventReport report, out LeakageEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadLeakageEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "Leakage payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static AirDetectionEventData ReadAirDetectionEventData(MatterTLV tlv)
+    {
+        var value = new AirDetectionEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadAirDetectionEventData(MatterEventReport report, out AirDetectionEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadAirDetectionEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "AirDetection payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static TurbineOperationEventData ReadTurbineOperationEventData(MatterTLV tlv)
+    {
+        var value = new TurbineOperationEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadTurbineOperationEventData(MatterEventReport report, out TurbineOperationEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadTurbineOperationEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "TurbineOperation payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateSupplyVoltageLowEventDataJson(SupplyVoltageLowEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateSupplyVoltageHighEventDataJson(SupplyVoltageHighEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreatePowerMissingPhaseEventDataJson(PowerMissingPhaseEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateSystemPressureLowEventDataJson(SystemPressureLowEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateSystemPressureHighEventDataJson(SystemPressureHighEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateDryRunningEventDataJson(DryRunningEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateMotorTemperatureHighEventDataJson(MotorTemperatureHighEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreatePumpMotorFatalFailureEventDataJson(PumpMotorFatalFailureEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateElectronicTemperatureHighEventDataJson(ElectronicTemperatureHighEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreatePumpBlockedEventDataJson(PumpBlockedEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateSensorFailureEventDataJson(SensorFailureEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateElectronicNonFatalFailureEventDataJson(ElectronicNonFatalFailureEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateElectronicFatalFailureEventDataJson(ElectronicFatalFailureEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateGeneralFaultEventDataJson(GeneralFaultEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateLeakageEventDataJson(LeakageEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateAirDetectionEventDataJson(AirDetectionEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateTurbineOperationEventDataJson(TurbineOperationEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            SupplyVoltageLowEvent typed => CreateSupplyVoltageLowEventDataJson(typed.Payload),
+            SupplyVoltageHighEvent typed => CreateSupplyVoltageHighEventDataJson(typed.Payload),
+            PowerMissingPhaseEvent typed => CreatePowerMissingPhaseEventDataJson(typed.Payload),
+            SystemPressureLowEvent typed => CreateSystemPressureLowEventDataJson(typed.Payload),
+            SystemPressureHighEvent typed => CreateSystemPressureHighEventDataJson(typed.Payload),
+            DryRunningEvent typed => CreateDryRunningEventDataJson(typed.Payload),
+            MotorTemperatureHighEvent typed => CreateMotorTemperatureHighEventDataJson(typed.Payload),
+            PumpMotorFatalFailureEvent typed => CreatePumpMotorFatalFailureEventDataJson(typed.Payload),
+            ElectronicTemperatureHighEvent typed => CreateElectronicTemperatureHighEventDataJson(typed.Payload),
+            PumpBlockedEvent typed => CreatePumpBlockedEventDataJson(typed.Payload),
+            SensorFailureEvent typed => CreateSensorFailureEventDataJson(typed.Payload),
+            ElectronicNonFatalFailureEvent typed => CreateElectronicNonFatalFailureEventDataJson(typed.Payload),
+            ElectronicFatalFailureEvent typed => CreateElectronicFatalFailureEventDataJson(typed.Payload),
+            GeneralFaultEvent typed => CreateGeneralFaultEventDataJson(typed.Payload),
+            LeakageEvent typed => CreateLeakageEventDataJson(typed.Payload),
+            AirDetectionEvent typed => CreateAirDetectionEventDataJson(typed.Payload),
+            TurbineOperationEvent typed => CreateTurbineOperationEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.SupplyVoltageLow when TryReadSupplyVoltageLowEventData(report, out var supplyVoltageLowEventData, out _) => new SupplyVoltageLowEvent(report, supplyVoltageLowEventData!),
+            Events.SupplyVoltageLow when TryReadSupplyVoltageLowEventData(report, out _, out var supplyVoltageLowReason) => new UnknownClusterEvent(report, supplyVoltageLowReason),
+            Events.SupplyVoltageHigh when TryReadSupplyVoltageHighEventData(report, out var supplyVoltageHighEventData, out _) => new SupplyVoltageHighEvent(report, supplyVoltageHighEventData!),
+            Events.SupplyVoltageHigh when TryReadSupplyVoltageHighEventData(report, out _, out var supplyVoltageHighReason) => new UnknownClusterEvent(report, supplyVoltageHighReason),
+            Events.PowerMissingPhase when TryReadPowerMissingPhaseEventData(report, out var powerMissingPhaseEventData, out _) => new PowerMissingPhaseEvent(report, powerMissingPhaseEventData!),
+            Events.PowerMissingPhase when TryReadPowerMissingPhaseEventData(report, out _, out var powerMissingPhaseReason) => new UnknownClusterEvent(report, powerMissingPhaseReason),
+            Events.SystemPressureLow when TryReadSystemPressureLowEventData(report, out var systemPressureLowEventData, out _) => new SystemPressureLowEvent(report, systemPressureLowEventData!),
+            Events.SystemPressureLow when TryReadSystemPressureLowEventData(report, out _, out var systemPressureLowReason) => new UnknownClusterEvent(report, systemPressureLowReason),
+            Events.SystemPressureHigh when TryReadSystemPressureHighEventData(report, out var systemPressureHighEventData, out _) => new SystemPressureHighEvent(report, systemPressureHighEventData!),
+            Events.SystemPressureHigh when TryReadSystemPressureHighEventData(report, out _, out var systemPressureHighReason) => new UnknownClusterEvent(report, systemPressureHighReason),
+            Events.DryRunning when TryReadDryRunningEventData(report, out var dryRunningEventData, out _) => new DryRunningEvent(report, dryRunningEventData!),
+            Events.DryRunning when TryReadDryRunningEventData(report, out _, out var dryRunningReason) => new UnknownClusterEvent(report, dryRunningReason),
+            Events.MotorTemperatureHigh when TryReadMotorTemperatureHighEventData(report, out var motorTemperatureHighEventData, out _) => new MotorTemperatureHighEvent(report, motorTemperatureHighEventData!),
+            Events.MotorTemperatureHigh when TryReadMotorTemperatureHighEventData(report, out _, out var motorTemperatureHighReason) => new UnknownClusterEvent(report, motorTemperatureHighReason),
+            Events.PumpMotorFatalFailure when TryReadPumpMotorFatalFailureEventData(report, out var pumpMotorFatalFailureEventData, out _) => new PumpMotorFatalFailureEvent(report, pumpMotorFatalFailureEventData!),
+            Events.PumpMotorFatalFailure when TryReadPumpMotorFatalFailureEventData(report, out _, out var pumpMotorFatalFailureReason) => new UnknownClusterEvent(report, pumpMotorFatalFailureReason),
+            Events.ElectronicTemperatureHigh when TryReadElectronicTemperatureHighEventData(report, out var electronicTemperatureHighEventData, out _) => new ElectronicTemperatureHighEvent(report, electronicTemperatureHighEventData!),
+            Events.ElectronicTemperatureHigh when TryReadElectronicTemperatureHighEventData(report, out _, out var electronicTemperatureHighReason) => new UnknownClusterEvent(report, electronicTemperatureHighReason),
+            Events.PumpBlocked when TryReadPumpBlockedEventData(report, out var pumpBlockedEventData, out _) => new PumpBlockedEvent(report, pumpBlockedEventData!),
+            Events.PumpBlocked when TryReadPumpBlockedEventData(report, out _, out var pumpBlockedReason) => new UnknownClusterEvent(report, pumpBlockedReason),
+            Events.SensorFailure when TryReadSensorFailureEventData(report, out var sensorFailureEventData, out _) => new SensorFailureEvent(report, sensorFailureEventData!),
+            Events.SensorFailure when TryReadSensorFailureEventData(report, out _, out var sensorFailureReason) => new UnknownClusterEvent(report, sensorFailureReason),
+            Events.ElectronicNonFatalFailure when TryReadElectronicNonFatalFailureEventData(report, out var electronicNonFatalFailureEventData, out _) => new ElectronicNonFatalFailureEvent(report, electronicNonFatalFailureEventData!),
+            Events.ElectronicNonFatalFailure when TryReadElectronicNonFatalFailureEventData(report, out _, out var electronicNonFatalFailureReason) => new UnknownClusterEvent(report, electronicNonFatalFailureReason),
+            Events.ElectronicFatalFailure when TryReadElectronicFatalFailureEventData(report, out var electronicFatalFailureEventData, out _) => new ElectronicFatalFailureEvent(report, electronicFatalFailureEventData!),
+            Events.ElectronicFatalFailure when TryReadElectronicFatalFailureEventData(report, out _, out var electronicFatalFailureReason) => new UnknownClusterEvent(report, electronicFatalFailureReason),
+            Events.GeneralFault when TryReadGeneralFaultEventData(report, out var generalFaultEventData, out _) => new GeneralFaultEvent(report, generalFaultEventData!),
+            Events.GeneralFault when TryReadGeneralFaultEventData(report, out _, out var generalFaultReason) => new UnknownClusterEvent(report, generalFaultReason),
+            Events.Leakage when TryReadLeakageEventData(report, out var leakageEventData, out _) => new LeakageEvent(report, leakageEventData!),
+            Events.Leakage when TryReadLeakageEventData(report, out _, out var leakageReason) => new UnknownClusterEvent(report, leakageReason),
+            Events.AirDetection when TryReadAirDetectionEventData(report, out var airDetectionEventData, out _) => new AirDetectionEvent(report, airDetectionEventData!),
+            Events.AirDetection when TryReadAirDetectionEventData(report, out _, out var airDetectionReason) => new UnknownClusterEvent(report, airDetectionReason),
+            Events.TurbineOperation when TryReadTurbineOperationEventData(report, out var turbineOperationEventData, out _) => new TurbineOperationEvent(report, turbineOperationEventData!),
+            Events.TurbineOperation when TryReadTurbineOperationEventData(report, out _, out var turbineOperationReason) => new UnknownClusterEvent(report, turbineOperationReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

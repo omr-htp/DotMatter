@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -62,6 +63,38 @@ public class ThreadNetworkDirectoryCluster : ClusterBase
         tlv.AddUTF8String(1, value.NetworkName);
         tlv.AddUInt16(2, value.Channel);
         tlv.AddUInt64(3, value.ActiveTimestamp);
+    }
+
+    // TLV struct deserializers
+
+    private static ThreadNetworkStruct ReadThreadNetworkStruct(MatterTLV tlv)
+    {
+        var value = new ThreadNetworkStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ExtendedPanID = tlv.GetOctetString(0);
+                    break;
+                case 1:
+                    value.NetworkName = tlv.GetUTF8String(1);
+                    break;
+                case 2:
+                    value.Channel = (ushort)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.ActiveTimestamp = tlv.GetUnsignedInt(3);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

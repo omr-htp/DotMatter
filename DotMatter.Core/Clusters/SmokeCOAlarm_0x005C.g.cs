@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -176,6 +177,209 @@ public class SmokeCOAlarmCluster : ClusterBase
         public const uint AllClear = 0x000A;
     }
 
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Smoke CO Alarm", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>SmokeAlarm event payload.</summary>
+    public sealed class SmokeAlarmEventData
+    {
+        /// <summary>Gets or sets AlarmSeverityLevel.</summary>
+        public AlarmStateEnum AlarmSeverityLevel { get; set; } = default!;
+    }
+
+    /// <summary>SmokeAlarm event report.</summary>
+    public sealed class SmokeAlarmEvent(MatterEventReport report, SmokeAlarmEventData payload)
+        : ClusterEvent(report, "SmokeAlarm")
+    {
+        /// <summary>Gets the typed SmokeAlarm payload.</summary>
+        public SmokeAlarmEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>COAlarm event payload.</summary>
+    public sealed class COAlarmEventData
+    {
+        /// <summary>Gets or sets AlarmSeverityLevel.</summary>
+        public AlarmStateEnum AlarmSeverityLevel { get; set; } = default!;
+    }
+
+    /// <summary>COAlarm event report.</summary>
+    public sealed class COAlarmEvent(MatterEventReport report, COAlarmEventData payload)
+        : ClusterEvent(report, "COAlarm")
+    {
+        /// <summary>Gets the typed COAlarm payload.</summary>
+        public COAlarmEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>LowBattery event payload.</summary>
+    public sealed class LowBatteryEventData
+    {
+        /// <summary>Gets or sets AlarmSeverityLevel.</summary>
+        public AlarmStateEnum AlarmSeverityLevel { get; set; } = default!;
+    }
+
+    /// <summary>LowBattery event report.</summary>
+    public sealed class LowBatteryEvent(MatterEventReport report, LowBatteryEventData payload)
+        : ClusterEvent(report, "LowBattery")
+    {
+        /// <summary>Gets the typed LowBattery payload.</summary>
+        public LowBatteryEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>HardwareFault event payload.</summary>
+    public sealed class HardwareFaultEventData
+    {
+    }
+
+    /// <summary>HardwareFault event report.</summary>
+    public sealed class HardwareFaultEvent(MatterEventReport report, HardwareFaultEventData payload)
+        : ClusterEvent(report, "HardwareFault")
+    {
+        /// <summary>Gets the typed HardwareFault payload.</summary>
+        public HardwareFaultEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>EndOfService event payload.</summary>
+    public sealed class EndOfServiceEventData
+    {
+    }
+
+    /// <summary>EndOfService event report.</summary>
+    public sealed class EndOfServiceEvent(MatterEventReport report, EndOfServiceEventData payload)
+        : ClusterEvent(report, "EndOfService")
+    {
+        /// <summary>Gets the typed EndOfService payload.</summary>
+        public EndOfServiceEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>SelfTestComplete event payload.</summary>
+    public sealed class SelfTestCompleteEventData
+    {
+    }
+
+    /// <summary>SelfTestComplete event report.</summary>
+    public sealed class SelfTestCompleteEvent(MatterEventReport report, SelfTestCompleteEventData payload)
+        : ClusterEvent(report, "SelfTestComplete")
+    {
+        /// <summary>Gets the typed SelfTestComplete payload.</summary>
+        public SelfTestCompleteEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>AlarmMuted event payload.</summary>
+    public sealed class AlarmMutedEventData
+    {
+    }
+
+    /// <summary>AlarmMuted event report.</summary>
+    public sealed class AlarmMutedEvent(MatterEventReport report, AlarmMutedEventData payload)
+        : ClusterEvent(report, "AlarmMuted")
+    {
+        /// <summary>Gets the typed AlarmMuted payload.</summary>
+        public AlarmMutedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>MuteEnded event payload.</summary>
+    public sealed class MuteEndedEventData
+    {
+    }
+
+    /// <summary>MuteEnded event report.</summary>
+    public sealed class MuteEndedEvent(MatterEventReport report, MuteEndedEventData payload)
+        : ClusterEvent(report, "MuteEnded")
+    {
+        /// <summary>Gets the typed MuteEnded payload.</summary>
+        public MuteEndedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>InterconnectSmokeAlarm event payload.</summary>
+    public sealed class InterconnectSmokeAlarmEventData
+    {
+        /// <summary>Gets or sets AlarmSeverityLevel.</summary>
+        public AlarmStateEnum AlarmSeverityLevel { get; set; } = default!;
+    }
+
+    /// <summary>InterconnectSmokeAlarm event report.</summary>
+    public sealed class InterconnectSmokeAlarmEvent(MatterEventReport report, InterconnectSmokeAlarmEventData payload)
+        : ClusterEvent(report, "InterconnectSmokeAlarm")
+    {
+        /// <summary>Gets the typed InterconnectSmokeAlarm payload.</summary>
+        public InterconnectSmokeAlarmEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>InterconnectCOAlarm event payload.</summary>
+    public sealed class InterconnectCOAlarmEventData
+    {
+        /// <summary>Gets or sets AlarmSeverityLevel.</summary>
+        public AlarmStateEnum AlarmSeverityLevel { get; set; } = default!;
+    }
+
+    /// <summary>InterconnectCOAlarm event report.</summary>
+    public sealed class InterconnectCOAlarmEvent(MatterEventReport report, InterconnectCOAlarmEventData payload)
+        : ClusterEvent(report, "InterconnectCOAlarm")
+    {
+        /// <summary>Gets the typed InterconnectCOAlarm payload.</summary>
+        public InterconnectCOAlarmEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>AllClear event payload.</summary>
+    public sealed class AllClearEventData
+    {
+    }
+
+    /// <summary>AllClear event report.</summary>
+    public sealed class AllClearEvent(MatterEventReport report, AllClearEventData payload)
+        : ClusterEvent(report, "AllClear")
+    {
+        /// <summary>Gets the typed AllClear payload.</summary>
+        public AllClearEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
     // Async command methods
 
     /// <summary>Send SelfTestRequest command (0x0000).</summary>
@@ -249,4 +453,635 @@ public class SmokeCOAlarmCluster : ClusterBase
             ArgumentNullException.ThrowIfNull(smokeSensitivityLevel);
             tlv.AddUInt8(2, (byte)smokeSensitivityLevel);
         }, timedRequest, timedTimeoutMs, ct);
+
+    // Event payload parsers
+
+    private static SmokeAlarmEventData ReadSmokeAlarmEventData(MatterTLV tlv)
+    {
+        var value = new SmokeAlarmEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.AlarmSeverityLevel = (AlarmStateEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadSmokeAlarmEventData(MatterEventReport report, out SmokeAlarmEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadSmokeAlarmEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "SmokeAlarm payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static COAlarmEventData ReadCOAlarmEventData(MatterTLV tlv)
+    {
+        var value = new COAlarmEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.AlarmSeverityLevel = (AlarmStateEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadCOAlarmEventData(MatterEventReport report, out COAlarmEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadCOAlarmEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "COAlarm payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static LowBatteryEventData ReadLowBatteryEventData(MatterTLV tlv)
+    {
+        var value = new LowBatteryEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.AlarmSeverityLevel = (AlarmStateEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadLowBatteryEventData(MatterEventReport report, out LowBatteryEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadLowBatteryEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "LowBattery payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static HardwareFaultEventData ReadHardwareFaultEventData(MatterTLV tlv)
+    {
+        var value = new HardwareFaultEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadHardwareFaultEventData(MatterEventReport report, out HardwareFaultEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadHardwareFaultEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "HardwareFault payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static EndOfServiceEventData ReadEndOfServiceEventData(MatterTLV tlv)
+    {
+        var value = new EndOfServiceEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadEndOfServiceEventData(MatterEventReport report, out EndOfServiceEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadEndOfServiceEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "EndOfService payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static SelfTestCompleteEventData ReadSelfTestCompleteEventData(MatterTLV tlv)
+    {
+        var value = new SelfTestCompleteEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadSelfTestCompleteEventData(MatterEventReport report, out SelfTestCompleteEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadSelfTestCompleteEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "SelfTestComplete payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static AlarmMutedEventData ReadAlarmMutedEventData(MatterTLV tlv)
+    {
+        var value = new AlarmMutedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadAlarmMutedEventData(MatterEventReport report, out AlarmMutedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadAlarmMutedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "AlarmMuted payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static MuteEndedEventData ReadMuteEndedEventData(MatterTLV tlv)
+    {
+        var value = new MuteEndedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadMuteEndedEventData(MatterEventReport report, out MuteEndedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadMuteEndedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "MuteEnded payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static InterconnectSmokeAlarmEventData ReadInterconnectSmokeAlarmEventData(MatterTLV tlv)
+    {
+        var value = new InterconnectSmokeAlarmEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.AlarmSeverityLevel = (AlarmStateEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadInterconnectSmokeAlarmEventData(MatterEventReport report, out InterconnectSmokeAlarmEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadInterconnectSmokeAlarmEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "InterconnectSmokeAlarm payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static InterconnectCOAlarmEventData ReadInterconnectCOAlarmEventData(MatterTLV tlv)
+    {
+        var value = new InterconnectCOAlarmEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.AlarmSeverityLevel = (AlarmStateEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadInterconnectCOAlarmEventData(MatterEventReport report, out InterconnectCOAlarmEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadInterconnectCOAlarmEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "InterconnectCOAlarm payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static AllClearEventData ReadAllClearEventData(MatterTLV tlv)
+    {
+        var value = new AllClearEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadAllClearEventData(MatterEventReport report, out AllClearEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadAllClearEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "AllClear payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateSmokeAlarmEventDataJson(SmokeAlarmEventData value)
+    {
+        var json = new JsonObject();
+        if (value.AlarmSeverityLevel is { } alarmSeverityLevel)
+        {
+            json["alarmSeverityLevel"] = CreateJsonValue(alarmSeverityLevel.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateCOAlarmEventDataJson(COAlarmEventData value)
+    {
+        var json = new JsonObject();
+        if (value.AlarmSeverityLevel is { } alarmSeverityLevel)
+        {
+            json["alarmSeverityLevel"] = CreateJsonValue(alarmSeverityLevel.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateLowBatteryEventDataJson(LowBatteryEventData value)
+    {
+        var json = new JsonObject();
+        if (value.AlarmSeverityLevel is { } alarmSeverityLevel)
+        {
+            json["alarmSeverityLevel"] = CreateJsonValue(alarmSeverityLevel.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateHardwareFaultEventDataJson(HardwareFaultEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateEndOfServiceEventDataJson(EndOfServiceEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateSelfTestCompleteEventDataJson(SelfTestCompleteEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateAlarmMutedEventDataJson(AlarmMutedEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateMuteEndedEventDataJson(MuteEndedEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateInterconnectSmokeAlarmEventDataJson(InterconnectSmokeAlarmEventData value)
+    {
+        var json = new JsonObject();
+        if (value.AlarmSeverityLevel is { } alarmSeverityLevel)
+        {
+            json["alarmSeverityLevel"] = CreateJsonValue(alarmSeverityLevel.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateInterconnectCOAlarmEventDataJson(InterconnectCOAlarmEventData value)
+    {
+        var json = new JsonObject();
+        if (value.AlarmSeverityLevel is { } alarmSeverityLevel)
+        {
+            json["alarmSeverityLevel"] = CreateJsonValue(alarmSeverityLevel.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateAllClearEventDataJson(AllClearEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            SmokeAlarmEvent typed => CreateSmokeAlarmEventDataJson(typed.Payload),
+            COAlarmEvent typed => CreateCOAlarmEventDataJson(typed.Payload),
+            LowBatteryEvent typed => CreateLowBatteryEventDataJson(typed.Payload),
+            HardwareFaultEvent typed => CreateHardwareFaultEventDataJson(typed.Payload),
+            EndOfServiceEvent typed => CreateEndOfServiceEventDataJson(typed.Payload),
+            SelfTestCompleteEvent typed => CreateSelfTestCompleteEventDataJson(typed.Payload),
+            AlarmMutedEvent typed => CreateAlarmMutedEventDataJson(typed.Payload),
+            MuteEndedEvent typed => CreateMuteEndedEventDataJson(typed.Payload),
+            InterconnectSmokeAlarmEvent typed => CreateInterconnectSmokeAlarmEventDataJson(typed.Payload),
+            InterconnectCOAlarmEvent typed => CreateInterconnectCOAlarmEventDataJson(typed.Payload),
+            AllClearEvent typed => CreateAllClearEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.SmokeAlarm when TryReadSmokeAlarmEventData(report, out var smokeAlarmEventData, out _) => new SmokeAlarmEvent(report, smokeAlarmEventData!),
+            Events.SmokeAlarm when TryReadSmokeAlarmEventData(report, out _, out var smokeAlarmReason) => new UnknownClusterEvent(report, smokeAlarmReason),
+            Events.COAlarm when TryReadCOAlarmEventData(report, out var cOAlarmEventData, out _) => new COAlarmEvent(report, cOAlarmEventData!),
+            Events.COAlarm when TryReadCOAlarmEventData(report, out _, out var cOAlarmReason) => new UnknownClusterEvent(report, cOAlarmReason),
+            Events.LowBattery when TryReadLowBatteryEventData(report, out var lowBatteryEventData, out _) => new LowBatteryEvent(report, lowBatteryEventData!),
+            Events.LowBattery when TryReadLowBatteryEventData(report, out _, out var lowBatteryReason) => new UnknownClusterEvent(report, lowBatteryReason),
+            Events.HardwareFault when TryReadHardwareFaultEventData(report, out var hardwareFaultEventData, out _) => new HardwareFaultEvent(report, hardwareFaultEventData!),
+            Events.HardwareFault when TryReadHardwareFaultEventData(report, out _, out var hardwareFaultReason) => new UnknownClusterEvent(report, hardwareFaultReason),
+            Events.EndOfService when TryReadEndOfServiceEventData(report, out var endOfServiceEventData, out _) => new EndOfServiceEvent(report, endOfServiceEventData!),
+            Events.EndOfService when TryReadEndOfServiceEventData(report, out _, out var endOfServiceReason) => new UnknownClusterEvent(report, endOfServiceReason),
+            Events.SelfTestComplete when TryReadSelfTestCompleteEventData(report, out var selfTestCompleteEventData, out _) => new SelfTestCompleteEvent(report, selfTestCompleteEventData!),
+            Events.SelfTestComplete when TryReadSelfTestCompleteEventData(report, out _, out var selfTestCompleteReason) => new UnknownClusterEvent(report, selfTestCompleteReason),
+            Events.AlarmMuted when TryReadAlarmMutedEventData(report, out var alarmMutedEventData, out _) => new AlarmMutedEvent(report, alarmMutedEventData!),
+            Events.AlarmMuted when TryReadAlarmMutedEventData(report, out _, out var alarmMutedReason) => new UnknownClusterEvent(report, alarmMutedReason),
+            Events.MuteEnded when TryReadMuteEndedEventData(report, out var muteEndedEventData, out _) => new MuteEndedEvent(report, muteEndedEventData!),
+            Events.MuteEnded when TryReadMuteEndedEventData(report, out _, out var muteEndedReason) => new UnknownClusterEvent(report, muteEndedReason),
+            Events.InterconnectSmokeAlarm when TryReadInterconnectSmokeAlarmEventData(report, out var interconnectSmokeAlarmEventData, out _) => new InterconnectSmokeAlarmEvent(report, interconnectSmokeAlarmEventData!),
+            Events.InterconnectSmokeAlarm when TryReadInterconnectSmokeAlarmEventData(report, out _, out var interconnectSmokeAlarmReason) => new UnknownClusterEvent(report, interconnectSmokeAlarmReason),
+            Events.InterconnectCOAlarm when TryReadInterconnectCOAlarmEventData(report, out var interconnectCOAlarmEventData, out _) => new InterconnectCOAlarmEvent(report, interconnectCOAlarmEventData!),
+            Events.InterconnectCOAlarm when TryReadInterconnectCOAlarmEventData(report, out _, out var interconnectCOAlarmReason) => new UnknownClusterEvent(report, interconnectCOAlarmReason),
+            Events.AllClear when TryReadAllClearEventData(report, out var allClearEventData, out _) => new AllClearEvent(report, allClearEventData!),
+            Events.AllClear when TryReadAllClearEventData(report, out _, out var allClearReason) => new UnknownClusterEvent(report, allClearReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

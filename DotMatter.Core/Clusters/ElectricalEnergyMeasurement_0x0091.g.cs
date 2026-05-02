@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -258,6 +259,159 @@ public class ElectricalEnergyMeasurementCluster : ClusterBase
         if (value.FixedTypical != null) tlv.AddUInt64(7, value.FixedTypical.Value);
     }
 
+    // TLV struct deserializers
+
+    private static CumulativeEnergyResetStruct ReadCumulativeEnergyResetStruct(MatterTLV tlv)
+    {
+        var value = new CumulativeEnergyResetStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.ImportedResetTimestamp = tlv.GetUnsignedIntAny(0); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.ExportedResetTimestamp = tlv.GetUnsignedIntAny(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.ImportedResetSystime = tlv.GetUnsignedInt(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.ExportedResetSystime = tlv.GetUnsignedInt(3); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static EnergyMeasurementStruct ReadEnergyMeasurementStruct(MatterTLV tlv)
+    {
+        var value = new EnergyMeasurementStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Energy = tlv.GetUnsignedInt(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.StartTimestamp = tlv.GetUnsignedIntAny(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.EndTimestamp = tlv.GetUnsignedIntAny(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.StartSystime = tlv.GetUnsignedInt(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.EndSystime = tlv.GetUnsignedInt(4); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.ApparentEnergy = tlv.GetUnsignedInt(5); }
+                    break;
+                case 6:
+                    if (tlv.IsNextNull()) { tlv.GetNull(6); } else { value.ReactiveEnergy = tlv.GetUnsignedInt(6); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static MeasurementAccuracyStruct ReadMeasurementAccuracyStruct(MatterTLV tlv)
+    {
+        var value = new MeasurementAccuracyStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.MeasurementType = (MeasurementTypeEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Measured = tlv.GetBoolean(1);
+                    break;
+                case 2:
+                    value.MinMeasuredValue = tlv.GetSignedInt(2);
+                    break;
+                case 3:
+                    value.MaxMeasuredValue = tlv.GetSignedInt(3);
+                    break;
+                case 4:
+                    var items4 = new List<MeasurementAccuracyRangeStruct>();
+                    tlv.OpenArray(4);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items4.Add(ReadMeasurementAccuracyRangeStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.AccuracyRanges = [.. items4];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static MeasurementAccuracyRangeStruct ReadMeasurementAccuracyRangeStruct(MatterTLV tlv)
+    {
+        var value = new MeasurementAccuracyRangeStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.RangeMin = tlv.GetSignedInt(0);
+                    break;
+                case 1:
+                    value.RangeMax = tlv.GetSignedInt(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.PercentMax = (ushort)tlv.GetUnsignedIntAny(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.PercentMin = (ushort)tlv.GetUnsignedIntAny(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.PercentTypical = (ushort)tlv.GetUnsignedIntAny(4); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.FixedMax = tlv.GetUnsignedInt(5); }
+                    break;
+                case 6:
+                    if (tlv.IsNextNull()) { tlv.GetNull(6); } else { value.FixedMin = tlv.GetUnsignedInt(6); }
+                    break;
+                case 7:
+                    if (tlv.IsNextNull()) { tlv.GetNull(7); } else { value.FixedTypical = tlv.GetUnsignedInt(7); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -282,6 +436,63 @@ public class ElectricalEnergyMeasurementCluster : ClusterBase
         public const uint CumulativeEnergyMeasured = 0x0000;
         /// <summary>PeriodicEnergyMeasured (0x0001).</summary>
         public const uint PeriodicEnergyMeasured = 0x0001;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Electrical Energy Measurement", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>CumulativeEnergyMeasured event payload.</summary>
+    public sealed class CumulativeEnergyMeasuredEventData
+    {
+        /// <summary>Gets or sets EnergyImported.</summary>
+        public EnergyMeasurementStruct? EnergyImported { get; set; }
+        /// <summary>Gets or sets EnergyExported.</summary>
+        public EnergyMeasurementStruct? EnergyExported { get; set; }
+    }
+
+    /// <summary>CumulativeEnergyMeasured event report.</summary>
+    public sealed class CumulativeEnergyMeasuredEvent(MatterEventReport report, CumulativeEnergyMeasuredEventData payload)
+        : ClusterEvent(report, "CumulativeEnergyMeasured")
+    {
+        /// <summary>Gets the typed CumulativeEnergyMeasured payload.</summary>
+        public CumulativeEnergyMeasuredEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>PeriodicEnergyMeasured event payload.</summary>
+    public sealed class PeriodicEnergyMeasuredEventData
+    {
+        /// <summary>Gets or sets EnergyImported.</summary>
+        public EnergyMeasurementStruct? EnergyImported { get; set; }
+        /// <summary>Gets or sets EnergyExported.</summary>
+        public EnergyMeasurementStruct? EnergyExported { get; set; }
+    }
+
+    /// <summary>PeriodicEnergyMeasured event report.</summary>
+    public sealed class PeriodicEnergyMeasuredEvent(MatterEventReport report, PeriodicEnergyMeasuredEventData payload)
+        : ClusterEvent(report, "PeriodicEnergyMeasured")
+    {
+        /// <summary>Gets the typed PeriodicEnergyMeasured payload.</summary>
+        public PeriodicEnergyMeasuredEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Attribute readers
@@ -309,4 +520,294 @@ public class ElectricalEnergyMeasurementCluster : ClusterBase
     /// <summary>Read CumulativeEnergyReset attribute (0x0005).</summary>
     public Task<object?> ReadCumulativeEnergyResetAsync(CancellationToken ct = default)
         => ReadAttributeAsync(0x0005, ct);
+
+    // Event payload parsers
+
+    private static CumulativeEnergyMeasuredEventData ReadCumulativeEnergyMeasuredEventData(MatterTLV tlv)
+    {
+        var value = new CumulativeEnergyMeasuredEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.EnergyImported = ReadEnergyMeasurementStruct(tlv); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.EnergyExported = ReadEnergyMeasurementStruct(tlv); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadCumulativeEnergyMeasuredEventData(MatterEventReport report, out CumulativeEnergyMeasuredEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadCumulativeEnergyMeasuredEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "CumulativeEnergyMeasured payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static PeriodicEnergyMeasuredEventData ReadPeriodicEnergyMeasuredEventData(MatterTLV tlv)
+    {
+        var value = new PeriodicEnergyMeasuredEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.EnergyImported = ReadEnergyMeasurementStruct(tlv); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.EnergyExported = ReadEnergyMeasurementStruct(tlv); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadPeriodicEnergyMeasuredEventData(MatterEventReport report, out PeriodicEnergyMeasuredEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadPeriodicEnergyMeasuredEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "PeriodicEnergyMeasured payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateCumulativeEnergyResetStructJson(CumulativeEnergyResetStruct value)
+    {
+        var json = new JsonObject();
+        if (value.ImportedResetTimestamp is { } importedResetTimestamp)
+        {
+            json["importedResetTimestamp"] = CreateJsonValue(importedResetTimestamp);
+        }
+        if (value.ExportedResetTimestamp is { } exportedResetTimestamp)
+        {
+            json["exportedResetTimestamp"] = CreateJsonValue(exportedResetTimestamp);
+        }
+        if (value.ImportedResetSystime is { } importedResetSystime)
+        {
+            json["importedResetSystime"] = CreateJsonValue(importedResetSystime);
+        }
+        if (value.ExportedResetSystime is { } exportedResetSystime)
+        {
+            json["exportedResetSystime"] = CreateJsonValue(exportedResetSystime);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateEnergyMeasurementStructJson(EnergyMeasurementStruct value)
+    {
+        var json = new JsonObject();
+        json["energy"] = CreateJsonValue(value.Energy);
+        if (value.StartTimestamp is { } startTimestamp)
+        {
+            json["startTimestamp"] = CreateJsonValue(startTimestamp);
+        }
+        if (value.EndTimestamp is { } endTimestamp)
+        {
+            json["endTimestamp"] = CreateJsonValue(endTimestamp);
+        }
+        if (value.StartSystime is { } startSystime)
+        {
+            json["startSystime"] = CreateJsonValue(startSystime);
+        }
+        if (value.EndSystime is { } endSystime)
+        {
+            json["endSystime"] = CreateJsonValue(endSystime);
+        }
+        if (value.ApparentEnergy is { } apparentEnergy)
+        {
+            json["apparentEnergy"] = CreateJsonValue(apparentEnergy);
+        }
+        if (value.ReactiveEnergy is { } reactiveEnergy)
+        {
+            json["reactiveEnergy"] = CreateJsonValue(reactiveEnergy);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateMeasurementAccuracyStructJson(MeasurementAccuracyStruct value)
+    {
+        var json = new JsonObject();
+        if (value.MeasurementType is { } measurementType)
+        {
+            json["measurementType"] = CreateJsonValue(measurementType.ToString());
+        }
+        json["measured"] = CreateJsonValue(value.Measured);
+        json["minMeasuredValue"] = CreateJsonValue(value.MinMeasuredValue);
+        json["maxMeasuredValue"] = CreateJsonValue(value.MaxMeasuredValue);
+        if (value.AccuracyRanges is { } accuracyRangesValues)
+        {
+            var accuracyRangesItems = new JsonArray();
+            foreach (var item in accuracyRangesValues)
+            {
+                accuracyRangesItems.Add((JsonNode?)CreateMeasurementAccuracyRangeStructJson(item));
+            }
+            json["accuracyRanges"] = accuracyRangesItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateMeasurementAccuracyRangeStructJson(MeasurementAccuracyRangeStruct value)
+    {
+        var json = new JsonObject();
+        json["rangeMin"] = CreateJsonValue(value.RangeMin);
+        json["rangeMax"] = CreateJsonValue(value.RangeMax);
+        if (value.PercentMax is { } percentMax)
+        {
+            json["percentMax"] = CreateJsonValue(percentMax);
+        }
+        if (value.PercentMin is { } percentMin)
+        {
+            json["percentMin"] = CreateJsonValue(percentMin);
+        }
+        if (value.PercentTypical is { } percentTypical)
+        {
+            json["percentTypical"] = CreateJsonValue(percentTypical);
+        }
+        if (value.FixedMax is { } fixedMax)
+        {
+            json["fixedMax"] = CreateJsonValue(fixedMax);
+        }
+        if (value.FixedMin is { } fixedMin)
+        {
+            json["fixedMin"] = CreateJsonValue(fixedMin);
+        }
+        if (value.FixedTypical is { } fixedTypical)
+        {
+            json["fixedTypical"] = CreateJsonValue(fixedTypical);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateCumulativeEnergyMeasuredEventDataJson(CumulativeEnergyMeasuredEventData value)
+    {
+        var json = new JsonObject();
+        if (value.EnergyImported is { } energyImported)
+        {
+            json["energyImported"] = CreateEnergyMeasurementStructJson(energyImported);
+        }
+        if (value.EnergyExported is { } energyExported)
+        {
+            json["energyExported"] = CreateEnergyMeasurementStructJson(energyExported);
+        }
+        return json;
+    }
+
+    private static JsonObject CreatePeriodicEnergyMeasuredEventDataJson(PeriodicEnergyMeasuredEventData value)
+    {
+        var json = new JsonObject();
+        if (value.EnergyImported is { } energyImported)
+        {
+            json["energyImported"] = CreateEnergyMeasurementStructJson(energyImported);
+        }
+        if (value.EnergyExported is { } energyExported)
+        {
+            json["energyExported"] = CreateEnergyMeasurementStructJson(energyExported);
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            CumulativeEnergyMeasuredEvent typed => CreateCumulativeEnergyMeasuredEventDataJson(typed.Payload),
+            PeriodicEnergyMeasuredEvent typed => CreatePeriodicEnergyMeasuredEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.CumulativeEnergyMeasured when TryReadCumulativeEnergyMeasuredEventData(report, out var cumulativeEnergyMeasuredEventData, out _) => new CumulativeEnergyMeasuredEvent(report, cumulativeEnergyMeasuredEventData!),
+            Events.CumulativeEnergyMeasured when TryReadCumulativeEnergyMeasuredEventData(report, out _, out var cumulativeEnergyMeasuredReason) => new UnknownClusterEvent(report, cumulativeEnergyMeasuredReason),
+            Events.PeriodicEnergyMeasured when TryReadPeriodicEnergyMeasuredEventData(report, out var periodicEnergyMeasuredEventData, out _) => new PeriodicEnergyMeasuredEvent(report, periodicEnergyMeasuredEventData!),
+            Events.PeriodicEnergyMeasured when TryReadPeriodicEnergyMeasuredEventData(report, out _, out var periodicEnergyMeasuredReason) => new UnknownClusterEvent(report, periodicEnergyMeasuredReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

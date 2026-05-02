@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -130,6 +131,32 @@ public class BridgedDeviceBasicInformationCluster : ClusterBase
         tlv.AddUInt8(1, (byte)value.PrimaryColor);
     }
 
+    // TLV struct deserializers
+
+    private static ProductAppearanceStruct ReadProductAppearanceStruct(MatterTLV tlv)
+    {
+        var value = new ProductAppearanceStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Finish = (ProductFinishEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.PrimaryColor = (ColorEnum)tlv.GetUnsignedIntAny(1); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -191,6 +218,109 @@ public class BridgedDeviceBasicInformationCluster : ClusterBase
         public const uint ReachableChanged = 0x0003;
         /// <summary>ActiveChanged (0x0080).</summary>
         public const uint ActiveChanged = 0x0080;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Bridged Device Basic Information", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>StartUp event payload.</summary>
+    public sealed class StartUpEventData
+    {
+        /// <summary>Gets or sets SoftwareVersion.</summary>
+        public uint SoftwareVersion { get; set; }
+    }
+
+    /// <summary>StartUp event report.</summary>
+    public sealed class StartUpEvent(MatterEventReport report, StartUpEventData payload)
+        : ClusterEvent(report, "StartUp")
+    {
+        /// <summary>Gets the typed StartUp payload.</summary>
+        public StartUpEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>ShutDown event payload.</summary>
+    public sealed class ShutDownEventData
+    {
+    }
+
+    /// <summary>ShutDown event report.</summary>
+    public sealed class ShutDownEvent(MatterEventReport report, ShutDownEventData payload)
+        : ClusterEvent(report, "ShutDown")
+    {
+        /// <summary>Gets the typed ShutDown payload.</summary>
+        public ShutDownEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>Leave event payload.</summary>
+    public sealed class LeaveEventData
+    {
+    }
+
+    /// <summary>Leave event report.</summary>
+    public sealed class LeaveEvent(MatterEventReport report, LeaveEventData payload)
+        : ClusterEvent(report, "Leave")
+    {
+        /// <summary>Gets the typed Leave payload.</summary>
+        public LeaveEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>ReachableChanged event payload.</summary>
+    public sealed class ReachableChangedEventData
+    {
+        /// <summary>Gets or sets ReachableNewValue.</summary>
+        public bool ReachableNewValue { get; set; }
+    }
+
+    /// <summary>ReachableChanged event report.</summary>
+    public sealed class ReachableChangedEvent(MatterEventReport report, ReachableChangedEventData payload)
+        : ClusterEvent(report, "ReachableChanged")
+    {
+        /// <summary>Gets the typed ReachableChanged payload.</summary>
+        public ReachableChangedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>ActiveChanged event payload.</summary>
+    public sealed class ActiveChangedEventData
+    {
+        /// <summary>Gets or sets PromisedActiveDuration.</summary>
+        public uint PromisedActiveDuration { get; set; }
+    }
+
+    /// <summary>ActiveChanged event report.</summary>
+    public sealed class ActiveChangedEvent(MatterEventReport report, ActiveChangedEventData payload)
+        : ClusterEvent(report, "ActiveChanged")
+    {
+        /// <summary>Gets the typed ActiveChanged payload.</summary>
+        public ActiveChangedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Async command methods
@@ -293,4 +423,332 @@ public class BridgedDeviceBasicInformationCluster : ClusterBase
             ArgumentNullException.ThrowIfNull(nodeLabel);
             tlv.AddUTF8String(2, nodeLabel);
         }, timedRequest, timedTimeoutMs, ct);
+
+    // Event payload parsers
+
+    private static StartUpEventData ReadStartUpEventData(MatterTLV tlv)
+    {
+        var value = new StartUpEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.SoftwareVersion = tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadStartUpEventData(MatterEventReport report, out StartUpEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadStartUpEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "StartUp payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static ShutDownEventData ReadShutDownEventData(MatterTLV tlv)
+    {
+        var value = new ShutDownEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadShutDownEventData(MatterEventReport report, out ShutDownEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadShutDownEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "ShutDown payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static LeaveEventData ReadLeaveEventData(MatterTLV tlv)
+    {
+        var value = new LeaveEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadLeaveEventData(MatterEventReport report, out LeaveEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadLeaveEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "Leave payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static ReachableChangedEventData ReadReachableChangedEventData(MatterTLV tlv)
+    {
+        var value = new ReachableChangedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ReachableNewValue = tlv.GetBoolean(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadReachableChangedEventData(MatterEventReport report, out ReachableChangedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadReachableChangedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "ReachableChanged payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static ActiveChangedEventData ReadActiveChangedEventData(MatterTLV tlv)
+    {
+        var value = new ActiveChangedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.PromisedActiveDuration = tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadActiveChangedEventData(MatterEventReport report, out ActiveChangedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadActiveChangedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "ActiveChanged payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateProductAppearanceStructJson(ProductAppearanceStruct value)
+    {
+        var json = new JsonObject();
+        if (value.Finish is { } finish)
+        {
+            json["finish"] = CreateJsonValue(finish.ToString());
+        }
+        if (value.PrimaryColor is { } primaryColor)
+        {
+            json["primaryColor"] = CreateJsonValue(primaryColor.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateStartUpEventDataJson(StartUpEventData value)
+    {
+        var json = new JsonObject();
+        json["softwareVersion"] = CreateJsonValue(value.SoftwareVersion);
+        return json;
+    }
+
+    private static JsonObject CreateShutDownEventDataJson(ShutDownEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateLeaveEventDataJson(LeaveEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateReachableChangedEventDataJson(ReachableChangedEventData value)
+    {
+        var json = new JsonObject();
+        json["reachableNewValue"] = CreateJsonValue(value.ReachableNewValue);
+        return json;
+    }
+
+    private static JsonObject CreateActiveChangedEventDataJson(ActiveChangedEventData value)
+    {
+        var json = new JsonObject();
+        json["promisedActiveDuration"] = CreateJsonValue(value.PromisedActiveDuration);
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            StartUpEvent typed => CreateStartUpEventDataJson(typed.Payload),
+            ShutDownEvent typed => CreateShutDownEventDataJson(typed.Payload),
+            LeaveEvent typed => CreateLeaveEventDataJson(typed.Payload),
+            ReachableChangedEvent typed => CreateReachableChangedEventDataJson(typed.Payload),
+            ActiveChangedEvent typed => CreateActiveChangedEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.StartUp when TryReadStartUpEventData(report, out var startUpEventData, out _) => new StartUpEvent(report, startUpEventData!),
+            Events.StartUp when TryReadStartUpEventData(report, out _, out var startUpReason) => new UnknownClusterEvent(report, startUpReason),
+            Events.ShutDown when TryReadShutDownEventData(report, out var shutDownEventData, out _) => new ShutDownEvent(report, shutDownEventData!),
+            Events.ShutDown when TryReadShutDownEventData(report, out _, out var shutDownReason) => new UnknownClusterEvent(report, shutDownReason),
+            Events.Leave when TryReadLeaveEventData(report, out var leaveEventData, out _) => new LeaveEvent(report, leaveEventData!),
+            Events.Leave when TryReadLeaveEventData(report, out _, out var leaveReason) => new UnknownClusterEvent(report, leaveReason),
+            Events.ReachableChanged when TryReadReachableChangedEventData(report, out var reachableChangedEventData, out _) => new ReachableChangedEvent(report, reachableChangedEventData!),
+            Events.ReachableChanged when TryReadReachableChangedEventData(report, out _, out var reachableChangedReason) => new UnknownClusterEvent(report, reachableChangedReason),
+            Events.ActiveChanged when TryReadActiveChangedEventData(report, out var activeChangedEventData, out _) => new ActiveChangedEvent(report, activeChangedEventData!),
+            Events.ActiveChanged when TryReadActiveChangedEventData(report, out _, out var activeChangedReason) => new UnknownClusterEvent(report, activeChangedReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

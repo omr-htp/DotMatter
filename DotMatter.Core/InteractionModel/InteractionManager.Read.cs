@@ -181,4 +181,79 @@ internal static partial class InteractionManager
             exchange.Close();
         }
     }
+
+    internal static async Task<IReadOnlyList<MatterEventReport>> ReadEventsAsync(
+        ISession session,
+        IReadOnlyList<EventPath> paths,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        if (paths.Count == 0)
+        {
+            return [];
+        }
+
+        var exchange = session.CreateExchange();
+        try
+        {
+            var tlv = new MatterTLV();
+            tlv.AddStructure();
+            tlv.AddArray(tagNumber: 1);
+
+            foreach (var path in paths)
+            {
+                tlv.AddList();
+                if (path.EndpointId.HasValue)
+                {
+                    tlv.AddUInt16(tagNumber: 1, path.EndpointId.Value);
+                }
+
+                if (path.ClusterId.HasValue)
+                {
+                    tlv.AddUInt32(tagNumber: 2, path.ClusterId.Value);
+                }
+
+                if (path.EventId.HasValue)
+                {
+                    tlv.AddUInt32(tagNumber: 3, path.EventId.Value);
+                }
+
+                tlv.EndContainer();
+            }
+
+            tlv.EndContainer();
+            tlv.AddBool(3, fabricFiltered);
+            tlv.AddUInt8(255, IMRevision);
+            tlv.EndContainer();
+
+            await exchange.SendAsync(CreateSecuredFrame(CreatePayload(tlv, OpReadRequest)));
+            var response = await exchange.WaitForNextMessageAsync(ct);
+            var results = new List<MatterEventReport>();
+
+            while (response.MessagePayload.ProtocolOpCode == OpReportData)
+            {
+                var report = new ReportDataAction(response.MessagePayload.ApplicationPayload!);
+                foreach (var eventReport in MatterEventReport.FromReports(report.EventReports))
+                {
+                    results.Add(eventReport);
+                }
+
+                if (!report.MoreChunkedMessages)
+                {
+                    await exchange.AcknowledgeMessageAsync(response.MessageCounter);
+                    break;
+                }
+
+                await exchange.SendAsync(CreateStatusResponseFrame(0x00));
+                response = await exchange.WaitForNextMessageAsync(ct);
+            }
+
+            return results;
+        }
+        finally
+        {
+            exchange.Close();
+        }
+    }
 }

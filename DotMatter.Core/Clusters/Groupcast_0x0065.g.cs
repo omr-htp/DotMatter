@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -77,6 +78,51 @@ public class GroupcastCluster : ClusterBase
         tlv.AddUInt32(2, value.KeyID);
         tlv.AddBool(3, value.HasAuxiliaryACL);
         if (value.ExpiringKeyID != null) tlv.AddUInt32(4, value.ExpiringKeyID.Value);
+    }
+
+    // TLV struct deserializers
+
+    private static MembershipStruct ReadMembershipStruct(MatterTLV tlv)
+    {
+        var value = new MembershipStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.GroupID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    var items1 = new List<ushort>();
+                    tlv.OpenArray(1);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items1.Add((ushort)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Endpoints = [.. items1];
+                    break;
+                case 2:
+                    value.KeyID = tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.HasAuxiliaryACL = tlv.GetBoolean(3);
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.ExpiringKeyID = tlv.GetUnsignedIntAny(4); }
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

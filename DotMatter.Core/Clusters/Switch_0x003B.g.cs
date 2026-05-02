@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -73,6 +74,153 @@ public class SwitchCluster : ClusterBase
         public const uint MultiPressComplete = 0x0006;
     }
 
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Switch", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>SwitchLatched event payload.</summary>
+    public sealed class SwitchLatchedEventData
+    {
+        /// <summary>Gets or sets NewPosition.</summary>
+        public byte NewPosition { get; set; }
+    }
+
+    /// <summary>SwitchLatched event report.</summary>
+    public sealed class SwitchLatchedEvent(MatterEventReport report, SwitchLatchedEventData payload)
+        : ClusterEvent(report, "SwitchLatched")
+    {
+        /// <summary>Gets the typed SwitchLatched payload.</summary>
+        public SwitchLatchedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>InitialPress event payload.</summary>
+    public sealed class InitialPressEventData
+    {
+        /// <summary>Gets or sets NewPosition.</summary>
+        public byte NewPosition { get; set; }
+    }
+
+    /// <summary>InitialPress event report.</summary>
+    public sealed class InitialPressEvent(MatterEventReport report, InitialPressEventData payload)
+        : ClusterEvent(report, "InitialPress")
+    {
+        /// <summary>Gets the typed InitialPress payload.</summary>
+        public InitialPressEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>LongPress event payload.</summary>
+    public sealed class LongPressEventData
+    {
+        /// <summary>Gets or sets NewPosition.</summary>
+        public byte NewPosition { get; set; }
+    }
+
+    /// <summary>LongPress event report.</summary>
+    public sealed class LongPressEvent(MatterEventReport report, LongPressEventData payload)
+        : ClusterEvent(report, "LongPress")
+    {
+        /// <summary>Gets the typed LongPress payload.</summary>
+        public LongPressEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>ShortRelease event payload.</summary>
+    public sealed class ShortReleaseEventData
+    {
+        /// <summary>Gets or sets PreviousPosition.</summary>
+        public byte PreviousPosition { get; set; }
+    }
+
+    /// <summary>ShortRelease event report.</summary>
+    public sealed class ShortReleaseEvent(MatterEventReport report, ShortReleaseEventData payload)
+        : ClusterEvent(report, "ShortRelease")
+    {
+        /// <summary>Gets the typed ShortRelease payload.</summary>
+        public ShortReleaseEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>LongRelease event payload.</summary>
+    public sealed class LongReleaseEventData
+    {
+        /// <summary>Gets or sets PreviousPosition.</summary>
+        public byte PreviousPosition { get; set; }
+    }
+
+    /// <summary>LongRelease event report.</summary>
+    public sealed class LongReleaseEvent(MatterEventReport report, LongReleaseEventData payload)
+        : ClusterEvent(report, "LongRelease")
+    {
+        /// <summary>Gets the typed LongRelease payload.</summary>
+        public LongReleaseEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>MultiPressOngoing event payload.</summary>
+    public sealed class MultiPressOngoingEventData
+    {
+        /// <summary>Gets or sets NewPosition.</summary>
+        public byte NewPosition { get; set; }
+        /// <summary>Gets or sets CurrentNumberOfPressesCounted.</summary>
+        public byte CurrentNumberOfPressesCounted { get; set; }
+    }
+
+    /// <summary>MultiPressOngoing event report.</summary>
+    public sealed class MultiPressOngoingEvent(MatterEventReport report, MultiPressOngoingEventData payload)
+        : ClusterEvent(report, "MultiPressOngoing")
+    {
+        /// <summary>Gets the typed MultiPressOngoing payload.</summary>
+        public MultiPressOngoingEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>MultiPressComplete event payload.</summary>
+    public sealed class MultiPressCompleteEventData
+    {
+        /// <summary>Gets or sets PreviousPosition.</summary>
+        public byte PreviousPosition { get; set; }
+        /// <summary>Gets or sets TotalNumberOfPressesCounted.</summary>
+        public byte TotalNumberOfPressesCounted { get; set; }
+    }
+
+    /// <summary>MultiPressComplete event report.</summary>
+    public sealed class MultiPressCompleteEvent(MatterEventReport report, MultiPressCompleteEventData payload)
+        : ClusterEvent(report, "MultiPressComplete")
+    {
+        /// <summary>Gets the typed MultiPressComplete payload.</summary>
+        public MultiPressCompleteEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
     // Attribute readers
 
     /// <summary>Read NumberOfPositions attribute (0x0000).</summary>
@@ -86,4 +234,440 @@ public class SwitchCluster : ClusterBase
     /// <summary>Read MultiPressMax attribute (0x0002).</summary>
     public Task<byte> ReadMultiPressMaxAsync(CancellationToken ct = default)
         => ReadAttributeAsync<byte>(0x0002, ct);
+
+    // Event payload parsers
+
+    private static SwitchLatchedEventData ReadSwitchLatchedEventData(MatterTLV tlv)
+    {
+        var value = new SwitchLatchedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.NewPosition = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadSwitchLatchedEventData(MatterEventReport report, out SwitchLatchedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadSwitchLatchedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "SwitchLatched payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static InitialPressEventData ReadInitialPressEventData(MatterTLV tlv)
+    {
+        var value = new InitialPressEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.NewPosition = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadInitialPressEventData(MatterEventReport report, out InitialPressEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadInitialPressEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "InitialPress payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static LongPressEventData ReadLongPressEventData(MatterTLV tlv)
+    {
+        var value = new LongPressEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.NewPosition = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadLongPressEventData(MatterEventReport report, out LongPressEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadLongPressEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "LongPress payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static ShortReleaseEventData ReadShortReleaseEventData(MatterTLV tlv)
+    {
+        var value = new ShortReleaseEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.PreviousPosition = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadShortReleaseEventData(MatterEventReport report, out ShortReleaseEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadShortReleaseEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "ShortRelease payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static LongReleaseEventData ReadLongReleaseEventData(MatterTLV tlv)
+    {
+        var value = new LongReleaseEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.PreviousPosition = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadLongReleaseEventData(MatterEventReport report, out LongReleaseEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadLongReleaseEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "LongRelease payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static MultiPressOngoingEventData ReadMultiPressOngoingEventData(MatterTLV tlv)
+    {
+        var value = new MultiPressOngoingEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.NewPosition = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.CurrentNumberOfPressesCounted = (byte)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadMultiPressOngoingEventData(MatterEventReport report, out MultiPressOngoingEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadMultiPressOngoingEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "MultiPressOngoing payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static MultiPressCompleteEventData ReadMultiPressCompleteEventData(MatterTLV tlv)
+    {
+        var value = new MultiPressCompleteEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.PreviousPosition = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.TotalNumberOfPressesCounted = (byte)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadMultiPressCompleteEventData(MatterEventReport report, out MultiPressCompleteEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadMultiPressCompleteEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "MultiPressComplete payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateSwitchLatchedEventDataJson(SwitchLatchedEventData value)
+    {
+        var json = new JsonObject();
+        json["newPosition"] = CreateJsonValue(value.NewPosition);
+        return json;
+    }
+
+    private static JsonObject CreateInitialPressEventDataJson(InitialPressEventData value)
+    {
+        var json = new JsonObject();
+        json["newPosition"] = CreateJsonValue(value.NewPosition);
+        return json;
+    }
+
+    private static JsonObject CreateLongPressEventDataJson(LongPressEventData value)
+    {
+        var json = new JsonObject();
+        json["newPosition"] = CreateJsonValue(value.NewPosition);
+        return json;
+    }
+
+    private static JsonObject CreateShortReleaseEventDataJson(ShortReleaseEventData value)
+    {
+        var json = new JsonObject();
+        json["previousPosition"] = CreateJsonValue(value.PreviousPosition);
+        return json;
+    }
+
+    private static JsonObject CreateLongReleaseEventDataJson(LongReleaseEventData value)
+    {
+        var json = new JsonObject();
+        json["previousPosition"] = CreateJsonValue(value.PreviousPosition);
+        return json;
+    }
+
+    private static JsonObject CreateMultiPressOngoingEventDataJson(MultiPressOngoingEventData value)
+    {
+        var json = new JsonObject();
+        json["newPosition"] = CreateJsonValue(value.NewPosition);
+        json["currentNumberOfPressesCounted"] = CreateJsonValue(value.CurrentNumberOfPressesCounted);
+        return json;
+    }
+
+    private static JsonObject CreateMultiPressCompleteEventDataJson(MultiPressCompleteEventData value)
+    {
+        var json = new JsonObject();
+        json["previousPosition"] = CreateJsonValue(value.PreviousPosition);
+        json["totalNumberOfPressesCounted"] = CreateJsonValue(value.TotalNumberOfPressesCounted);
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            SwitchLatchedEvent typed => CreateSwitchLatchedEventDataJson(typed.Payload),
+            InitialPressEvent typed => CreateInitialPressEventDataJson(typed.Payload),
+            LongPressEvent typed => CreateLongPressEventDataJson(typed.Payload),
+            ShortReleaseEvent typed => CreateShortReleaseEventDataJson(typed.Payload),
+            LongReleaseEvent typed => CreateLongReleaseEventDataJson(typed.Payload),
+            MultiPressOngoingEvent typed => CreateMultiPressOngoingEventDataJson(typed.Payload),
+            MultiPressCompleteEvent typed => CreateMultiPressCompleteEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.SwitchLatched when TryReadSwitchLatchedEventData(report, out var switchLatchedEventData, out _) => new SwitchLatchedEvent(report, switchLatchedEventData!),
+            Events.SwitchLatched when TryReadSwitchLatchedEventData(report, out _, out var switchLatchedReason) => new UnknownClusterEvent(report, switchLatchedReason),
+            Events.InitialPress when TryReadInitialPressEventData(report, out var initialPressEventData, out _) => new InitialPressEvent(report, initialPressEventData!),
+            Events.InitialPress when TryReadInitialPressEventData(report, out _, out var initialPressReason) => new UnknownClusterEvent(report, initialPressReason),
+            Events.LongPress when TryReadLongPressEventData(report, out var longPressEventData, out _) => new LongPressEvent(report, longPressEventData!),
+            Events.LongPress when TryReadLongPressEventData(report, out _, out var longPressReason) => new UnknownClusterEvent(report, longPressReason),
+            Events.ShortRelease when TryReadShortReleaseEventData(report, out var shortReleaseEventData, out _) => new ShortReleaseEvent(report, shortReleaseEventData!),
+            Events.ShortRelease when TryReadShortReleaseEventData(report, out _, out var shortReleaseReason) => new UnknownClusterEvent(report, shortReleaseReason),
+            Events.LongRelease when TryReadLongReleaseEventData(report, out var longReleaseEventData, out _) => new LongReleaseEvent(report, longReleaseEventData!),
+            Events.LongRelease when TryReadLongReleaseEventData(report, out _, out var longReleaseReason) => new UnknownClusterEvent(report, longReleaseReason),
+            Events.MultiPressOngoing when TryReadMultiPressOngoingEventData(report, out var multiPressOngoingEventData, out _) => new MultiPressOngoingEvent(report, multiPressOngoingEventData!),
+            Events.MultiPressOngoing when TryReadMultiPressOngoingEventData(report, out _, out var multiPressOngoingReason) => new UnknownClusterEvent(report, multiPressOngoingReason),
+            Events.MultiPressComplete when TryReadMultiPressCompleteEventData(report, out var multiPressCompleteEventData, out _) => new MultiPressCompleteEvent(report, multiPressCompleteEventData!),
+            Events.MultiPressComplete when TryReadMultiPressCompleteEventData(report, out _, out var multiPressCompleteReason) => new UnknownClusterEvent(report, multiPressCompleteReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

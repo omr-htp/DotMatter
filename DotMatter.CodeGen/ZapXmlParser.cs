@@ -411,6 +411,8 @@ static class ZapXmlParser
                 Id = uint.TryParse(f.Attribute("id")?.Value, out var fid) ? fid : 0,
                 Name = fName,
                 Type = f.Attribute("type")?.Value ?? "uint8",
+                Optional = f.Attribute("optional")?.Value == "true",
+                Nullable = f.Attribute("isNullable")?.Value == "true",
                 IsArray = string.Equals(f.Attribute("type")?.Value, "array", StringComparison.OrdinalIgnoreCase)
                     || f.Attribute("array")?.Value == "true",
                 EntryType = f.Attribute("entryType")?.Value,

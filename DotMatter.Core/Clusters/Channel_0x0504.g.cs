@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -436,6 +437,339 @@ public class ChannelCluster : ClusterBase
     {
         tlv.AddUTF8String(0, value.Name);
         tlv.AddUTF8String(1, value.Value);
+    }
+
+    // TLV struct deserializers
+
+    private static ChannelInfoStruct ReadChannelInfoStruct(MatterTLV tlv)
+    {
+        var value = new ChannelInfoStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.MajorNumber = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.MinorNumber = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Name = tlv.GetUTF8String(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.CallSign = tlv.GetUTF8String(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.AffiliateCallSign = tlv.GetUTF8String(4); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.Identifier = tlv.GetUTF8String(5); }
+                    break;
+                case 6:
+                    if (tlv.IsNextNull()) { tlv.GetNull(6); } else { value.Type = (ChannelTypeEnum)tlv.GetUnsignedIntAny(6); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static LineupInfoStruct ReadLineupInfoStruct(MatterTLV tlv)
+    {
+        var value = new LineupInfoStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.OperatorName = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.LineupName = tlv.GetUTF8String(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.PostalCode = tlv.GetUTF8String(2); }
+                    break;
+                case 3:
+                    value.LineupInfoType = (LineupInfoTypeEnum)tlv.GetUnsignedIntAny(3);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ProgramStruct ReadProgramStruct(MatterTLV tlv)
+    {
+        var value = new ProgramStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Identifier = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    value.Channel = ReadChannelInfoStruct(tlv);
+                    break;
+                case 2:
+                    value.StartTime = tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.EndTime = tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    value.Title = tlv.GetUTF8String(4);
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.Subtitle = tlv.GetUTF8String(5); }
+                    break;
+                case 6:
+                    if (tlv.IsNextNull()) { tlv.GetNull(6); } else { value.Description = tlv.GetUTF8String(6); }
+                    break;
+                case 7:
+                    if (tlv.IsNextNull()) { tlv.GetNull(7); value.AudioLanguages = null; break; }
+                    var items7 = new List<string>();
+                    tlv.OpenArray(7);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items7.Add((string)tlv.GetData(null)!);
+                    }
+                    tlv.CloseContainer();
+                    value.AudioLanguages = [.. items7];
+                    break;
+                case 8:
+                    if (tlv.IsNextNull()) { tlv.GetNull(8); value.Ratings = null; break; }
+                    var items8 = new List<string>();
+                    tlv.OpenArray(8);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items8.Add((string)tlv.GetData(null)!);
+                    }
+                    tlv.CloseContainer();
+                    value.Ratings = [.. items8];
+                    break;
+                case 9:
+                    if (tlv.IsNextNull()) { tlv.GetNull(9); } else { value.ThumbnailUrl = tlv.GetUTF8String(9); }
+                    break;
+                case 10:
+                    if (tlv.IsNextNull()) { tlv.GetNull(10); } else { value.PosterArtUrl = tlv.GetUTF8String(10); }
+                    break;
+                case 11:
+                    if (tlv.IsNextNull()) { tlv.GetNull(11); } else { value.DvbiUrl = tlv.GetUTF8String(11); }
+                    break;
+                case 12:
+                    if (tlv.IsNextNull()) { tlv.GetNull(12); } else { value.ReleaseDate = tlv.GetUTF8String(12); }
+                    break;
+                case 13:
+                    if (tlv.IsNextNull()) { tlv.GetNull(13); } else { value.ParentalGuidanceText = tlv.GetUTF8String(13); }
+                    break;
+                case 14:
+                    if (tlv.IsNextNull()) { tlv.GetNull(14); } else { value.RecordingFlag = (RecordingFlagBitmap)tlv.GetUnsignedIntAny(14); }
+                    break;
+                case 15:
+                    if (tlv.IsNextNull()) { tlv.GetNull(15); } else { value.SeriesInfo = ReadSeriesInfoStruct(tlv); }
+                    break;
+                case 16:
+                    if (tlv.IsNextNull()) { tlv.GetNull(16); value.CategoryList = null; break; }
+                    var items16 = new List<ProgramCategoryStruct>();
+                    tlv.OpenArray(16);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items16.Add(ReadProgramCategoryStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.CategoryList = [.. items16];
+                    break;
+                case 17:
+                    if (tlv.IsNextNull()) { tlv.GetNull(17); value.CastList = null; break; }
+                    var items17 = new List<ProgramCastStruct>();
+                    tlv.OpenArray(17);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items17.Add(ReadProgramCastStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.CastList = [.. items17];
+                    break;
+                case 18:
+                    if (tlv.IsNextNull()) { tlv.GetNull(18); value.ExternalIDList = null; break; }
+                    var items18 = new List<ProgramCastStruct>();
+                    tlv.OpenArray(18);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items18.Add(ReadProgramCastStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.ExternalIDList = [.. items18];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static SeriesInfoStruct ReadSeriesInfoStruct(MatterTLV tlv)
+    {
+        var value = new SeriesInfoStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Season = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    value.Episode = tlv.GetUTF8String(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ProgramCategoryStruct ReadProgramCategoryStruct(MatterTLV tlv)
+    {
+        var value = new ProgramCategoryStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Category = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.SubCategory = tlv.GetUTF8String(1); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ProgramCastStruct ReadProgramCastStruct(MatterTLV tlv)
+    {
+        var value = new ProgramCastStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Name = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    value.Role = tlv.GetUTF8String(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static PageTokenStruct ReadPageTokenStruct(MatterTLV tlv)
+    {
+        var value = new PageTokenStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.Limit = (ushort)tlv.GetUnsignedIntAny(0); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.After = tlv.GetUTF8String(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Before = tlv.GetUTF8String(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ChannelPagingStruct ReadChannelPagingStruct(MatterTLV tlv)
+    {
+        var value = new ChannelPagingStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.PreviousToken = ReadPageTokenStruct(tlv); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.NextToken = ReadPageTokenStruct(tlv); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static AdditionalInfoStruct ReadAdditionalInfoStruct(MatterTLV tlv)
+    {
+        var value = new AdditionalInfoStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Name = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    value.Value = tlv.GetUTF8String(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

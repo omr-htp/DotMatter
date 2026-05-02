@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -236,6 +237,163 @@ public class WebRTCTransportProviderCluster : ClusterBase
         tlv.AddUTF8String(0, value.Candidate);
         tlv.AddUTF8String(1, value.SDPMid);
         if (value.SDPMLineIndex != null) { tlv.AddUInt16(2, value.SDPMLineIndex.Value); } else { tlv.AddNull(2); }
+    }
+
+    // TLV struct deserializers
+
+    private static SFrameStruct ReadSFrameStruct(MatterTLV tlv)
+    {
+        var value = new SFrameStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.CipherSuite = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.BaseKey = tlv.GetOctetString(1);
+                    break;
+                case 2:
+                    value.KID = tlv.GetOctetString(2);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static WebRTCSessionStruct ReadWebRTCSessionStruct(MatterTLV tlv)
+    {
+        var value = new WebRTCSessionStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.PeerNodeID = tlv.GetUnsignedInt(1);
+                    break;
+                case 2:
+                    value.PeerEndpointID = (ushort)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.StreamUsage = (StreamUsageEnum)tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.VideoStreamID = (ushort)tlv.GetUnsignedIntAny(4); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.AudioStreamID = (ushort)tlv.GetUnsignedIntAny(5); }
+                    break;
+                case 6:
+                    value.MetadataEnabled = tlv.GetBoolean(6);
+                    break;
+                case 7:
+                    if (tlv.IsNextNull()) { tlv.GetNull(7); value.VideoStreams = null; break; }
+                    var items7 = new List<ushort>();
+                    tlv.OpenArray(7);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items7.Add((ushort)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.VideoStreams = [.. items7];
+                    break;
+                case 8:
+                    if (tlv.IsNextNull()) { tlv.GetNull(8); value.AudioStreams = null; break; }
+                    var items8 = new List<ushort>();
+                    tlv.OpenArray(8);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items8.Add((ushort)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.AudioStreams = [.. items8];
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ICEServerStruct ReadICEServerStruct(MatterTLV tlv)
+    {
+        var value = new ICEServerStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    var items0 = new List<string>();
+                    tlv.OpenArray(0);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items0.Add((string)tlv.GetData(null)!);
+                    }
+                    tlv.CloseContainer();
+                    value.URLs = [.. items0];
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Username = tlv.GetUTF8String(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Credential = tlv.GetUTF8String(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.CAID = (ushort)tlv.GetUnsignedIntAny(3); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ICECandidateStruct ReadICECandidateStruct(MatterTLV tlv)
+    {
+        var value = new ICECandidateStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Candidate = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.SDPMid = tlv.GetUTF8String(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.SDPMLineIndex = (ushort)tlv.GetUnsignedIntAny(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

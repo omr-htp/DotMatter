@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -79,6 +80,32 @@ public class EnergyPreferenceCluster : ClusterBase
     {
         tlv.AddUInt8(0, value.Step);
         if (value.Label != null) tlv.AddUTF8String(1, value.Label);
+    }
+
+    // TLV struct deserializers
+
+    private static BalanceStruct ReadBalanceStruct(MatterTLV tlv)
+    {
+        var value = new BalanceStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Step = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Label = tlv.GetUTF8String(1); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

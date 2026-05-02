@@ -37,6 +37,26 @@ public class CodeGenGoldenFileTests
         Assert.That(generated, Does.Contain("case 254:"));
     }
 
+    [Test]
+    public void EventGeneration_EmitsTypedApisAndNullablePayloadFields()
+    {
+        var xmlPath = FindCodeGenPath("Xml", "access-control-cluster.xml");
+        var xml = File.ReadAllText(xmlPath);
+        var cluster = ZapXmlParser.ParseAll(xml).Single(c => c.Id == 0x001Fu);
+        var generated = ClusterCodeEmitter.Emit(cluster, "access-control-cluster.xml");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(generated, Does.Contain("public abstract class ClusterEvent"));
+            Assert.That(generated, Does.Contain("public async Task<ClusterEvent[]> ReadEventsAsync("));
+            Assert.That(generated, Does.Contain("public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync("));
+            Assert.That(generated, Does.Contain("public ulong? AdminNodeID { get; set; }"));
+            Assert.That(generated, Does.Contain("public ushort? AdminPasscodeID { get; set; }"));
+            Assert.That(generated, Does.Contain("public string? Instruction { get; set; }"));
+            Assert.That(generated, Does.Contain("public string? ARLRequestFlowUrl { get; set; }"));
+        }
+    }
+
     private static string NormalizeLineEndings(string value)
         => value.Replace("\r\n", "\n");
 

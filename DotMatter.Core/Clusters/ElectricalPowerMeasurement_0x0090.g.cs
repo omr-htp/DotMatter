@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -273,6 +274,165 @@ public class ElectricalPowerMeasurementCluster : ClusterBase
         if (value.FixedTypical != null) tlv.AddUInt64(7, value.FixedTypical.Value);
     }
 
+    // TLV struct deserializers
+
+    private static MeasurementRangeStruct ReadMeasurementRangeStruct(MatterTLV tlv)
+    {
+        var value = new MeasurementRangeStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.MeasurementType = (MeasurementTypeEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Min = tlv.GetSignedInt(1);
+                    break;
+                case 2:
+                    value.Max = tlv.GetSignedInt(2);
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.StartTimestamp = tlv.GetUnsignedIntAny(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.EndTimestamp = tlv.GetUnsignedIntAny(4); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.MinTimestamp = tlv.GetUnsignedIntAny(5); }
+                    break;
+                case 6:
+                    if (tlv.IsNextNull()) { tlv.GetNull(6); } else { value.MaxTimestamp = tlv.GetUnsignedIntAny(6); }
+                    break;
+                case 7:
+                    if (tlv.IsNextNull()) { tlv.GetNull(7); } else { value.StartSystime = tlv.GetUnsignedInt(7); }
+                    break;
+                case 8:
+                    if (tlv.IsNextNull()) { tlv.GetNull(8); } else { value.EndSystime = tlv.GetUnsignedInt(8); }
+                    break;
+                case 9:
+                    if (tlv.IsNextNull()) { tlv.GetNull(9); } else { value.MinSystime = tlv.GetUnsignedInt(9); }
+                    break;
+                case 10:
+                    if (tlv.IsNextNull()) { tlv.GetNull(10); } else { value.MaxSystime = tlv.GetUnsignedInt(10); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static HarmonicMeasurementStruct ReadHarmonicMeasurementStruct(MatterTLV tlv)
+    {
+        var value = new HarmonicMeasurementStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Order = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Measurement = tlv.GetSignedInt(1); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static MeasurementAccuracyStruct ReadMeasurementAccuracyStruct(MatterTLV tlv)
+    {
+        var value = new MeasurementAccuracyStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.MeasurementType = (MeasurementTypeEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Measured = tlv.GetBoolean(1);
+                    break;
+                case 2:
+                    value.MinMeasuredValue = tlv.GetSignedInt(2);
+                    break;
+                case 3:
+                    value.MaxMeasuredValue = tlv.GetSignedInt(3);
+                    break;
+                case 4:
+                    var items4 = new List<MeasurementAccuracyRangeStruct>();
+                    tlv.OpenArray(4);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items4.Add(ReadMeasurementAccuracyRangeStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.AccuracyRanges = [.. items4];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static MeasurementAccuracyRangeStruct ReadMeasurementAccuracyRangeStruct(MatterTLV tlv)
+    {
+        var value = new MeasurementAccuracyRangeStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.RangeMin = tlv.GetSignedInt(0);
+                    break;
+                case 1:
+                    value.RangeMax = tlv.GetSignedInt(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.PercentMax = (ushort)tlv.GetUnsignedIntAny(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.PercentMin = (ushort)tlv.GetUnsignedIntAny(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.PercentTypical = (ushort)tlv.GetUnsignedIntAny(4); }
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.FixedMax = tlv.GetUnsignedInt(5); }
+                    break;
+                case 6:
+                    if (tlv.IsNextNull()) { tlv.GetNull(6); } else { value.FixedMin = tlv.GetUnsignedInt(6); }
+                    break;
+                case 7:
+                    if (tlv.IsNextNull()) { tlv.GetNull(7); } else { value.FixedTypical = tlv.GetUnsignedInt(7); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -321,6 +481,41 @@ public class ElectricalPowerMeasurementCluster : ClusterBase
     {
         /// <summary>MeasurementPeriodRanges (0x0000).</summary>
         public const uint MeasurementPeriodRanges = 0x0000;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Electrical Power Measurement", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>MeasurementPeriodRanges event payload.</summary>
+    public sealed class MeasurementPeriodRangesEventData
+    {
+        /// <summary>Gets or sets Ranges.</summary>
+        public MeasurementRangeStruct[] Ranges { get; set; } = default!;
+    }
+
+    /// <summary>MeasurementPeriodRanges event report.</summary>
+    public sealed class MeasurementPeriodRangesEvent(MatterEventReport report, MeasurementPeriodRangesEventData payload)
+        : ClusterEvent(report, "MeasurementPeriodRanges")
+    {
+        /// <summary>Gets the typed MeasurementPeriodRanges payload.</summary>
+        public MeasurementPeriodRangesEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Attribute readers
@@ -400,4 +595,238 @@ public class ElectricalPowerMeasurementCluster : ClusterBase
     /// <summary>Read NeutralCurrent attribute (0x0012).</summary>
     public Task<ulong?> ReadNeutralCurrentAsync(CancellationToken ct = default)
         => ReadNullableAttributeAsync<ulong>(0x0012, ct);
+
+    // Event payload parsers
+
+    private static MeasurementPeriodRangesEventData ReadMeasurementPeriodRangesEventData(MatterTLV tlv)
+    {
+        var value = new MeasurementPeriodRangesEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    var items0 = new List<MeasurementRangeStruct>();
+                    tlv.OpenArray(0);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items0.Add(ReadMeasurementRangeStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.Ranges = [.. items0];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadMeasurementPeriodRangesEventData(MatterEventReport report, out MeasurementPeriodRangesEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadMeasurementPeriodRangesEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "MeasurementPeriodRanges payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateMeasurementRangeStructJson(MeasurementRangeStruct value)
+    {
+        var json = new JsonObject();
+        if (value.MeasurementType is { } measurementType)
+        {
+            json["measurementType"] = CreateJsonValue(measurementType.ToString());
+        }
+        json["min"] = CreateJsonValue(value.Min);
+        json["max"] = CreateJsonValue(value.Max);
+        if (value.StartTimestamp is { } startTimestamp)
+        {
+            json["startTimestamp"] = CreateJsonValue(startTimestamp);
+        }
+        if (value.EndTimestamp is { } endTimestamp)
+        {
+            json["endTimestamp"] = CreateJsonValue(endTimestamp);
+        }
+        if (value.MinTimestamp is { } minTimestamp)
+        {
+            json["minTimestamp"] = CreateJsonValue(minTimestamp);
+        }
+        if (value.MaxTimestamp is { } maxTimestamp)
+        {
+            json["maxTimestamp"] = CreateJsonValue(maxTimestamp);
+        }
+        if (value.StartSystime is { } startSystime)
+        {
+            json["startSystime"] = CreateJsonValue(startSystime);
+        }
+        if (value.EndSystime is { } endSystime)
+        {
+            json["endSystime"] = CreateJsonValue(endSystime);
+        }
+        if (value.MinSystime is { } minSystime)
+        {
+            json["minSystime"] = CreateJsonValue(minSystime);
+        }
+        if (value.MaxSystime is { } maxSystime)
+        {
+            json["maxSystime"] = CreateJsonValue(maxSystime);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateHarmonicMeasurementStructJson(HarmonicMeasurementStruct value)
+    {
+        var json = new JsonObject();
+        json["order"] = CreateJsonValue(value.Order);
+        if (value.Measurement is { } measurement)
+        {
+            json["measurement"] = CreateJsonValue(measurement);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateMeasurementAccuracyStructJson(MeasurementAccuracyStruct value)
+    {
+        var json = new JsonObject();
+        if (value.MeasurementType is { } measurementType)
+        {
+            json["measurementType"] = CreateJsonValue(measurementType.ToString());
+        }
+        json["measured"] = CreateJsonValue(value.Measured);
+        json["minMeasuredValue"] = CreateJsonValue(value.MinMeasuredValue);
+        json["maxMeasuredValue"] = CreateJsonValue(value.MaxMeasuredValue);
+        if (value.AccuracyRanges is { } accuracyRangesValues)
+        {
+            var accuracyRangesItems = new JsonArray();
+            foreach (var item in accuracyRangesValues)
+            {
+                accuracyRangesItems.Add((JsonNode?)CreateMeasurementAccuracyRangeStructJson(item));
+            }
+            json["accuracyRanges"] = accuracyRangesItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateMeasurementAccuracyRangeStructJson(MeasurementAccuracyRangeStruct value)
+    {
+        var json = new JsonObject();
+        json["rangeMin"] = CreateJsonValue(value.RangeMin);
+        json["rangeMax"] = CreateJsonValue(value.RangeMax);
+        if (value.PercentMax is { } percentMax)
+        {
+            json["percentMax"] = CreateJsonValue(percentMax);
+        }
+        if (value.PercentMin is { } percentMin)
+        {
+            json["percentMin"] = CreateJsonValue(percentMin);
+        }
+        if (value.PercentTypical is { } percentTypical)
+        {
+            json["percentTypical"] = CreateJsonValue(percentTypical);
+        }
+        if (value.FixedMax is { } fixedMax)
+        {
+            json["fixedMax"] = CreateJsonValue(fixedMax);
+        }
+        if (value.FixedMin is { } fixedMin)
+        {
+            json["fixedMin"] = CreateJsonValue(fixedMin);
+        }
+        if (value.FixedTypical is { } fixedTypical)
+        {
+            json["fixedTypical"] = CreateJsonValue(fixedTypical);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateMeasurementPeriodRangesEventDataJson(MeasurementPeriodRangesEventData value)
+    {
+        var json = new JsonObject();
+        if (value.Ranges is { } rangesValues)
+        {
+            var rangesItems = new JsonArray();
+            foreach (var item in rangesValues)
+            {
+                rangesItems.Add((JsonNode?)CreateMeasurementRangeStructJson(item));
+            }
+            json["ranges"] = rangesItems;
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            MeasurementPeriodRangesEvent typed => CreateMeasurementPeriodRangesEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.MeasurementPeriodRanges when TryReadMeasurementPeriodRangesEventData(report, out var measurementPeriodRangesEventData, out _) => new MeasurementPeriodRangesEvent(report, measurementPeriodRangesEventData!),
+            Events.MeasurementPeriodRanges when TryReadMeasurementPeriodRangesEventData(report, out _, out var measurementPeriodRangesReason) => new UnknownClusterEvent(report, measurementPeriodRangesReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

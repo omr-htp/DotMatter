@@ -93,6 +93,11 @@ foreach (var clusterId in clusterOrder)
 Console.WriteLine();
 Console.WriteLine($"Generated {clusterCount} cluster files ({skipped} XMLs skipped, no clusters)");
 
+var orderedClusters = clusterOrder.Select(id => mergedClusters[id]).ToList();
+var registryCode = EventRegistryEmitter.Emit(orderedClusters);
+File.WriteAllText(Path.Combine(clusterOutDir, "ClusterEventRegistry.g.cs"), registryCode);
+Console.WriteLine("  ClusterEventRegistry.g.cs                          registry/context");
+
 string protocolsDir = Path.GetFullPath(Path.Combine(baseDir, "Protocols"));
 string protocolOutDir = Path.GetFullPath(Path.Combine(baseDir, "..", "DotMatter.Core", "Protocol", "Generated"));
 

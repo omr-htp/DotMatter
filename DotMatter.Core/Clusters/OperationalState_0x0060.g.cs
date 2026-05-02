@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -118,6 +119,59 @@ public class OperationalStateCluster : ClusterBase
         if (value.ErrorStateDetails != null) tlv.AddUTF8String(2, value.ErrorStateDetails);
     }
 
+    // TLV struct deserializers
+
+    private static OperationalStateStruct ReadOperationalStateStruct(MatterTLV tlv)
+    {
+        var value = new OperationalStateStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.OperationalStateID = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.OperationalStateLabel = tlv.GetUTF8String(1); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ErrorStateStruct ReadErrorStateStruct(MatterTLV tlv)
+    {
+        var value = new ErrorStateStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ErrorStateID = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.ErrorStateLabel = tlv.GetUTF8String(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.ErrorStateDetails = tlv.GetUTF8String(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -155,6 +209,63 @@ public class OperationalStateCluster : ClusterBase
         public const uint OperationalError = 0x0000;
         /// <summary>OperationCompletion (0x0001).</summary>
         public const uint OperationCompletion = 0x0001;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Operational State", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>OperationalError event payload.</summary>
+    public sealed class OperationalErrorEventData
+    {
+        /// <summary>Gets or sets ErrorState.</summary>
+        public ErrorStateStruct ErrorState { get; set; } = default!;
+    }
+
+    /// <summary>OperationalError event report.</summary>
+    public sealed class OperationalErrorEvent(MatterEventReport report, OperationalErrorEventData payload)
+        : ClusterEvent(report, "OperationalError")
+    {
+        /// <summary>Gets the typed OperationalError payload.</summary>
+        public OperationalErrorEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>OperationCompletion event payload.</summary>
+    public sealed class OperationCompletionEventData
+    {
+        /// <summary>Gets or sets CompletionErrorCode.</summary>
+        public byte CompletionErrorCode { get; set; }
+        /// <summary>Gets or sets TotalOperationalTime.</summary>
+        public uint? TotalOperationalTime { get; set; }
+        /// <summary>Gets or sets PausedTime.</summary>
+        public uint? PausedTime { get; set; }
+    }
+
+    /// <summary>OperationCompletion event report.</summary>
+    public sealed class OperationCompletionEvent(MatterEventReport report, OperationCompletionEventData payload)
+        : ClusterEvent(report, "OperationCompletion")
+    {
+        /// <summary>Gets the typed OperationCompletion payload.</summary>
+        public OperationCompletionEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Async command methods
@@ -200,4 +311,210 @@ public class OperationalStateCluster : ClusterBase
     /// <summary>Read OperationalError attribute (0x0005).</summary>
     public Task<object?> ReadOperationalErrorAsync(CancellationToken ct = default)
         => ReadAttributeAsync(0x0005, ct);
+
+    // Event payload parsers
+
+    private static OperationalErrorEventData ReadOperationalErrorEventData(MatterTLV tlv)
+    {
+        var value = new OperationalErrorEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ErrorState = ReadErrorStateStruct(tlv);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadOperationalErrorEventData(MatterEventReport report, out OperationalErrorEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadOperationalErrorEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "OperationalError payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static OperationCompletionEventData ReadOperationCompletionEventData(MatterTLV tlv)
+    {
+        var value = new OperationCompletionEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.CompletionErrorCode = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.TotalOperationalTime = tlv.GetUnsignedIntAny(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.PausedTime = tlv.GetUnsignedIntAny(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadOperationCompletionEventData(MatterEventReport report, out OperationCompletionEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadOperationCompletionEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "OperationCompletion payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateOperationalStateStructJson(OperationalStateStruct value)
+    {
+        var json = new JsonObject();
+        json["operationalStateID"] = CreateJsonValue(value.OperationalStateID);
+        if (value.OperationalStateLabel is { } operationalStateLabel)
+        {
+            json["operationalStateLabel"] = CreateJsonValue(operationalStateLabel);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateErrorStateStructJson(ErrorStateStruct value)
+    {
+        var json = new JsonObject();
+        json["errorStateID"] = CreateJsonValue(value.ErrorStateID);
+        if (value.ErrorStateLabel is { } errorStateLabel)
+        {
+            json["errorStateLabel"] = CreateJsonValue(errorStateLabel);
+        }
+        if (value.ErrorStateDetails is { } errorStateDetails)
+        {
+            json["errorStateDetails"] = CreateJsonValue(errorStateDetails);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateOperationalErrorEventDataJson(OperationalErrorEventData value)
+    {
+        var json = new JsonObject();
+        if (value.ErrorState is { } errorState)
+        {
+            json["errorState"] = CreateErrorStateStructJson(errorState);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateOperationCompletionEventDataJson(OperationCompletionEventData value)
+    {
+        var json = new JsonObject();
+        json["completionErrorCode"] = CreateJsonValue(value.CompletionErrorCode);
+        if (value.TotalOperationalTime is { } totalOperationalTime)
+        {
+            json["totalOperationalTime"] = CreateJsonValue(totalOperationalTime);
+        }
+        if (value.PausedTime is { } pausedTime)
+        {
+            json["pausedTime"] = CreateJsonValue(pausedTime);
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            OperationalErrorEvent typed => CreateOperationalErrorEventDataJson(typed.Payload),
+            OperationCompletionEvent typed => CreateOperationCompletionEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.OperationalError when TryReadOperationalErrorEventData(report, out var operationalErrorEventData, out _) => new OperationalErrorEvent(report, operationalErrorEventData!),
+            Events.OperationalError when TryReadOperationalErrorEventData(report, out _, out var operationalErrorReason) => new UnknownClusterEvent(report, operationalErrorReason),
+            Events.OperationCompletion when TryReadOperationCompletionEventData(report, out var operationCompletionEventData, out _) => new OperationCompletionEvent(report, operationCompletionEventData!),
+            Events.OperationCompletion when TryReadOperationCompletionEventData(report, out _, out var operationCompletionReason) => new UnknownClusterEvent(report, operationCompletionReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -140,6 +141,77 @@ public class OperationalCredentialsCluster : ClusterBase
         tlv.AddOctetString(1, value.NOC);
         tlv.AddOctetString(2, value.ICAC);
         if (value.VVSC != null) tlv.AddOctetString(3, value.VVSC);
+    }
+
+    // TLV struct deserializers
+
+    private static FabricDescriptorStruct ReadFabricDescriptorStruct(MatterTLV tlv)
+    {
+        var value = new FabricDescriptorStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 1:
+                    value.RootPublicKey = tlv.GetOctetString(1);
+                    break;
+                case 2:
+                    value.VendorID = (ushort)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.FabricID = tlv.GetUnsignedInt(3);
+                    break;
+                case 4:
+                    value.NodeID = tlv.GetUnsignedInt(4);
+                    break;
+                case 5:
+                    value.Label = tlv.GetUTF8String(5);
+                    break;
+                case 6:
+                    if (tlv.IsNextNull()) { tlv.GetNull(6); } else { value.VIDVerificationStatement = tlv.GetOctetString(6); }
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static NOCStruct ReadNOCStruct(MatterTLV tlv)
+    {
+        var value = new NOCStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 1:
+                    value.NOC = tlv.GetOctetString(1);
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.ICAC = tlv.GetOctetString(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.VVSC = tlv.GetOctetString(3); }
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

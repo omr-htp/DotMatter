@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -264,6 +265,150 @@ public class ContentControlCluster : ClusterBase
         if (value.TimePeriod != null) { tlv.AddArray(2); foreach (var item in value.TimePeriod) { WriteTimePeriodStruct(tlv, item); } tlv.EndContainer(); }
     }
 
+    // TLV struct deserializers
+
+    private static AppInfoStruct ReadAppInfoStruct(MatterTLV tlv)
+    {
+        var value = new AppInfoStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.CatalogVendorID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.ApplicationID = tlv.GetUTF8String(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static BlockChannelStruct ReadBlockChannelStruct(MatterTLV tlv)
+    {
+        var value = new BlockChannelStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.BlockChannelIndex = (ushort)tlv.GetUnsignedIntAny(0); }
+                    break;
+                case 1:
+                    value.MajorNumber = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.MinorNumber = (ushort)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.Identifier = tlv.GetUTF8String(3); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static RatingNameStruct ReadRatingNameStruct(MatterTLV tlv)
+    {
+        var value = new RatingNameStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.RatingName = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.RatingNameDesc = tlv.GetUTF8String(1); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static TimePeriodStruct ReadTimePeriodStruct(MatterTLV tlv)
+    {
+        var value = new TimePeriodStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.StartHour = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.StartMinute = (byte)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.EndHour = (byte)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.EndMinute = (byte)tlv.GetUnsignedIntAny(3);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static TimeWindowStruct ReadTimeWindowStruct(MatterTLV tlv)
+    {
+        var value = new TimeWindowStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.TimeWindowIndex = (ushort)tlv.GetUnsignedIntAny(0); }
+                    break;
+                case 1:
+                    value.DayOfWeek = (DayOfWeekBitmap)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    var items2 = new List<TimePeriodStruct>();
+                    tlv.OpenArray(2);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items2.Add(ReadTimePeriodStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.TimePeriod = [.. items2];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -335,6 +480,55 @@ public class ContentControlCluster : ClusterBase
         public const uint RemainingScreenTimeExpired = 0x0000;
         /// <summary>EnteringBlockContentTimeWindow (0x0001).</summary>
         public const uint EnteringBlockContentTimeWindow = 0x0001;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Content Control", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>RemainingScreenTimeExpired event payload.</summary>
+    public sealed class RemainingScreenTimeExpiredEventData
+    {
+    }
+
+    /// <summary>RemainingScreenTimeExpired event report.</summary>
+    public sealed class RemainingScreenTimeExpiredEvent(MatterEventReport report, RemainingScreenTimeExpiredEventData payload)
+        : ClusterEvent(report, "RemainingScreenTimeExpired")
+    {
+        /// <summary>Gets the typed RemainingScreenTimeExpired payload.</summary>
+        public RemainingScreenTimeExpiredEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>EnteringBlockContentTimeWindow event payload.</summary>
+    public sealed class EnteringBlockContentTimeWindowEventData
+    {
+    }
+
+    /// <summary>EnteringBlockContentTimeWindow event report.</summary>
+    public sealed class EnteringBlockContentTimeWindowEvent(MatterEventReport report, EnteringBlockContentTimeWindowEventData payload)
+        : ClusterEvent(report, "EnteringBlockContentTimeWindow")
+    {
+        /// <summary>Gets the typed EnteringBlockContentTimeWindow payload.</summary>
+        public EnteringBlockContentTimeWindowEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Async command methods
@@ -480,4 +674,233 @@ public class ContentControlCluster : ClusterBase
     /// <summary>Read BlockContentTimeWindow attribute (0x000A).</summary>
     public Task<TimeWindowStruct[]?> ReadBlockContentTimeWindowAsync(CancellationToken ct = default)
         => ReadRefAttributeAsync<TimeWindowStruct[]>(0x000A, ct);
+
+    // Event payload parsers
+
+    private static RemainingScreenTimeExpiredEventData ReadRemainingScreenTimeExpiredEventData(MatterTLV tlv)
+    {
+        var value = new RemainingScreenTimeExpiredEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadRemainingScreenTimeExpiredEventData(MatterEventReport report, out RemainingScreenTimeExpiredEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadRemainingScreenTimeExpiredEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "RemainingScreenTimeExpired payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static EnteringBlockContentTimeWindowEventData ReadEnteringBlockContentTimeWindowEventData(MatterTLV tlv)
+    {
+        var value = new EnteringBlockContentTimeWindowEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadEnteringBlockContentTimeWindowEventData(MatterEventReport report, out EnteringBlockContentTimeWindowEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadEnteringBlockContentTimeWindowEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "EnteringBlockContentTimeWindow payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateAppInfoStructJson(AppInfoStruct value)
+    {
+        var json = new JsonObject();
+        json["catalogVendorID"] = CreateJsonValue(value.CatalogVendorID);
+        if (value.ApplicationID is { } applicationID)
+        {
+            json["applicationID"] = CreateJsonValue(applicationID);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateBlockChannelStructJson(BlockChannelStruct value)
+    {
+        var json = new JsonObject();
+        if (value.BlockChannelIndex is { } blockChannelIndex)
+        {
+            json["blockChannelIndex"] = CreateJsonValue(blockChannelIndex);
+        }
+        json["majorNumber"] = CreateJsonValue(value.MajorNumber);
+        json["minorNumber"] = CreateJsonValue(value.MinorNumber);
+        if (value.Identifier is { } identifier)
+        {
+            json["identifier"] = CreateJsonValue(identifier);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateRatingNameStructJson(RatingNameStruct value)
+    {
+        var json = new JsonObject();
+        if (value.RatingName is { } ratingName)
+        {
+            json["ratingName"] = CreateJsonValue(ratingName);
+        }
+        if (value.RatingNameDesc is { } ratingNameDesc)
+        {
+            json["ratingNameDesc"] = CreateJsonValue(ratingNameDesc);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateTimePeriodStructJson(TimePeriodStruct value)
+    {
+        var json = new JsonObject();
+        json["startHour"] = CreateJsonValue(value.StartHour);
+        json["startMinute"] = CreateJsonValue(value.StartMinute);
+        json["endHour"] = CreateJsonValue(value.EndHour);
+        json["endMinute"] = CreateJsonValue(value.EndMinute);
+        return json;
+    }
+
+    private static JsonObject CreateTimeWindowStructJson(TimeWindowStruct value)
+    {
+        var json = new JsonObject();
+        if (value.TimeWindowIndex is { } timeWindowIndex)
+        {
+            json["timeWindowIndex"] = CreateJsonValue(timeWindowIndex);
+        }
+        if (value.DayOfWeek is { } dayOfWeek)
+        {
+            json["dayOfWeek"] = CreateJsonValue(dayOfWeek.ToString());
+        }
+        if (value.TimePeriod is { } timePeriodValues)
+        {
+            var timePeriodItems = new JsonArray();
+            foreach (var item in timePeriodValues)
+            {
+                timePeriodItems.Add((JsonNode?)CreateTimePeriodStructJson(item));
+            }
+            json["timePeriod"] = timePeriodItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateRemainingScreenTimeExpiredEventDataJson(RemainingScreenTimeExpiredEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateEnteringBlockContentTimeWindowEventDataJson(EnteringBlockContentTimeWindowEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            RemainingScreenTimeExpiredEvent typed => CreateRemainingScreenTimeExpiredEventDataJson(typed.Payload),
+            EnteringBlockContentTimeWindowEvent typed => CreateEnteringBlockContentTimeWindowEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.RemainingScreenTimeExpired when TryReadRemainingScreenTimeExpiredEventData(report, out var remainingScreenTimeExpiredEventData, out _) => new RemainingScreenTimeExpiredEvent(report, remainingScreenTimeExpiredEventData!),
+            Events.RemainingScreenTimeExpired when TryReadRemainingScreenTimeExpiredEventData(report, out _, out var remainingScreenTimeExpiredReason) => new UnknownClusterEvent(report, remainingScreenTimeExpiredReason),
+            Events.EnteringBlockContentTimeWindow when TryReadEnteringBlockContentTimeWindowEventData(report, out var enteringBlockContentTimeWindowEventData, out _) => new EnteringBlockContentTimeWindowEvent(report, enteringBlockContentTimeWindowEventData!),
+            Events.EnteringBlockContentTimeWindow when TryReadEnteringBlockContentTimeWindowEventData(report, out _, out var enteringBlockContentTimeWindowReason) => new UnknownClusterEvent(report, enteringBlockContentTimeWindowReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

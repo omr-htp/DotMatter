@@ -1,5 +1,6 @@
 using DotMatter.Core.Clusters;
 using DotMatter.Hosting;
+using System.Globalization;
 
 namespace DotMatter.Controller;
 
@@ -120,6 +121,41 @@ internal static class DeviceApiEndpoints
         })
             .WithSummary("List device bindings")
             .WithDescription("Reads Binding cluster entries from one source device endpoint. The endpoint query parameter defaults to 1.");
+
+        devices.MapGet("/devices/{id}/matter/events", async (
+            string id,
+            string? cluster,
+            string? eventId,
+            ushort? endpoint,
+            bool? fabricFiltered,
+            MatterControllerService service) =>
+        {
+            if (string.IsNullOrWhiteSpace(cluster))
+            {
+                return Results.BadRequest(new ErrorResponse("Cluster is required"));
+            }
+
+            if (!TryParseHexOrDecimalUInt(cluster, out var clusterId))
+            {
+                return Results.BadRequest(new ErrorResponse("Cluster must be an unsigned integer in decimal or 0x-prefixed hex"));
+            }
+
+            if (!TryParseOptionalHexOrDecimalUInt(eventId, out var parsedEventId))
+            {
+                return Results.BadRequest(new ErrorResponse("eventId must be an unsigned integer in decimal or 0x-prefixed hex"));
+            }
+
+            var missing = EnsureKnownDevice(id, service);
+            if (missing != null)
+            {
+                return missing;
+            }
+
+            return ApiEndpointResults.MapDeviceMatterEventQueryResult(
+                await service.ReadMatterEventsAsync(id, endpoint, clusterId, parsedEventId, fabricFiltered ?? false));
+        })
+            .WithSummary("Read device Matter events")
+            .WithDescription("Reads raw Matter event envelopes from one device for the requested cluster and optional event ID. This testing-focused API exposes live protocol events without reusing the controller's internal SSE stream.");
 
         devices.MapPost("/devices/{id}/bindings/remove", async (string id, DeviceBindingRemovalRequest body, MatterControllerService service) =>
         {
@@ -277,6 +313,40 @@ internal static class DeviceApiEndpoints
     {
         var fabricName = context.Request.Query["fabricName"].ToString();
         return string.IsNullOrWhiteSpace(fabricName) ? null : fabricName;
+    }
+
+    private static bool TryParseOptionalHexOrDecimalUInt(string? value, out uint? parsed)
+    {
+        parsed = null;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        if (!TryParseHexOrDecimalUInt(value, out var parsedValue))
+        {
+            return false;
+        }
+
+        parsed = parsedValue;
+        return true;
+    }
+
+    private static bool TryParseHexOrDecimalUInt(string value, out uint parsed)
+    {
+        parsed = 0;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var trimmed = value.Trim();
+        if (trimmed.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+        {
+            return uint.TryParse(trimmed[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out parsed);
+        }
+
+        return uint.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed);
     }
 
     private static string? ValidateSwitchBindingRequest(SwitchBindingRequest body)

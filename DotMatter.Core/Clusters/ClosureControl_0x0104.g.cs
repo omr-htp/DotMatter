@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -213,6 +214,65 @@ public class ClosureControlCluster : ClusterBase
         if (value.Speed != null) tlv.AddUInt8(2, (byte)value.Speed);
     }
 
+    // TLV struct deserializers
+
+    private static OverallCurrentStateStruct ReadOverallCurrentStateStruct(MatterTLV tlv)
+    {
+        var value = new OverallCurrentStateStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.Position = (CurrentPositionEnum)tlv.GetUnsignedIntAny(0); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Latch = tlv.GetBoolean(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Speed = (ThreeLevelAutoEnum)tlv.GetUnsignedIntAny(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.SecureState = tlv.GetBoolean(3); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static OverallTargetStateStruct ReadOverallTargetStateStruct(MatterTLV tlv)
+    {
+        var value = new OverallTargetStateStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.Position = (TargetPositionEnum)tlv.GetUnsignedIntAny(0); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Latch = tlv.GetBoolean(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Speed = (ThreeLevelAutoEnum)tlv.GetUnsignedIntAny(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -252,6 +312,93 @@ public class ClosureControlCluster : ClusterBase
         public const uint EngageStateChanged = 0x0002;
         /// <summary>SecureStateChanged (0x0003).</summary>
         public const uint SecureStateChanged = 0x0003;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Closure Control", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>OperationalError event payload.</summary>
+    public sealed class OperationalErrorEventData
+    {
+        /// <summary>Gets or sets ErrorState.</summary>
+        public ClosureErrorEnum[] ErrorState { get; set; } = default!;
+    }
+
+    /// <summary>OperationalError event report.</summary>
+    public sealed class OperationalErrorEvent(MatterEventReport report, OperationalErrorEventData payload)
+        : ClusterEvent(report, "OperationalError")
+    {
+        /// <summary>Gets the typed OperationalError payload.</summary>
+        public OperationalErrorEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>MovementCompleted event payload.</summary>
+    public sealed class MovementCompletedEventData
+    {
+    }
+
+    /// <summary>MovementCompleted event report.</summary>
+    public sealed class MovementCompletedEvent(MatterEventReport report, MovementCompletedEventData payload)
+        : ClusterEvent(report, "MovementCompleted")
+    {
+        /// <summary>Gets the typed MovementCompleted payload.</summary>
+        public MovementCompletedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>EngageStateChanged event payload.</summary>
+    public sealed class EngageStateChangedEventData
+    {
+        /// <summary>Gets or sets EngageValue.</summary>
+        public bool EngageValue { get; set; }
+    }
+
+    /// <summary>EngageStateChanged event report.</summary>
+    public sealed class EngageStateChangedEvent(MatterEventReport report, EngageStateChangedEventData payload)
+        : ClusterEvent(report, "EngageStateChanged")
+    {
+        /// <summary>Gets the typed EngageStateChanged payload.</summary>
+        public EngageStateChangedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>SecureStateChanged event payload.</summary>
+    public sealed class SecureStateChangedEventData
+    {
+        /// <summary>Gets or sets SecureValue.</summary>
+        public bool SecureValue { get; set; }
+    }
+
+    /// <summary>SecureStateChanged event report.</summary>
+    public sealed class SecureStateChangedEvent(MatterEventReport report, SecureStateChangedEventData payload)
+        : ClusterEvent(report, "SecureStateChanged")
+    {
+        /// <summary>Gets the typed SecureStateChanged payload.</summary>
+        public SecureStateChangedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Async command methods
@@ -302,4 +449,324 @@ public class ClosureControlCluster : ClusterBase
     /// <summary>Read LatchControlModes attribute (0x0005).</summary>
     public Task<LatchControlModesBitmap> ReadLatchControlModesAsync(CancellationToken ct = default)
         => ReadAttributeAsync<LatchControlModesBitmap>(0x0005, ct);
+
+    // Event payload parsers
+
+    private static OperationalErrorEventData ReadOperationalErrorEventData(MatterTLV tlv)
+    {
+        var value = new OperationalErrorEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    var items0 = new List<ClosureErrorEnum>();
+                    tlv.OpenArray(0);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items0.Add((ClosureErrorEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.ErrorState = [.. items0];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadOperationalErrorEventData(MatterEventReport report, out OperationalErrorEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadOperationalErrorEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "OperationalError payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static MovementCompletedEventData ReadMovementCompletedEventData(MatterTLV tlv)
+    {
+        var value = new MovementCompletedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadMovementCompletedEventData(MatterEventReport report, out MovementCompletedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadMovementCompletedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "MovementCompleted payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static EngageStateChangedEventData ReadEngageStateChangedEventData(MatterTLV tlv)
+    {
+        var value = new EngageStateChangedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.EngageValue = tlv.GetBoolean(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadEngageStateChangedEventData(MatterEventReport report, out EngageStateChangedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadEngageStateChangedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "EngageStateChanged payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static SecureStateChangedEventData ReadSecureStateChangedEventData(MatterTLV tlv)
+    {
+        var value = new SecureStateChangedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.SecureValue = tlv.GetBoolean(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadSecureStateChangedEventData(MatterEventReport report, out SecureStateChangedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadSecureStateChangedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "SecureStateChanged payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateOverallCurrentStateStructJson(OverallCurrentStateStruct value)
+    {
+        var json = new JsonObject();
+        if (value.Position is { } position)
+        {
+            json["position"] = CreateJsonValue(position.ToString());
+        }
+        if (value.Latch is { } latch)
+        {
+            json["latch"] = CreateJsonValue(latch);
+        }
+        if (value.Speed is { } speed)
+        {
+            json["speed"] = CreateJsonValue(speed.ToString());
+        }
+        if (value.SecureState is { } secureState)
+        {
+            json["secureState"] = CreateJsonValue(secureState);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateOverallTargetStateStructJson(OverallTargetStateStruct value)
+    {
+        var json = new JsonObject();
+        if (value.Position is { } position)
+        {
+            json["position"] = CreateJsonValue(position.ToString());
+        }
+        if (value.Latch is { } latch)
+        {
+            json["latch"] = CreateJsonValue(latch);
+        }
+        if (value.Speed is { } speed)
+        {
+            json["speed"] = CreateJsonValue(speed.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateOperationalErrorEventDataJson(OperationalErrorEventData value)
+    {
+        var json = new JsonObject();
+        if (value.ErrorState is { } errorStateValues)
+        {
+            var errorStateItems = new JsonArray();
+            foreach (var item in errorStateValues)
+            {
+                errorStateItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["errorState"] = errorStateItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateMovementCompletedEventDataJson(MovementCompletedEventData value)
+    {
+        var json = new JsonObject();
+        return json;
+    }
+
+    private static JsonObject CreateEngageStateChangedEventDataJson(EngageStateChangedEventData value)
+    {
+        var json = new JsonObject();
+        json["engageValue"] = CreateJsonValue(value.EngageValue);
+        return json;
+    }
+
+    private static JsonObject CreateSecureStateChangedEventDataJson(SecureStateChangedEventData value)
+    {
+        var json = new JsonObject();
+        json["secureValue"] = CreateJsonValue(value.SecureValue);
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            OperationalErrorEvent typed => CreateOperationalErrorEventDataJson(typed.Payload),
+            MovementCompletedEvent typed => CreateMovementCompletedEventDataJson(typed.Payload),
+            EngageStateChangedEvent typed => CreateEngageStateChangedEventDataJson(typed.Payload),
+            SecureStateChangedEvent typed => CreateSecureStateChangedEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.OperationalError when TryReadOperationalErrorEventData(report, out var operationalErrorEventData, out _) => new OperationalErrorEvent(report, operationalErrorEventData!),
+            Events.OperationalError when TryReadOperationalErrorEventData(report, out _, out var operationalErrorReason) => new UnknownClusterEvent(report, operationalErrorReason),
+            Events.MovementCompleted when TryReadMovementCompletedEventData(report, out var movementCompletedEventData, out _) => new MovementCompletedEvent(report, movementCompletedEventData!),
+            Events.MovementCompleted when TryReadMovementCompletedEventData(report, out _, out var movementCompletedReason) => new UnknownClusterEvent(report, movementCompletedReason),
+            Events.EngageStateChanged when TryReadEngageStateChangedEventData(report, out var engageStateChangedEventData, out _) => new EngageStateChangedEvent(report, engageStateChangedEventData!),
+            Events.EngageStateChanged when TryReadEngageStateChangedEventData(report, out _, out var engageStateChangedReason) => new UnknownClusterEvent(report, engageStateChangedReason),
+            Events.SecureStateChanged when TryReadSecureStateChangedEventData(report, out var secureStateChangedEventData, out _) => new SecureStateChangedEvent(report, secureStateChangedEventData!),
+            Events.SecureStateChanged when TryReadSecureStateChangedEventData(report, out _, out var secureStateChangedReason) => new UnknownClusterEvent(report, secureStateChangedReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

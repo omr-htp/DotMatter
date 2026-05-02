@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -69,6 +70,32 @@ public class TargetNavigatorCluster : ClusterBase
         tlv.AddUTF8String(1, value.Name);
     }
 
+    // TLV struct deserializers
+
+    private static TargetInfoStruct ReadTargetInfoStruct(MatterTLV tlv)
+    {
+        var value = new TargetInfoStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Identifier = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Name = tlv.GetUTF8String(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -90,6 +117,45 @@ public class TargetNavigatorCluster : ClusterBase
     {
         /// <summary>TargetUpdated (0x0000).</summary>
         public const uint TargetUpdated = 0x0000;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Target Navigator", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>TargetUpdated event payload.</summary>
+    public sealed class TargetUpdatedEventData
+    {
+        /// <summary>Gets or sets TargetList.</summary>
+        public TargetInfoStruct[] TargetList { get; set; } = default!;
+        /// <summary>Gets or sets CurrentTarget.</summary>
+        public byte CurrentTarget { get; set; }
+        /// <summary>Gets or sets Data.</summary>
+        public byte[] Data { get; set; } = default!;
+    }
+
+    /// <summary>TargetUpdated event report.</summary>
+    public sealed class TargetUpdatedEvent(MatterEventReport report, TargetUpdatedEventData payload)
+        : ClusterEvent(report, "TargetUpdated")
+    {
+        /// <summary>Gets the typed TargetUpdated payload.</summary>
+        public TargetUpdatedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Async command methods
@@ -114,4 +180,151 @@ public class TargetNavigatorCluster : ClusterBase
     /// <summary>Read CurrentTarget attribute (0x0001).</summary>
     public Task<byte> ReadCurrentTargetAsync(CancellationToken ct = default)
         => ReadAttributeAsync<byte>(0x0001, ct);
+
+    // Event payload parsers
+
+    private static TargetUpdatedEventData ReadTargetUpdatedEventData(MatterTLV tlv)
+    {
+        var value = new TargetUpdatedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    var items0 = new List<TargetInfoStruct>();
+                    tlv.OpenArray(0);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items0.Add(ReadTargetInfoStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.TargetList = [.. items0];
+                    break;
+                case 1:
+                    value.CurrentTarget = (byte)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.Data = tlv.GetOctetString(2);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadTargetUpdatedEventData(MatterEventReport report, out TargetUpdatedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadTargetUpdatedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "TargetUpdated payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateTargetInfoStructJson(TargetInfoStruct value)
+    {
+        var json = new JsonObject();
+        json["identifier"] = CreateJsonValue(value.Identifier);
+        if (value.Name is { } name)
+        {
+            json["name"] = CreateJsonValue(name);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateTargetUpdatedEventDataJson(TargetUpdatedEventData value)
+    {
+        var json = new JsonObject();
+        if (value.TargetList is { } targetListValues)
+        {
+            var targetListItems = new JsonArray();
+            foreach (var item in targetListValues)
+            {
+                targetListItems.Add((JsonNode?)CreateTargetInfoStructJson(item));
+            }
+            json["targetList"] = targetListItems;
+        }
+        json["currentTarget"] = CreateJsonValue(value.CurrentTarget);
+        if (value.Data is { } data)
+        {
+            json["data"] = CreateJsonValue(data);
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            TargetUpdatedEvent typed => CreateTargetUpdatedEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.TargetUpdated when TryReadTargetUpdatedEventData(report, out var targetUpdatedEventData, out _) => new TargetUpdatedEvent(report, targetUpdatedEventData!),
+            Events.TargetUpdated when TryReadTargetUpdatedEventData(report, out _, out var targetUpdatedReason) => new UnknownClusterEvent(report, targetUpdatedReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

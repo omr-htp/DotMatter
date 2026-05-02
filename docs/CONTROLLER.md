@@ -8,6 +8,7 @@
 - **BLE commissioning** — PASE → CSR → NOC → Thread/WiFi provisioning
 - **Thread + WiFi control** — OTBR-backed Thread discovery and WiFi commissioning
 - **Runtime diagnostics** — authenticated runtime status plus optional detailed diagnostics endpoint
+- **Matter event inspection** — one-shot event reads plus a dedicated Matter-event SSE stream with typed payload JSON when available
 - **Switch binding + removal** — creates and reconciles Matter ACL and Binding state for a switch OnOff route
 - **Bounded runtime** — Owned reconnect loops, readiness/liveness health, SSE cleanup, atomic registry writes
 - **AOT-ready** — Publishes as native AOT on Linux ARM64
@@ -23,6 +24,7 @@
 | GET | `/api/devices/{id}` | Device details |
 | GET | `/api/devices/{id}/acl` | Query AccessControl ACL entries from one device |
 | GET | `/api/devices/{id}/bindings` | Query Binding entries from one source device endpoint |
+| GET | `/api/devices/{id}/matter/events` | Read Matter event envelopes from one device |
 | POST | `/api/devices/{id}/acl/remove` | Remove matching AccessControl ACL entries from one device |
 | POST | `/api/devices/{id}/bindings/remove` | Remove matching Binding entries from one source device endpoint |
 | GET | `/api/devices/{id}/state` | Current state |
@@ -36,6 +38,7 @@
 | POST | `/api/devices/{id}/bindings/onoff/remove` | Remove switch OnOff route and reconcile matching ACL |
 | GET | `/api/system/runtime` | Safe authenticated runtime snapshot |
 | GET | `/api/system/diagnostics` | Detailed runtime diagnostics when enabled |
+| GET | `/api/matter/events` | Dedicated SSE stream for live Matter event envelopes |
 | POST | `/api/commission` | Commission Thread device |
 | POST | `/api/commission/wifi` | Commission WiFi device |
 | DELETE | `/api/devices/{id}` | Remove device |
@@ -186,6 +189,46 @@ Content-Type: application/json
 
 Both devices must already be commissioned, reachable, and on the same controller fabric.
 
+## Matter Event Testing Surface
+
+DotMatter now exposes a separate Matter-event testing surface alongside the existing state-change API.
+
+`GET /api/devices/{id}/matter/events` performs a one-shot event read for one cluster on one device.
+
+- `cluster` — required cluster ID, in decimal or `0x`-prefixed hex
+- `eventId` — optional event ID, in decimal or `0x`-prefixed hex
+- `endpoint` — optional endpoint override; when omitted, DotMatter uses endpoint discovery and falls back to endpoint `0` for root clusters such as AccessControl / GeneralDiagnostics and endpoint `1` otherwise
+- `fabricFiltered` — optional, defaults to `false`
+
+The response preserves endpoint, cluster, event ID, event number, priority, timestamps, status code, and raw payload TLV hex. When DotMatter has generated support for the cluster/event, the response also includes:
+
+- `clusterName`
+- `eventName`
+- `payload.kind = "typed"`
+- `payload.data` with typed event fields in JSON form
+
+When DotMatter cannot materialize a typed payload, the controller still returns the same metadata plus `payload.kind = "unknown"` and a reason string.
+
+Example one-shot read:
+
+```http
+GET /api/devices/switch-device-id/matter/events?cluster=0x003B&eventId=0x0001
+X-API-Key: replace-with-a-long-random-value
+```
+
+`GET /api/matter/events` is a dedicated **standard SSE** stream for live Matter event envelopes observed by the controller's device subscriptions. It is intentionally separate from `/api/events`.
+
+Live event subscriptions are now discovery-driven: when endpoint discovery succeeds, DotMatter subscribes to every discovered cluster on the device for which DotMatter has generated event support, rather than a narrow hardcoded allowlist.
+
+The stream stays idle when no Matter events are being reported. Clients should keep the `text/event-stream` request open and wait for normal `data:` frames rather than expecting synthetic heartbeat payloads.
+
+Example live stream:
+
+```http
+GET /api/matter/events
+X-API-Key: replace-with-a-long-random-value
+```
+
 `POST /api/devices/{id}/bindings/onoff/remove` performs the inverse route cleanup:
 
 1. It removes the matching source Binding entry for the target node / endpoint / OnOff cluster.
@@ -278,4 +321,8 @@ The OpenAPI UI is available at `http://localhost:5000/scalar/v1` when `EnableOpe
 
 ## SSE Clients
 
-`GET /api/events` streams server-sent events for state changes. Each client has a bounded buffer. If a client is slow or disconnected, older events can be dropped, so clients should reconnect and refresh state from `/api/devices/{id}/state` after reconnecting.
+`GET /api/events` streams controller state changes such as online/offline and command-state transitions.
+
+`GET /api/matter/events` streams raw Matter event envelopes observed from live subscriptions.
+
+Each SSE client has a bounded buffer. If a client is slow or disconnected, older events can be dropped, so clients should reconnect and refresh state from the relevant read endpoint after reconnecting.

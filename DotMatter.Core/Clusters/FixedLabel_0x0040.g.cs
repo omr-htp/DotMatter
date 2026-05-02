@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -56,6 +57,32 @@ public class FixedLabelCluster : ClusterBase
     {
         tlv.AddUTF8String(0, value.Label);
         tlv.AddUTF8String(1, value.Value);
+    }
+
+    // TLV struct deserializers
+
+    private static LabelStruct ReadLabelStruct(MatterTLV tlv)
+    {
+        var value = new LabelStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Label = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    value.Value = tlv.GetUTF8String(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -43,6 +44,41 @@ public class AccountLoginCluster : ClusterBase
         public const uint LoggedOut = 0x0000;
     }
 
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Account Login", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>LoggedOut event payload.</summary>
+    public sealed class LoggedOutEventData
+    {
+        /// <summary>Gets or sets Node.</summary>
+        public ulong? Node { get; set; }
+    }
+
+    /// <summary>LoggedOut event report.</summary>
+    public sealed class LoggedOutEvent(MatterEventReport report, LoggedOutEventData payload)
+        : ClusterEvent(report, "LoggedOut")
+    {
+        /// <summary>Gets the typed LoggedOut payload.</summary>
+        public LoggedOutEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
     // Async command methods
 
     /// <summary>Send GetSetupPIN command (0x0000).</summary>
@@ -69,4 +105,117 @@ public class AccountLoginCluster : ClusterBase
         ulong? node = default,
         CancellationToken ct = default)
         => InvokeCommandAsync(0x0003, tlv => { if (node != null) tlv.AddUInt64(0, node.Value); }, ct);
+
+    // Event payload parsers
+
+    private static LoggedOutEventData ReadLoggedOutEventData(MatterTLV tlv)
+    {
+        var value = new LoggedOutEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.Node = tlv.GetUnsignedInt(0); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadLoggedOutEventData(MatterEventReport report, out LoggedOutEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadLoggedOutEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "LoggedOut payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateLoggedOutEventDataJson(LoggedOutEventData value)
+    {
+        var json = new JsonObject();
+        if (value.Node is { } node)
+        {
+            json["node"] = CreateJsonValue(node);
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            LoggedOutEvent typed => CreateLoggedOutEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.LoggedOut when TryReadLoggedOutEventData(report, out var loggedOutEventData, out _) => new LoggedOutEvent(report, loggedOutEventData!),
+            Events.LoggedOut when TryReadLoggedOutEventData(report, out _, out var loggedOutReason) => new UnknownClusterEvent(report, loggedOutReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

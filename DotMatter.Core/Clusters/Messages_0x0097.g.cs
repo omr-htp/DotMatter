@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -162,6 +163,79 @@ public class MessagesCluster : ClusterBase
         if (value.Label != null) tlv.AddUTF8String(1, value.Label);
     }
 
+    // TLV struct deserializers
+
+    private static MessageStruct ReadMessageStruct(MatterTLV tlv)
+    {
+        var value = new MessageStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.MessageID = tlv.GetOctetString(0);
+                    break;
+                case 1:
+                    value.Priority = (MessagePriorityEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.MessageControl = (MessageControlBitmap)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.StartTime = tlv.GetUnsignedIntAny(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.Duration = tlv.GetUnsignedInt(4); }
+                    break;
+                case 5:
+                    value.MessageText = tlv.GetUTF8String(5);
+                    break;
+                case 6:
+                    if (tlv.IsNextNull()) { tlv.GetNull(6); value.Responses = null; break; }
+                    var items6 = new List<MessageResponseOptionStruct>();
+                    tlv.OpenArray(6);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items6.Add(ReadMessageResponseOptionStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.Responses = [.. items6];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static MessageResponseOptionStruct ReadMessageResponseOptionStruct(MatterTLV tlv)
+    {
+        var value = new MessageResponseOptionStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.MessageResponseID = tlv.GetUnsignedIntAny(0); }
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Label = tlv.GetUTF8String(1); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -189,6 +263,83 @@ public class MessagesCluster : ClusterBase
         public const uint MessagePresented = 0x0001;
         /// <summary>MessageComplete (0x0002).</summary>
         public const uint MessageComplete = 0x0002;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Messages", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>MessageQueued event payload.</summary>
+    public sealed class MessageQueuedEventData
+    {
+        /// <summary>Gets or sets MessageID.</summary>
+        public byte[] MessageID { get; set; } = default!;
+    }
+
+    /// <summary>MessageQueued event report.</summary>
+    public sealed class MessageQueuedEvent(MatterEventReport report, MessageQueuedEventData payload)
+        : ClusterEvent(report, "MessageQueued")
+    {
+        /// <summary>Gets the typed MessageQueued payload.</summary>
+        public MessageQueuedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>MessagePresented event payload.</summary>
+    public sealed class MessagePresentedEventData
+    {
+        /// <summary>Gets or sets MessageID.</summary>
+        public byte[] MessageID { get; set; } = default!;
+    }
+
+    /// <summary>MessagePresented event report.</summary>
+    public sealed class MessagePresentedEvent(MatterEventReport report, MessagePresentedEventData payload)
+        : ClusterEvent(report, "MessagePresented")
+    {
+        /// <summary>Gets the typed MessagePresented payload.</summary>
+        public MessagePresentedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>MessageComplete event payload.</summary>
+    public sealed class MessageCompleteEventData
+    {
+        /// <summary>Gets or sets MessageID.</summary>
+        public byte[] MessageID { get; set; } = default!;
+        /// <summary>Gets or sets ResponseID.</summary>
+        public uint? ResponseID { get; set; }
+        /// <summary>Gets or sets Reply.</summary>
+        public string? Reply { get; set; }
+        /// <summary>Gets or sets FutureMessagesPreference.</summary>
+        public FutureMessagePreferenceEnum FutureMessagesPreference { get; set; } = default!;
+    }
+
+    /// <summary>MessageComplete event report.</summary>
+    public sealed class MessageCompleteEvent(MatterEventReport report, MessageCompleteEventData payload)
+        : ClusterEvent(report, "MessageComplete")
+    {
+        /// <summary>Gets the typed MessageComplete payload.</summary>
+        public MessageCompleteEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Async command methods
@@ -229,4 +380,303 @@ public class MessagesCluster : ClusterBase
     /// <summary>Read ActiveMessageIDs attribute (0x0001).</summary>
     public Task<byte[][]?> ReadActiveMessageIDsAsync(CancellationToken ct = default)
         => ReadRefAttributeAsync<byte[][]>(0x0001, ct);
+
+    // Event payload parsers
+
+    private static MessageQueuedEventData ReadMessageQueuedEventData(MatterTLV tlv)
+    {
+        var value = new MessageQueuedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.MessageID = tlv.GetOctetString(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadMessageQueuedEventData(MatterEventReport report, out MessageQueuedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadMessageQueuedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "MessageQueued payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static MessagePresentedEventData ReadMessagePresentedEventData(MatterTLV tlv)
+    {
+        var value = new MessagePresentedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.MessageID = tlv.GetOctetString(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadMessagePresentedEventData(MatterEventReport report, out MessagePresentedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadMessagePresentedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "MessagePresented payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static MessageCompleteEventData ReadMessageCompleteEventData(MatterTLV tlv)
+    {
+        var value = new MessageCompleteEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.MessageID = tlv.GetOctetString(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.ResponseID = tlv.GetUnsignedIntAny(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.Reply = tlv.GetUTF8String(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.FutureMessagesPreference = (FutureMessagePreferenceEnum)tlv.GetUnsignedIntAny(3); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadMessageCompleteEventData(MatterEventReport report, out MessageCompleteEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadMessageCompleteEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "MessageComplete payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateMessageStructJson(MessageStruct value)
+    {
+        var json = new JsonObject();
+        if (value.MessageID is { } messageID)
+        {
+            json["messageID"] = CreateJsonValue(messageID);
+        }
+        if (value.Priority is { } priority)
+        {
+            json["priority"] = CreateJsonValue(priority.ToString());
+        }
+        if (value.MessageControl is { } messageControl)
+        {
+            json["messageControl"] = CreateJsonValue(messageControl.ToString());
+        }
+        if (value.StartTime is { } startTime)
+        {
+            json["startTime"] = CreateJsonValue(startTime);
+        }
+        if (value.Duration is { } duration)
+        {
+            json["duration"] = CreateJsonValue(duration);
+        }
+        if (value.MessageText is { } messageText)
+        {
+            json["messageText"] = CreateJsonValue(messageText);
+        }
+        if (value.Responses is { } responsesValues)
+        {
+            var responsesItems = new JsonArray();
+            foreach (var item in responsesValues)
+            {
+                responsesItems.Add((JsonNode?)CreateMessageResponseOptionStructJson(item));
+            }
+            json["responses"] = responsesItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateMessageResponseOptionStructJson(MessageResponseOptionStruct value)
+    {
+        var json = new JsonObject();
+        if (value.MessageResponseID is { } messageResponseID)
+        {
+            json["messageResponseID"] = CreateJsonValue(messageResponseID);
+        }
+        if (value.Label is { } label)
+        {
+            json["label"] = CreateJsonValue(label);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateMessageQueuedEventDataJson(MessageQueuedEventData value)
+    {
+        var json = new JsonObject();
+        if (value.MessageID is { } messageID)
+        {
+            json["messageID"] = CreateJsonValue(messageID);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateMessagePresentedEventDataJson(MessagePresentedEventData value)
+    {
+        var json = new JsonObject();
+        if (value.MessageID is { } messageID)
+        {
+            json["messageID"] = CreateJsonValue(messageID);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateMessageCompleteEventDataJson(MessageCompleteEventData value)
+    {
+        var json = new JsonObject();
+        if (value.MessageID is { } messageID)
+        {
+            json["messageID"] = CreateJsonValue(messageID);
+        }
+        if (value.ResponseID is { } responseID)
+        {
+            json["responseID"] = CreateJsonValue(responseID);
+        }
+        if (value.Reply is { } reply)
+        {
+            json["reply"] = CreateJsonValue(reply);
+        }
+        if (value.FutureMessagesPreference is { } futureMessagesPreference)
+        {
+            json["futureMessagesPreference"] = CreateJsonValue(futureMessagesPreference.ToString());
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            MessageQueuedEvent typed => CreateMessageQueuedEventDataJson(typed.Payload),
+            MessagePresentedEvent typed => CreateMessagePresentedEventDataJson(typed.Payload),
+            MessageCompleteEvent typed => CreateMessageCompleteEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.MessageQueued when TryReadMessageQueuedEventData(report, out var messageQueuedEventData, out _) => new MessageQueuedEvent(report, messageQueuedEventData!),
+            Events.MessageQueued when TryReadMessageQueuedEventData(report, out _, out var messageQueuedReason) => new UnknownClusterEvent(report, messageQueuedReason),
+            Events.MessagePresented when TryReadMessagePresentedEventData(report, out var messagePresentedEventData, out _) => new MessagePresentedEvent(report, messagePresentedEventData!),
+            Events.MessagePresented when TryReadMessagePresentedEventData(report, out _, out var messagePresentedReason) => new UnknownClusterEvent(report, messagePresentedReason),
+            Events.MessageComplete when TryReadMessageCompleteEventData(report, out var messageCompleteEventData, out _) => new MessageCompleteEvent(report, messageCompleteEventData!),
+            Events.MessageComplete when TryReadMessageCompleteEventData(report, out _, out var messageCompleteReason) => new UnknownClusterEvent(report, messageCompleteReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

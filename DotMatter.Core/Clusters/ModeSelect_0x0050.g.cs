@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -98,6 +99,66 @@ public class ModeSelectCluster : ClusterBase
         tlv.AddUTF8String(0, value.Label);
         tlv.AddUInt8(1, value.Mode);
         if (value.SemanticTags != null) { tlv.AddArray(2); foreach (var item in value.SemanticTags) { WriteSemanticTagStruct(tlv, item); } tlv.EndContainer(); }
+    }
+
+    // TLV struct deserializers
+
+    private static SemanticTagStruct ReadSemanticTagStruct(MatterTLV tlv)
+    {
+        var value = new SemanticTagStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.MfgCode = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Value = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ModeOptionStruct ReadModeOptionStruct(MatterTLV tlv)
+    {
+        var value = new ModeOptionStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Label = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    value.Mode = (byte)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    var items2 = new List<SemanticTagStruct>();
+                    tlv.OpenArray(2);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items2.Add(ReadSemanticTagStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.SemanticTags = [.. items2];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

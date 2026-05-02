@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -58,6 +59,32 @@ public class ChimeCluster : ClusterBase
         tlv.AddUTF8String(1, value.Name);
     }
 
+    // TLV struct deserializers
+
+    private static ChimeSoundStruct ReadChimeSoundStruct(MatterTLV tlv)
+    {
+        var value = new ChimeSoundStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ChimeID = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Name = tlv.GetUTF8String(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -81,6 +108,41 @@ public class ChimeCluster : ClusterBase
     {
         /// <summary>ChimeStartedPlaying (0x0000).</summary>
         public const uint ChimeStartedPlaying = 0x0000;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Chime", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>ChimeStartedPlaying event payload.</summary>
+    public sealed class ChimeStartedPlayingEventData
+    {
+        /// <summary>Gets or sets ChimeID.</summary>
+        public byte ChimeID { get; set; }
+    }
+
+    /// <summary>ChimeStartedPlaying event report.</summary>
+    public sealed class ChimeStartedPlayingEvent(MatterEventReport report, ChimeStartedPlayingEventData payload)
+        : ClusterEvent(report, "ChimeStartedPlaying")
+    {
+        /// <summary>Gets the typed ChimeStartedPlaying payload.</summary>
+        public ChimeStartedPlayingEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Async command methods
@@ -128,4 +190,125 @@ public class ChimeCluster : ClusterBase
         {
             tlv.AddBool(2, enabled);
         }, timedRequest, timedTimeoutMs, ct);
+
+    // Event payload parsers
+
+    private static ChimeStartedPlayingEventData ReadChimeStartedPlayingEventData(MatterTLV tlv)
+    {
+        var value = new ChimeStartedPlayingEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ChimeID = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadChimeStartedPlayingEventData(MatterEventReport report, out ChimeStartedPlayingEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadChimeStartedPlayingEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "ChimeStartedPlaying payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateChimeSoundStructJson(ChimeSoundStruct value)
+    {
+        var json = new JsonObject();
+        json["chimeID"] = CreateJsonValue(value.ChimeID);
+        if (value.Name is { } name)
+        {
+            json["name"] = CreateJsonValue(name);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateChimeStartedPlayingEventDataJson(ChimeStartedPlayingEventData value)
+    {
+        var json = new JsonObject();
+        json["chimeID"] = CreateJsonValue(value.ChimeID);
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            ChimeStartedPlayingEvent typed => CreateChimeStartedPlayingEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.ChimeStartedPlaying when TryReadChimeStartedPlayingEventData(report, out var chimeStartedPlayingEventData, out _) => new ChimeStartedPlayingEvent(report, chimeStartedPlayingEventData!),
+            Events.ChimeStartedPlaying when TryReadChimeStartedPlayingEventData(report, out _, out var chimeStartedPlayingReason) => new UnknownClusterEvent(report, chimeStartedPlayingReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

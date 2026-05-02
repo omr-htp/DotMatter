@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -241,6 +242,135 @@ public class ZoneManagementCluster : ClusterBase
         if (value.Sensitivity != null) tlv.AddUInt8(5, value.Sensitivity.Value);
     }
 
+    // TLV struct deserializers
+
+    private static TwoDCartesianVertexStruct ReadTwoDCartesianVertexStruct(MatterTLV tlv)
+    {
+        var value = new TwoDCartesianVertexStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.X = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Y = (ushort)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static TwoDCartesianZoneStruct ReadTwoDCartesianZoneStruct(MatterTLV tlv)
+    {
+        var value = new TwoDCartesianZoneStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Name = tlv.GetUTF8String(0);
+                    break;
+                case 1:
+                    value.Use = (ZoneUseEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    var items2 = new List<TwoDCartesianVertexStruct>();
+                    tlv.OpenArray(2);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items2.Add(ReadTwoDCartesianVertexStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.Vertices = [.. items2];
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.Color = tlv.GetUTF8String(3); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ZoneInformationStruct ReadZoneInformationStruct(MatterTLV tlv)
+    {
+        var value = new ZoneInformationStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ZoneID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.ZoneType = (ZoneTypeEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.ZoneSource = (ZoneSourceEnum)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.TwoDCartesianZone = ReadTwoDCartesianZoneStruct(tlv); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ZoneTriggerControlStruct ReadZoneTriggerControlStruct(MatterTLV tlv)
+    {
+        var value = new ZoneTriggerControlStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ZoneID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.InitialDuration = tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.AugmentationDuration = tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.MaxDuration = tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    value.BlindDuration = tlv.GetUnsignedIntAny(4);
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.Sensitivity = (byte)tlv.GetUnsignedIntAny(5); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -282,6 +412,63 @@ public class ZoneManagementCluster : ClusterBase
         public const uint ZoneTriggered = 0x0000;
         /// <summary>ZoneStopped (0x0001).</summary>
         public const uint ZoneStopped = 0x0001;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Zone Management", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>ZoneTriggered event payload.</summary>
+    public sealed class ZoneTriggeredEventData
+    {
+        /// <summary>Gets or sets Zone.</summary>
+        public ushort Zone { get; set; }
+        /// <summary>Gets or sets Reason.</summary>
+        public ZoneEventTriggeredReasonEnum Reason { get; set; } = default!;
+    }
+
+    /// <summary>ZoneTriggered event report.</summary>
+    public sealed class ZoneTriggeredEvent(MatterEventReport report, ZoneTriggeredEventData payload)
+        : ClusterEvent(report, "ZoneTriggered")
+    {
+        /// <summary>Gets the typed ZoneTriggered payload.</summary>
+        public ZoneTriggeredEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>ZoneStopped event payload.</summary>
+    public sealed class ZoneStoppedEventData
+    {
+        /// <summary>Gets or sets Zone.</summary>
+        public ushort Zone { get; set; }
+        /// <summary>Gets or sets Reason.</summary>
+        public ZoneEventStoppedReasonEnum Reason { get; set; } = default!;
+    }
+
+    /// <summary>ZoneStopped event report.</summary>
+    public sealed class ZoneStoppedEvent(MatterEventReport report, ZoneStoppedEventData payload)
+        : ClusterEvent(report, "ZoneStopped")
+    {
+        /// <summary>Gets the typed ZoneStopped payload.</summary>
+        public ZoneStoppedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Async command methods
@@ -363,4 +550,250 @@ public class ZoneManagementCluster : ClusterBase
         {
             tlv.AddUInt8(2, sensitivity);
         }, timedRequest, timedTimeoutMs, ct);
+
+    // Event payload parsers
+
+    private static ZoneTriggeredEventData ReadZoneTriggeredEventData(MatterTLV tlv)
+    {
+        var value = new ZoneTriggeredEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Zone = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Reason = (ZoneEventTriggeredReasonEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadZoneTriggeredEventData(MatterEventReport report, out ZoneTriggeredEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadZoneTriggeredEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "ZoneTriggered payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static ZoneStoppedEventData ReadZoneStoppedEventData(MatterTLV tlv)
+    {
+        var value = new ZoneStoppedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Zone = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Reason = (ZoneEventStoppedReasonEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadZoneStoppedEventData(MatterEventReport report, out ZoneStoppedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadZoneStoppedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "ZoneStopped payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateTwoDCartesianVertexStructJson(TwoDCartesianVertexStruct value)
+    {
+        var json = new JsonObject();
+        json["x"] = CreateJsonValue(value.X);
+        json["y"] = CreateJsonValue(value.Y);
+        return json;
+    }
+
+    private static JsonObject CreateTwoDCartesianZoneStructJson(TwoDCartesianZoneStruct value)
+    {
+        var json = new JsonObject();
+        if (value.Name is { } name)
+        {
+            json["name"] = CreateJsonValue(name);
+        }
+        if (value.Use is { } use)
+        {
+            json["use"] = CreateJsonValue(use.ToString());
+        }
+        if (value.Vertices is { } verticesValues)
+        {
+            var verticesItems = new JsonArray();
+            foreach (var item in verticesValues)
+            {
+                verticesItems.Add((JsonNode?)CreateTwoDCartesianVertexStructJson(item));
+            }
+            json["vertices"] = verticesItems;
+        }
+        if (value.Color is { } color)
+        {
+            json["color"] = CreateJsonValue(color);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateZoneInformationStructJson(ZoneInformationStruct value)
+    {
+        var json = new JsonObject();
+        json["zoneID"] = CreateJsonValue(value.ZoneID);
+        if (value.ZoneType is { } zoneType)
+        {
+            json["zoneType"] = CreateJsonValue(zoneType.ToString());
+        }
+        if (value.ZoneSource is { } zoneSource)
+        {
+            json["zoneSource"] = CreateJsonValue(zoneSource.ToString());
+        }
+        if (value.TwoDCartesianZone is { } twoDCartesianZone)
+        {
+            json["twoDCartesianZone"] = CreateTwoDCartesianZoneStructJson(twoDCartesianZone);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateZoneTriggerControlStructJson(ZoneTriggerControlStruct value)
+    {
+        var json = new JsonObject();
+        json["zoneID"] = CreateJsonValue(value.ZoneID);
+        json["initialDuration"] = CreateJsonValue(value.InitialDuration);
+        json["augmentationDuration"] = CreateJsonValue(value.AugmentationDuration);
+        json["maxDuration"] = CreateJsonValue(value.MaxDuration);
+        json["blindDuration"] = CreateJsonValue(value.BlindDuration);
+        if (value.Sensitivity is { } sensitivity)
+        {
+            json["sensitivity"] = CreateJsonValue(sensitivity);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateZoneTriggeredEventDataJson(ZoneTriggeredEventData value)
+    {
+        var json = new JsonObject();
+        json["zone"] = CreateJsonValue(value.Zone);
+        if (value.Reason is { } reason)
+        {
+            json["reason"] = CreateJsonValue(reason.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateZoneStoppedEventDataJson(ZoneStoppedEventData value)
+    {
+        var json = new JsonObject();
+        json["zone"] = CreateJsonValue(value.Zone);
+        if (value.Reason is { } reason)
+        {
+            json["reason"] = CreateJsonValue(reason.ToString());
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            ZoneTriggeredEvent typed => CreateZoneTriggeredEventDataJson(typed.Payload),
+            ZoneStoppedEvent typed => CreateZoneStoppedEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.ZoneTriggered when TryReadZoneTriggeredEventData(report, out var zoneTriggeredEventData, out _) => new ZoneTriggeredEvent(report, zoneTriggeredEventData!),
+            Events.ZoneTriggered when TryReadZoneTriggeredEventData(report, out _, out var zoneTriggeredReason) => new UnknownClusterEvent(report, zoneTriggeredReason),
+            Events.ZoneStopped when TryReadZoneStoppedEventData(report, out var zoneStoppedEventData, out _) => new ZoneStoppedEvent(report, zoneStoppedEventData!),
+            Events.ZoneStopped when TryReadZoneStoppedEventData(report, out _, out var zoneStoppedReason) => new UnknownClusterEvent(report, zoneStoppedReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

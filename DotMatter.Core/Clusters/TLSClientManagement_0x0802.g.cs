@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -85,6 +86,47 @@ public class TLSClientManagementCluster : ClusterBase
         tlv.AddUInt16(3, value.CAID);
         if (value.CCDID != null) { tlv.AddUInt16(4, value.CCDID.Value); } else { tlv.AddNull(4); }
         tlv.AddUInt8(5, value.ReferenceCount);
+    }
+
+    // TLV struct deserializers
+
+    private static TLSEndpointStruct ReadTLSEndpointStruct(MatterTLV tlv)
+    {
+        var value = new TLSEndpointStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.EndpointID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Hostname = tlv.GetOctetString(1);
+                    break;
+                case 2:
+                    value.Port = (ushort)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.CAID = (ushort)tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.CCDID = (ushort)tlv.GetUnsignedIntAny(4); }
+                    break;
+                case 5:
+                    value.ReferenceCount = (byte)tlv.GetUnsignedIntAny(5);
+                    break;
+                case 254:
+                    value.FabricIndex = (byte)tlv.GetUnsignedIntAny(254);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -84,6 +85,35 @@ public class AudioOutputCluster : ClusterBase
         tlv.AddUInt8(0, value.Index);
         tlv.AddUInt8(1, (byte)value.OutputType);
         tlv.AddUTF8String(2, value.Name);
+    }
+
+    // TLV struct deserializers
+
+    private static OutputInfoStruct ReadOutputInfoStruct(MatterTLV tlv)
+    {
+        var value = new OutputInfoStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.Index = (byte)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.OutputType = (OutputTypeEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.Name = tlv.GetUTF8String(2);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

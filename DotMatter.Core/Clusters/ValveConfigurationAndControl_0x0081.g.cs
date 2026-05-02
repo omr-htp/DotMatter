@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -116,6 +117,61 @@ public class ValveConfigurationAndControlCluster : ClusterBase
         public const uint ValveFault = 0x0001;
     }
 
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Valve Configuration and Control", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>ValveStateChanged event payload.</summary>
+    public sealed class ValveStateChangedEventData
+    {
+        /// <summary>Gets or sets ValveState.</summary>
+        public ValveStateEnum ValveState { get; set; } = default!;
+        /// <summary>Gets or sets ValveLevel.</summary>
+        public byte? ValveLevel { get; set; }
+    }
+
+    /// <summary>ValveStateChanged event report.</summary>
+    public sealed class ValveStateChangedEvent(MatterEventReport report, ValveStateChangedEventData payload)
+        : ClusterEvent(report, "ValveStateChanged")
+    {
+        /// <summary>Gets the typed ValveStateChanged payload.</summary>
+        public ValveStateChangedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>ValveFault event payload.</summary>
+    public sealed class ValveFaultEventData
+    {
+        /// <summary>Gets or sets ValveFault.</summary>
+        public ValveFaultBitmap ValveFault { get; set; } = default!;
+    }
+
+    /// <summary>ValveFault event report.</summary>
+    public sealed class ValveFaultEvent(MatterEventReport report, ValveFaultEventData payload)
+        : ClusterEvent(report, "ValveFault")
+    {
+        /// <summary>Gets the typed ValveFault payload.</summary>
+        public ValveFaultEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
     // Async command methods
 
     /// <summary>Send Open command (0x0000).</summary>
@@ -202,4 +258,180 @@ public class ValveConfigurationAndControlCluster : ClusterBase
         {
             tlv.AddUInt8(2, defaultOpenLevel);
         }, timedRequest, timedTimeoutMs, ct);
+
+    // Event payload parsers
+
+    private static ValveStateChangedEventData ReadValveStateChangedEventData(MatterTLV tlv)
+    {
+        var value = new ValveStateChangedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ValveState = (ValveStateEnum)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.ValveLevel = (byte)tlv.GetUnsignedIntAny(1); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadValveStateChangedEventData(MatterEventReport report, out ValveStateChangedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadValveStateChangedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "ValveStateChanged payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static ValveFaultEventData ReadValveFaultEventData(MatterTLV tlv)
+    {
+        var value = new ValveFaultEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ValveFault = (ValveFaultBitmap)tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadValveFaultEventData(MatterEventReport report, out ValveFaultEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadValveFaultEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "ValveFault payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateValveStateChangedEventDataJson(ValveStateChangedEventData value)
+    {
+        var json = new JsonObject();
+        if (value.ValveState is { } valveState)
+        {
+            json["valveState"] = CreateJsonValue(valveState.ToString());
+        }
+        if (value.ValveLevel is { } valveLevel)
+        {
+            json["valveLevel"] = CreateJsonValue(valveLevel);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateValveFaultEventDataJson(ValveFaultEventData value)
+    {
+        var json = new JsonObject();
+        if (value.ValveFault is { } valveFault)
+        {
+            json["valveFault"] = CreateJsonValue(valveFault.ToString());
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            ValveStateChangedEvent typed => CreateValveStateChangedEventDataJson(typed.Payload),
+            ValveFaultEvent typed => CreateValveFaultEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.ValveStateChanged when TryReadValveStateChangedEventData(report, out var valveStateChangedEventData, out _) => new ValveStateChangedEvent(report, valveStateChangedEventData!),
+            Events.ValveStateChanged when TryReadValveStateChangedEventData(report, out _, out var valveStateChangedReason) => new UnknownClusterEvent(report, valveStateChangedReason),
+            Events.ValveFault when TryReadValveFaultEventData(report, out var valveFaultEventData, out _) => new ValveFaultEvent(report, valveFaultEventData!),
+            Events.ValveFault when TryReadValveFaultEventData(report, out _, out var valveFaultReason) => new UnknownClusterEvent(report, valveFaultReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

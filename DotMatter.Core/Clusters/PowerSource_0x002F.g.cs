@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -480,6 +481,122 @@ public class PowerSourceCluster : ClusterBase
         if (value.Previous != null) { tlv.AddArray(1); foreach (var item in value.Previous) { tlv.AddUInt8((byte)item); } tlv.EndContainer(); }
     }
 
+    // TLV struct deserializers
+
+    private static WiredFaultChangeType ReadWiredFaultChangeType(MatterTLV tlv)
+    {
+        var value = new WiredFaultChangeType();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    var items0 = new List<WiredFaultEnum>();
+                    tlv.OpenArray(0);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items0.Add((WiredFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Current = [.. items0];
+                    break;
+                case 1:
+                    var items1 = new List<WiredFaultEnum>();
+                    tlv.OpenArray(1);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items1.Add((WiredFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Previous = [.. items1];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static BatFaultChangeType ReadBatFaultChangeType(MatterTLV tlv)
+    {
+        var value = new BatFaultChangeType();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    var items0 = new List<BatFaultEnum>();
+                    tlv.OpenArray(0);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items0.Add((BatFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Current = [.. items0];
+                    break;
+                case 1:
+                    var items1 = new List<BatFaultEnum>();
+                    tlv.OpenArray(1);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items1.Add((BatFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Previous = [.. items1];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static BatChargeFaultChangeType ReadBatChargeFaultChangeType(MatterTLV tlv)
+    {
+        var value = new BatChargeFaultChangeType();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    var items0 = new List<BatChargeFaultEnum>();
+                    tlv.OpenArray(0);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items0.Add((BatChargeFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Current = [.. items0];
+                    break;
+                case 1:
+                    var items1 = new List<BatChargeFaultEnum>();
+                    tlv.OpenArray(1);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items1.Add((BatChargeFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Previous = [.. items1];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -558,6 +675,83 @@ public class PowerSourceCluster : ClusterBase
         public const uint BatFaultChange = 0x0001;
         /// <summary>BatChargeFaultChange (0x0002).</summary>
         public const uint BatChargeFaultChange = 0x0002;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Power Source", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>WiredFaultChange event payload.</summary>
+    public sealed class WiredFaultChangeEventData
+    {
+        /// <summary>Gets or sets Current.</summary>
+        public WiredFaultEnum[] Current { get; set; } = default!;
+        /// <summary>Gets or sets Previous.</summary>
+        public WiredFaultEnum[] Previous { get; set; } = default!;
+    }
+
+    /// <summary>WiredFaultChange event report.</summary>
+    public sealed class WiredFaultChangeEvent(MatterEventReport report, WiredFaultChangeEventData payload)
+        : ClusterEvent(report, "WiredFaultChange")
+    {
+        /// <summary>Gets the typed WiredFaultChange payload.</summary>
+        public WiredFaultChangeEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>BatFaultChange event payload.</summary>
+    public sealed class BatFaultChangeEventData
+    {
+        /// <summary>Gets or sets Current.</summary>
+        public BatFaultEnum[] Current { get; set; } = default!;
+        /// <summary>Gets or sets Previous.</summary>
+        public BatFaultEnum[] Previous { get; set; } = default!;
+    }
+
+    /// <summary>BatFaultChange event report.</summary>
+    public sealed class BatFaultChangeEvent(MatterEventReport report, BatFaultChangeEventData payload)
+        : ClusterEvent(report, "BatFaultChange")
+    {
+        /// <summary>Gets the typed BatFaultChange payload.</summary>
+        public BatFaultChangeEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>BatChargeFaultChange event payload.</summary>
+    public sealed class BatChargeFaultChangeEventData
+    {
+        /// <summary>Gets or sets Current.</summary>
+        public BatChargeFaultEnum[] Current { get; set; } = default!;
+        /// <summary>Gets or sets Previous.</summary>
+        public BatChargeFaultEnum[] Previous { get; set; } = default!;
+    }
+
+    /// <summary>BatChargeFaultChange event report.</summary>
+    public sealed class BatChargeFaultChangeEvent(MatterEventReport report, BatChargeFaultChangeEventData payload)
+        : ClusterEvent(report, "BatChargeFaultChange")
+    {
+        /// <summary>Gets the typed BatChargeFaultChange payload.</summary>
+        public BatChargeFaultChangeEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Attribute readers
@@ -689,4 +883,394 @@ public class PowerSourceCluster : ClusterBase
     /// <summary>Read EndpointList attribute (0x001F).</summary>
     public Task<ushort[]?> ReadEndpointListAsync(CancellationToken ct = default)
         => ReadRefAttributeAsync<ushort[]>(0x001F, ct);
+
+    // Event payload parsers
+
+    private static WiredFaultChangeEventData ReadWiredFaultChangeEventData(MatterTLV tlv)
+    {
+        var value = new WiredFaultChangeEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    var items0 = new List<WiredFaultEnum>();
+                    tlv.OpenArray(0);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items0.Add((WiredFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Current = [.. items0];
+                    break;
+                case 1:
+                    var items1 = new List<WiredFaultEnum>();
+                    tlv.OpenArray(1);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items1.Add((WiredFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Previous = [.. items1];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadWiredFaultChangeEventData(MatterEventReport report, out WiredFaultChangeEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadWiredFaultChangeEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "WiredFaultChange payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static BatFaultChangeEventData ReadBatFaultChangeEventData(MatterTLV tlv)
+    {
+        var value = new BatFaultChangeEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    var items0 = new List<BatFaultEnum>();
+                    tlv.OpenArray(0);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items0.Add((BatFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Current = [.. items0];
+                    break;
+                case 1:
+                    var items1 = new List<BatFaultEnum>();
+                    tlv.OpenArray(1);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items1.Add((BatFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Previous = [.. items1];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadBatFaultChangeEventData(MatterEventReport report, out BatFaultChangeEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadBatFaultChangeEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "BatFaultChange payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static BatChargeFaultChangeEventData ReadBatChargeFaultChangeEventData(MatterTLV tlv)
+    {
+        var value = new BatChargeFaultChangeEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    var items0 = new List<BatChargeFaultEnum>();
+                    tlv.OpenArray(0);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items0.Add((BatChargeFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Current = [.. items0];
+                    break;
+                case 1:
+                    var items1 = new List<BatChargeFaultEnum>();
+                    tlv.OpenArray(1);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items1.Add((BatChargeFaultEnum)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Previous = [.. items1];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadBatChargeFaultChangeEventData(MatterEventReport report, out BatChargeFaultChangeEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadBatChargeFaultChangeEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "BatChargeFaultChange payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateWiredFaultChangeTypeJson(WiredFaultChangeType value)
+    {
+        var json = new JsonObject();
+        if (value.Current is { } currentValues)
+        {
+            var currentItems = new JsonArray();
+            foreach (var item in currentValues)
+            {
+                currentItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["current"] = currentItems;
+        }
+        if (value.Previous is { } previousValues)
+        {
+            var previousItems = new JsonArray();
+            foreach (var item in previousValues)
+            {
+                previousItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["previous"] = previousItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateBatFaultChangeTypeJson(BatFaultChangeType value)
+    {
+        var json = new JsonObject();
+        if (value.Current is { } currentValues)
+        {
+            var currentItems = new JsonArray();
+            foreach (var item in currentValues)
+            {
+                currentItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["current"] = currentItems;
+        }
+        if (value.Previous is { } previousValues)
+        {
+            var previousItems = new JsonArray();
+            foreach (var item in previousValues)
+            {
+                previousItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["previous"] = previousItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateBatChargeFaultChangeTypeJson(BatChargeFaultChangeType value)
+    {
+        var json = new JsonObject();
+        if (value.Current is { } currentValues)
+        {
+            var currentItems = new JsonArray();
+            foreach (var item in currentValues)
+            {
+                currentItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["current"] = currentItems;
+        }
+        if (value.Previous is { } previousValues)
+        {
+            var previousItems = new JsonArray();
+            foreach (var item in previousValues)
+            {
+                previousItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["previous"] = previousItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateWiredFaultChangeEventDataJson(WiredFaultChangeEventData value)
+    {
+        var json = new JsonObject();
+        if (value.Current is { } currentValues)
+        {
+            var currentItems = new JsonArray();
+            foreach (var item in currentValues)
+            {
+                currentItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["current"] = currentItems;
+        }
+        if (value.Previous is { } previousValues)
+        {
+            var previousItems = new JsonArray();
+            foreach (var item in previousValues)
+            {
+                previousItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["previous"] = previousItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateBatFaultChangeEventDataJson(BatFaultChangeEventData value)
+    {
+        var json = new JsonObject();
+        if (value.Current is { } currentValues)
+        {
+            var currentItems = new JsonArray();
+            foreach (var item in currentValues)
+            {
+                currentItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["current"] = currentItems;
+        }
+        if (value.Previous is { } previousValues)
+        {
+            var previousItems = new JsonArray();
+            foreach (var item in previousValues)
+            {
+                previousItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["previous"] = previousItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateBatChargeFaultChangeEventDataJson(BatChargeFaultChangeEventData value)
+    {
+        var json = new JsonObject();
+        if (value.Current is { } currentValues)
+        {
+            var currentItems = new JsonArray();
+            foreach (var item in currentValues)
+            {
+                currentItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["current"] = currentItems;
+        }
+        if (value.Previous is { } previousValues)
+        {
+            var previousItems = new JsonArray();
+            foreach (var item in previousValues)
+            {
+                previousItems.Add((JsonNode?)CreateJsonValue(item.ToString()));
+            }
+            json["previous"] = previousItems;
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            WiredFaultChangeEvent typed => CreateWiredFaultChangeEventDataJson(typed.Payload),
+            BatFaultChangeEvent typed => CreateBatFaultChangeEventDataJson(typed.Payload),
+            BatChargeFaultChangeEvent typed => CreateBatChargeFaultChangeEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.WiredFaultChange when TryReadWiredFaultChangeEventData(report, out var wiredFaultChangeEventData, out _) => new WiredFaultChangeEvent(report, wiredFaultChangeEventData!),
+            Events.WiredFaultChange when TryReadWiredFaultChangeEventData(report, out _, out var wiredFaultChangeReason) => new UnknownClusterEvent(report, wiredFaultChangeReason),
+            Events.BatFaultChange when TryReadBatFaultChangeEventData(report, out var batFaultChangeEventData, out _) => new BatFaultChangeEvent(report, batFaultChangeEventData!),
+            Events.BatFaultChange when TryReadBatFaultChangeEventData(report, out _, out var batFaultChangeReason) => new UnknownClusterEvent(report, batFaultChangeReason),
+            Events.BatChargeFaultChange when TryReadBatChargeFaultChangeEventData(report, out var batChargeFaultChangeEventData, out _) => new BatChargeFaultChangeEvent(report, batChargeFaultChangeEventData!),
+            Events.BatChargeFaultChange when TryReadBatChargeFaultChangeEventData(report, out _, out var batChargeFaultChangeReason) => new UnknownClusterEvent(report, batChargeFaultChangeReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

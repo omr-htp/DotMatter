@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -75,6 +76,41 @@ public class SoftwareDiagnosticsCluster : ClusterBase
         if (value.StackSize != null) tlv.AddUInt32(4, value.StackSize.Value);
     }
 
+    // TLV struct deserializers
+
+    private static ThreadMetricsStruct ReadThreadMetricsStruct(MatterTLV tlv)
+    {
+        var value = new ThreadMetricsStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ID = tlv.GetUnsignedInt(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Name = tlv.GetUTF8String(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.StackFreeCurrent = tlv.GetUnsignedIntAny(2); }
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.StackFreeMinimum = tlv.GetUnsignedIntAny(3); }
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.StackSize = tlv.GetUnsignedIntAny(4); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -102,6 +138,45 @@ public class SoftwareDiagnosticsCluster : ClusterBase
         public const uint SoftwareFault = 0x0000;
     }
 
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Software Diagnostics", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>SoftwareFault event payload.</summary>
+    public sealed class SoftwareFaultEventData
+    {
+        /// <summary>Gets or sets ID.</summary>
+        public ulong ID { get; set; }
+        /// <summary>Gets or sets Name.</summary>
+        public string? Name { get; set; }
+        /// <summary>Gets or sets FaultRecording.</summary>
+        public byte[]? FaultRecording { get; set; }
+    }
+
+    /// <summary>SoftwareFault event report.</summary>
+    public sealed class SoftwareFaultEvent(MatterEventReport report, SoftwareFaultEventData payload)
+        : ClusterEvent(report, "SoftwareFault")
+    {
+        /// <summary>Gets the typed SoftwareFault payload.</summary>
+        public SoftwareFaultEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
     // Async command methods
 
     /// <summary>Send ResetWatermarks command (0x0000).</summary>
@@ -125,4 +200,151 @@ public class SoftwareDiagnosticsCluster : ClusterBase
     /// <summary>Read CurrentHeapHighWatermark attribute (0x0003).</summary>
     public Task<ulong> ReadCurrentHeapHighWatermarkAsync(CancellationToken ct = default)
         => ReadAttributeAsync<ulong>(0x0003, ct);
+
+    // Event payload parsers
+
+    private static SoftwareFaultEventData ReadSoftwareFaultEventData(MatterTLV tlv)
+    {
+        var value = new SoftwareFaultEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ID = tlv.GetUnsignedInt(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.Name = tlv.GetUTF8String(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.FaultRecording = tlv.GetOctetString(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadSoftwareFaultEventData(MatterEventReport report, out SoftwareFaultEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadSoftwareFaultEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "SoftwareFault payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateThreadMetricsStructJson(ThreadMetricsStruct value)
+    {
+        var json = new JsonObject();
+        json["iD"] = CreateJsonValue(value.ID);
+        if (value.Name is { } name)
+        {
+            json["name"] = CreateJsonValue(name);
+        }
+        if (value.StackFreeCurrent is { } stackFreeCurrent)
+        {
+            json["stackFreeCurrent"] = CreateJsonValue(stackFreeCurrent);
+        }
+        if (value.StackFreeMinimum is { } stackFreeMinimum)
+        {
+            json["stackFreeMinimum"] = CreateJsonValue(stackFreeMinimum);
+        }
+        if (value.StackSize is { } stackSize)
+        {
+            json["stackSize"] = CreateJsonValue(stackSize);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateSoftwareFaultEventDataJson(SoftwareFaultEventData value)
+    {
+        var json = new JsonObject();
+        json["iD"] = CreateJsonValue(value.ID);
+        if (value.Name is { } name)
+        {
+            json["name"] = CreateJsonValue(name);
+        }
+        if (value.FaultRecording is { } faultRecording)
+        {
+            json["faultRecording"] = CreateJsonValue(faultRecording);
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            SoftwareFaultEvent typed => CreateSoftwareFaultEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.SoftwareFault when TryReadSoftwareFaultEventData(report, out var softwareFaultEventData, out _) => new SoftwareFaultEvent(report, softwareFaultEventData!),
+            Events.SoftwareFault when TryReadSoftwareFaultEventData(report, out _, out var softwareFaultReason) => new UnknownClusterEvent(report, softwareFaultReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

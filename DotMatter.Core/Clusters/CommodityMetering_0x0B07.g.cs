@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -65,6 +66,39 @@ public class CommodityMeteringCluster : ClusterBase
     {
         if (value.TariffComponentIDs != null) { tlv.AddArray(0); foreach (var item in value.TariffComponentIDs) { tlv.AddUInt32(item); } tlv.EndContainer(); }
         tlv.AddInt64(1, value.Quantity);
+    }
+
+    // TLV struct deserializers
+
+    private static MeteredQuantityStruct ReadMeteredQuantityStruct(MatterTLV tlv)
+    {
+        var value = new MeteredQuantityStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    var items0 = new List<uint>();
+                    tlv.OpenArray(0);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items0.Add((uint)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.TariffComponentIDs = [.. items0];
+                    break;
+                case 1:
+                    value.Quantity = tlv.GetSignedInt(1);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
     }
 
     /// <summary>Attribute identifiers.</summary>

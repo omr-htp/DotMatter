@@ -18,7 +18,7 @@ A .NET 10 Matter protocol implementation for building Matter controllers on Linu
 
 - `DotMatter.Core`: protocol, crypto, sessions, transport, discovery, and generated clusters.
 - `DotMatter.Hosting`: registry, recovery, OTBR integration, and long-running host behavior.
-- `DotMatter.Controller`: authenticated REST API host for Raspberry Pi deployments, including runtime diagnostics plus ACL and binding write/query/remove endpoints.
+- `DotMatter.Controller`: authenticated REST API host for Raspberry Pi deployments, including runtime diagnostics, ACL/binding write/query/remove endpoints, and a thin Matter event testing surface.
 
 ## Quick Start
 
@@ -49,6 +49,7 @@ The core library implements the Matter protocol from scratch in C#:
 - **Discovery** — mDNS service discovery and OTBR SRP/DNS-SD integration
 - **Interaction Model** — Read, Write, Invoke, Subscribe operations
 - **Fabric ACL and Binding writes** — generated timed writers for AccessControl ACL and Binding list attributes
+- **Matter events** — raw `MatterEvents` APIs, generated typed cluster `ReadEventsAsync(...)` / `SubscribeEventsAsync(...)` helpers, and controller-facing typed event envelopes for live testing
 - **130+ generated clusters** — Auto-generated from official Matter XML definitions (10 tested, rest generated with correct IDs/types)
 - **AOT compatible** — Fully trimming and Native AOT safe
 
@@ -93,6 +94,22 @@ var writeAcl = await accessControl.WriteACLAsync(acl);
 var binding = new BindingCluster(switchSession, endpointId: 1);
 var bindings = await binding.ReadBindingAsync() ?? [];
 var writeBinding = await binding.WriteBindingAsync(bindings);
+```
+
+Typed Matter event reads are also available from generated clusters, with a raw fallback surface available through `DotMatter.Core.InteractionModel.MatterEvents`. The controller testing surface preserves the common metadata while also surfacing typed payload JSON when DotMatter has generated support for the cluster/event.
+
+```csharp
+var switchCluster = new SwitchCluster(session, endpointId: 1);
+var events = await switchCluster.ReadEventsAsync();
+
+await using var subscription = await switchCluster.SubscribeEventsAsync();
+subscription.OnEvent += reports =>
+{
+    foreach (var evt in reports)
+    {
+        Console.WriteLine($"{evt.EventName} #{evt.EventNumber}");
+    }
+};
 ```
 
 Commissioning is provided by `DotMatter.Core.Commissioning.MatterCommissioner`. Production-ready orchestration, persistence, and HTTP control flow live in `DotMatter.Controller` and `DotMatter.Hosting`.

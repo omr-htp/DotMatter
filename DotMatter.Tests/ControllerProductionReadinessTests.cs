@@ -164,6 +164,43 @@ public class ControllerProductionReadinessTests
     }
 
     [Test]
+    public async Task MatterEventEndpointsRequireAuthAndValidateInput()
+    {
+        await using var factory = CreateFactory();
+        var anonymousClient = factory.CreateClient();
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-API-Key", "test-key");
+
+        var unauthorized = await anonymousClient.GetAsync("/api/matter/events");
+        const string unknownDeviceId = "this-device-does-not-exist";
+        var missingCluster = await client.GetAsync($"/api/devices/{unknownDeviceId}/matter/events");
+        var invalidCluster = await client.GetAsync($"/api/devices/{unknownDeviceId}/matter/events?cluster=nope");
+        var invalidEvent = await client.GetAsync($"/api/devices/{unknownDeviceId}/matter/events?cluster=0x003B&eventId=nope");
+        var unknownDevice = await client.GetAsync($"/api/devices/{unknownDeviceId}/matter/events?cluster=0x003B");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int)unauthorized.StatusCode, Is.EqualTo(401));
+            Assert.That((int)missingCluster.StatusCode, Is.EqualTo(400));
+            Assert.That((int)invalidCluster.StatusCode, Is.EqualTo(400));
+            Assert.That((int)invalidEvent.StatusCode, Is.EqualTo(400));
+            Assert.That((int)unknownDevice.StatusCode, Is.AnyOf(404, 503));
+        }
+    }
+
+    [Test]
+    public async Task MatterEventSseEndpointReturnsEventStreamForAuthorizedClients()
+    {
+        await using var factory = CreateFactory();
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-API-Key", "test-key");
+
+        using var response = await client.GetAsync("/api/matter/events", HttpCompletionOption.ResponseHeadersRead);
+
+        Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo("text/event-stream"));
+    }
+
+    [Test]
     public async Task DetailedRuntimeDiagnosticsEndpointCanBeEnabledByConfig()
     {
         await using var factory = CreateFactory(new Dictionary<string, string?>
@@ -291,6 +328,60 @@ public class ControllerProductionReadinessTests
             Assert.That(json, Does.Contain("\"apiAuthenticationFailures\":2"));
             Assert.That(json, Does.Contain("\"rateLimitRejections\":3"));
             Assert.That(json, Does.Contain("\"detailedEndpointEnabled\":true"));
+        }
+    }
+
+    [Test]
+    public void MatterEventDtosUseSourceGeneratedJson()
+    {
+        var response = new DeviceMatterEventReadResponse(
+            "switch",
+            "Switch",
+            Endpoint: 1,
+            Cluster: 0x003B,
+            ClusterHex: "0x003B",
+            RequestedEventId: 0x0001,
+            RequestedEventHex: "0x0001",
+            Events:
+            [
+                new MatterEventResponse(
+                    "switch",
+                    "Switch",
+                    Endpoint: 1,
+                    Cluster: 0x003B,
+                    ClusterHex: "0x003B",
+                    ClusterName: "Switch",
+                    EventId: 0x0001,
+                    EventHex: "0x0001",
+                    EventName: "InitialPress",
+                    EventNumber: 42,
+                    Priority: 1,
+                    EpochTimestamp: 1000,
+                    SystemTimestamp: null,
+                    DeltaEpochTimestamp: null,
+                    DeltaSystemTimestamp: 5,
+                    Payload: new MatterEventPayloadResponse(
+                        "typed",
+                        System.Text.Json.JsonSerializer.SerializeToElement(new { newPosition = 1 })),
+                    PayloadTlvHex: "15300102",
+                    StatusCode: null,
+                    ReceivedAtUtc: new DateTime(2025, 1, 2, 3, 4, 5, DateTimeKind.Utc))
+            ]);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(
+            response,
+            ControllerJsonContext.Default.DeviceMatterEventReadResponse);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json, Does.Contain("\"clusterHex\":\"0x003B\""));
+            Assert.That(json, Does.Contain("\"clusterName\":\"Switch\""));
+            Assert.That(json, Does.Contain("\"requestedEventHex\":\"0x0001\""));
+            Assert.That(json, Does.Contain("\"eventName\":\"InitialPress\""));
+            Assert.That(json, Does.Contain("\"kind\":\"typed\""));
+            Assert.That(json, Does.Contain("\"newPosition\":1"));
+            Assert.That(json, Does.Contain("\"payloadTlvHex\":\"15300102\""));
+            Assert.That(json, Does.Contain("\"eventNumber\":42"));
         }
     }
 

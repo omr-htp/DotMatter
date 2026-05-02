@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -214,6 +215,66 @@ public class EnergyEVSECluster : ClusterBase
         if (value.ChargingTargets != null) { tlv.AddArray(1); foreach (var item in value.ChargingTargets) { WriteChargingTargetStruct(tlv, item); } tlv.EndContainer(); }
     }
 
+    // TLV struct deserializers
+
+    private static ChargingTargetStruct ReadChargingTargetStruct(MatterTLV tlv)
+    {
+        var value = new ChargingTargetStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.TargetTimeMinutesPastMidnight = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    if (tlv.IsNextNull()) { tlv.GetNull(1); } else { value.TargetSoC = (byte)tlv.GetUnsignedIntAny(1); }
+                    break;
+                case 2:
+                    if (tlv.IsNextNull()) { tlv.GetNull(2); } else { value.AddedEnergy = tlv.GetUnsignedInt(2); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static ChargingTargetScheduleStruct ReadChargingTargetScheduleStruct(MatterTLV tlv)
+    {
+        var value = new ChargingTargetScheduleStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.DayOfWeekForSequence = (TargetDayOfWeekBitmap)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    var items1 = new List<ChargingTargetStruct>();
+                    tlv.OpenArray(1);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items1.Add(ReadChargingTargetStruct(tlv));
+                    }
+                    tlv.CloseContainer();
+                    value.ChargingTargets = [.. items1];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -293,6 +354,159 @@ public class EnergyEVSECluster : ClusterBase
         public const uint Fault = 0x0004;
         /// <summary>RFID (0x0005).</summary>
         public const uint RFID = 0x0005;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Energy EVSE", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>EVConnected event payload.</summary>
+    public sealed class EVConnectedEventData
+    {
+        /// <summary>Gets or sets SessionID.</summary>
+        public uint SessionID { get; set; }
+    }
+
+    /// <summary>EVConnected event report.</summary>
+    public sealed class EVConnectedEvent(MatterEventReport report, EVConnectedEventData payload)
+        : ClusterEvent(report, "EVConnected")
+    {
+        /// <summary>Gets the typed EVConnected payload.</summary>
+        public EVConnectedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>EVNotDetected event payload.</summary>
+    public sealed class EVNotDetectedEventData
+    {
+        /// <summary>Gets or sets SessionID.</summary>
+        public uint SessionID { get; set; }
+        /// <summary>Gets or sets State.</summary>
+        public StateEnum State { get; set; } = default!;
+        /// <summary>Gets or sets SessionDuration.</summary>
+        public uint SessionDuration { get; set; }
+        /// <summary>Gets or sets SessionEnergyCharged.</summary>
+        public ulong SessionEnergyCharged { get; set; }
+        /// <summary>Gets or sets SessionEnergyDischarged.</summary>
+        public ulong? SessionEnergyDischarged { get; set; }
+    }
+
+    /// <summary>EVNotDetected event report.</summary>
+    public sealed class EVNotDetectedEvent(MatterEventReport report, EVNotDetectedEventData payload)
+        : ClusterEvent(report, "EVNotDetected")
+    {
+        /// <summary>Gets the typed EVNotDetected payload.</summary>
+        public EVNotDetectedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>EnergyTransferStarted event payload.</summary>
+    public sealed class EnergyTransferStartedEventData
+    {
+        /// <summary>Gets or sets SessionID.</summary>
+        public uint SessionID { get; set; }
+        /// <summary>Gets or sets State.</summary>
+        public StateEnum State { get; set; } = default!;
+        /// <summary>Gets or sets MaximumCurrent.</summary>
+        public ulong MaximumCurrent { get; set; }
+        /// <summary>Gets or sets MaximumDischargeCurrent.</summary>
+        public ulong? MaximumDischargeCurrent { get; set; }
+    }
+
+    /// <summary>EnergyTransferStarted event report.</summary>
+    public sealed class EnergyTransferStartedEvent(MatterEventReport report, EnergyTransferStartedEventData payload)
+        : ClusterEvent(report, "EnergyTransferStarted")
+    {
+        /// <summary>Gets the typed EnergyTransferStarted payload.</summary>
+        public EnergyTransferStartedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>EnergyTransferStopped event payload.</summary>
+    public sealed class EnergyTransferStoppedEventData
+    {
+        /// <summary>Gets or sets SessionID.</summary>
+        public uint SessionID { get; set; }
+        /// <summary>Gets or sets State.</summary>
+        public StateEnum State { get; set; } = default!;
+        /// <summary>Gets or sets Reason.</summary>
+        public EnergyTransferStoppedReasonEnum Reason { get; set; } = default!;
+        /// <summary>Gets or sets EnergyTransferred.</summary>
+        public ulong EnergyTransferred { get; set; }
+        /// <summary>Gets or sets EnergyDischarged.</summary>
+        public ulong? EnergyDischarged { get; set; }
+    }
+
+    /// <summary>EnergyTransferStopped event report.</summary>
+    public sealed class EnergyTransferStoppedEvent(MatterEventReport report, EnergyTransferStoppedEventData payload)
+        : ClusterEvent(report, "EnergyTransferStopped")
+    {
+        /// <summary>Gets the typed EnergyTransferStopped payload.</summary>
+        public EnergyTransferStoppedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>Fault event payload.</summary>
+    public sealed class FaultEventData
+    {
+        /// <summary>Gets or sets SessionID.</summary>
+        public uint? SessionID { get; set; }
+        /// <summary>Gets or sets State.</summary>
+        public StateEnum State { get; set; } = default!;
+        /// <summary>Gets or sets FaultStatePreviousState.</summary>
+        public FaultStateEnum FaultStatePreviousState { get; set; } = default!;
+        /// <summary>Gets or sets FaultStateCurrentState.</summary>
+        public FaultStateEnum FaultStateCurrentState { get; set; } = default!;
+    }
+
+    /// <summary>Fault event report.</summary>
+    public sealed class FaultEvent(MatterEventReport report, FaultEventData payload)
+        : ClusterEvent(report, "Fault")
+    {
+        /// <summary>Gets the typed Fault payload.</summary>
+        public FaultEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>RFID event payload.</summary>
+    public sealed class RFIDEventData
+    {
+        /// <summary>Gets or sets UID.</summary>
+        public byte[] UID { get; set; } = default!;
+    }
+
+    /// <summary>RFID event report.</summary>
+    public sealed class RFIDEvent(MatterEventReport report, RFIDEventData payload)
+        : ClusterEvent(report, "RFID")
+    {
+        /// <summary>Gets the typed RFID payload.</summary>
+        public RFIDEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Async command methods
@@ -424,4 +638,505 @@ public class EnergyEVSECluster : ClusterBase
     /// <summary>Read SessionEnergyDischarged attribute (0x0043).</summary>
     public Task<ulong?> ReadSessionEnergyDischargedAsync(CancellationToken ct = default)
         => ReadNullableAttributeAsync<ulong>(0x0043, ct);
+
+    // Event payload parsers
+
+    private static EVConnectedEventData ReadEVConnectedEventData(MatterTLV tlv)
+    {
+        var value = new EVConnectedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.SessionID = tlv.GetUnsignedIntAny(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadEVConnectedEventData(MatterEventReport report, out EVConnectedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadEVConnectedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "EVConnected payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static EVNotDetectedEventData ReadEVNotDetectedEventData(MatterTLV tlv)
+    {
+        var value = new EVNotDetectedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.SessionID = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.State = (StateEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.SessionDuration = tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.SessionEnergyCharged = tlv.GetUnsignedInt(3);
+                    break;
+                case 4:
+                    if (tlv.IsNextNull()) { tlv.GetNull(4); } else { value.SessionEnergyDischarged = tlv.GetUnsignedInt(4); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadEVNotDetectedEventData(MatterEventReport report, out EVNotDetectedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadEVNotDetectedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "EVNotDetected payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static EnergyTransferStartedEventData ReadEnergyTransferStartedEventData(MatterTLV tlv)
+    {
+        var value = new EnergyTransferStartedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.SessionID = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.State = (StateEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.MaximumCurrent = tlv.GetUnsignedInt(2);
+                    break;
+                case 3:
+                    if (tlv.IsNextNull()) { tlv.GetNull(3); } else { value.MaximumDischargeCurrent = tlv.GetUnsignedInt(3); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadEnergyTransferStartedEventData(MatterEventReport report, out EnergyTransferStartedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadEnergyTransferStartedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "EnergyTransferStarted payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static EnergyTransferStoppedEventData ReadEnergyTransferStoppedEventData(MatterTLV tlv)
+    {
+        var value = new EnergyTransferStoppedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.SessionID = tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.State = (StateEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.Reason = (EnergyTransferStoppedReasonEnum)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 4:
+                    value.EnergyTransferred = tlv.GetUnsignedInt(4);
+                    break;
+                case 5:
+                    if (tlv.IsNextNull()) { tlv.GetNull(5); } else { value.EnergyDischarged = tlv.GetUnsignedInt(5); }
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadEnergyTransferStoppedEventData(MatterEventReport report, out EnergyTransferStoppedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadEnergyTransferStoppedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "EnergyTransferStopped payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static FaultEventData ReadFaultEventData(MatterTLV tlv)
+    {
+        var value = new FaultEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    if (tlv.IsNextNull()) { tlv.GetNull(0); } else { value.SessionID = tlv.GetUnsignedIntAny(0); }
+                    break;
+                case 1:
+                    value.State = (StateEnum)tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.FaultStatePreviousState = (FaultStateEnum)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 4:
+                    value.FaultStateCurrentState = (FaultStateEnum)tlv.GetUnsignedIntAny(4);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadFaultEventData(MatterEventReport report, out FaultEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadFaultEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "Fault payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static RFIDEventData ReadRFIDEventData(MatterTLV tlv)
+    {
+        var value = new RFIDEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.UID = tlv.GetOctetString(0);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadRFIDEventData(MatterEventReport report, out RFIDEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadRFIDEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "RFID payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateChargingTargetStructJson(ChargingTargetStruct value)
+    {
+        var json = new JsonObject();
+        json["targetTimeMinutesPastMidnight"] = CreateJsonValue(value.TargetTimeMinutesPastMidnight);
+        if (value.TargetSoC is { } targetSoC)
+        {
+            json["targetSoC"] = CreateJsonValue(targetSoC);
+        }
+        if (value.AddedEnergy is { } addedEnergy)
+        {
+            json["addedEnergy"] = CreateJsonValue(addedEnergy);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateChargingTargetScheduleStructJson(ChargingTargetScheduleStruct value)
+    {
+        var json = new JsonObject();
+        if (value.DayOfWeekForSequence is { } dayOfWeekForSequence)
+        {
+            json["dayOfWeekForSequence"] = CreateJsonValue(dayOfWeekForSequence.ToString());
+        }
+        if (value.ChargingTargets is { } chargingTargetsValues)
+        {
+            var chargingTargetsItems = new JsonArray();
+            foreach (var item in chargingTargetsValues)
+            {
+                chargingTargetsItems.Add((JsonNode?)CreateChargingTargetStructJson(item));
+            }
+            json["chargingTargets"] = chargingTargetsItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateEVConnectedEventDataJson(EVConnectedEventData value)
+    {
+        var json = new JsonObject();
+        json["sessionID"] = CreateJsonValue(value.SessionID);
+        return json;
+    }
+
+    private static JsonObject CreateEVNotDetectedEventDataJson(EVNotDetectedEventData value)
+    {
+        var json = new JsonObject();
+        json["sessionID"] = CreateJsonValue(value.SessionID);
+        if (value.State is { } state)
+        {
+            json["state"] = CreateJsonValue(state.ToString());
+        }
+        json["sessionDuration"] = CreateJsonValue(value.SessionDuration);
+        json["sessionEnergyCharged"] = CreateJsonValue(value.SessionEnergyCharged);
+        if (value.SessionEnergyDischarged is { } sessionEnergyDischarged)
+        {
+            json["sessionEnergyDischarged"] = CreateJsonValue(sessionEnergyDischarged);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateEnergyTransferStartedEventDataJson(EnergyTransferStartedEventData value)
+    {
+        var json = new JsonObject();
+        json["sessionID"] = CreateJsonValue(value.SessionID);
+        if (value.State is { } state)
+        {
+            json["state"] = CreateJsonValue(state.ToString());
+        }
+        json["maximumCurrent"] = CreateJsonValue(value.MaximumCurrent);
+        if (value.MaximumDischargeCurrent is { } maximumDischargeCurrent)
+        {
+            json["maximumDischargeCurrent"] = CreateJsonValue(maximumDischargeCurrent);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateEnergyTransferStoppedEventDataJson(EnergyTransferStoppedEventData value)
+    {
+        var json = new JsonObject();
+        json["sessionID"] = CreateJsonValue(value.SessionID);
+        if (value.State is { } state)
+        {
+            json["state"] = CreateJsonValue(state.ToString());
+        }
+        if (value.Reason is { } reason)
+        {
+            json["reason"] = CreateJsonValue(reason.ToString());
+        }
+        json["energyTransferred"] = CreateJsonValue(value.EnergyTransferred);
+        if (value.EnergyDischarged is { } energyDischarged)
+        {
+            json["energyDischarged"] = CreateJsonValue(energyDischarged);
+        }
+        return json;
+    }
+
+    private static JsonObject CreateFaultEventDataJson(FaultEventData value)
+    {
+        var json = new JsonObject();
+        if (value.SessionID is { } sessionID)
+        {
+            json["sessionID"] = CreateJsonValue(sessionID);
+        }
+        if (value.State is { } state)
+        {
+            json["state"] = CreateJsonValue(state.ToString());
+        }
+        if (value.FaultStatePreviousState is { } faultStatePreviousState)
+        {
+            json["faultStatePreviousState"] = CreateJsonValue(faultStatePreviousState.ToString());
+        }
+        if (value.FaultStateCurrentState is { } faultStateCurrentState)
+        {
+            json["faultStateCurrentState"] = CreateJsonValue(faultStateCurrentState.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateRFIDEventDataJson(RFIDEventData value)
+    {
+        var json = new JsonObject();
+        if (value.UID is { } uID)
+        {
+            json["uID"] = CreateJsonValue(uID);
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            EVConnectedEvent typed => CreateEVConnectedEventDataJson(typed.Payload),
+            EVNotDetectedEvent typed => CreateEVNotDetectedEventDataJson(typed.Payload),
+            EnergyTransferStartedEvent typed => CreateEnergyTransferStartedEventDataJson(typed.Payload),
+            EnergyTransferStoppedEvent typed => CreateEnergyTransferStoppedEventDataJson(typed.Payload),
+            FaultEvent typed => CreateFaultEventDataJson(typed.Payload),
+            RFIDEvent typed => CreateRFIDEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.EVConnected when TryReadEVConnectedEventData(report, out var eVConnectedEventData, out _) => new EVConnectedEvent(report, eVConnectedEventData!),
+            Events.EVConnected when TryReadEVConnectedEventData(report, out _, out var eVConnectedReason) => new UnknownClusterEvent(report, eVConnectedReason),
+            Events.EVNotDetected when TryReadEVNotDetectedEventData(report, out var eVNotDetectedEventData, out _) => new EVNotDetectedEvent(report, eVNotDetectedEventData!),
+            Events.EVNotDetected when TryReadEVNotDetectedEventData(report, out _, out var eVNotDetectedReason) => new UnknownClusterEvent(report, eVNotDetectedReason),
+            Events.EnergyTransferStarted when TryReadEnergyTransferStartedEventData(report, out var energyTransferStartedEventData, out _) => new EnergyTransferStartedEvent(report, energyTransferStartedEventData!),
+            Events.EnergyTransferStarted when TryReadEnergyTransferStartedEventData(report, out _, out var energyTransferStartedReason) => new UnknownClusterEvent(report, energyTransferStartedReason),
+            Events.EnergyTransferStopped when TryReadEnergyTransferStoppedEventData(report, out var energyTransferStoppedEventData, out _) => new EnergyTransferStoppedEvent(report, energyTransferStoppedEventData!),
+            Events.EnergyTransferStopped when TryReadEnergyTransferStoppedEventData(report, out _, out var energyTransferStoppedReason) => new UnknownClusterEvent(report, energyTransferStoppedReason),
+            Events.Fault when TryReadFaultEventData(report, out var faultEventData, out _) => new FaultEvent(report, faultEventData!),
+            Events.Fault when TryReadFaultEventData(report, out _, out var faultReason) => new UnknownClusterEvent(report, faultReason),
+            Events.RFID when TryReadRFIDEventData(report, out var rFIDEventData, out _) => new RFIDEvent(report, rFIDEventData!),
+            Events.RFID when TryReadRFIDEventData(report, out _, out var rFIDReason) => new UnknownClusterEvent(report, rFIDReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }

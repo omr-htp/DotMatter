@@ -9,6 +9,7 @@
 using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Core.TLV;
+using System.Text.Json.Nodes;
 
 namespace DotMatter.Core.Clusters;
 
@@ -189,6 +190,81 @@ public class ActionsCluster : ClusterBase
         if (value.Endpoints != null) { tlv.AddArray(3); foreach (var item in value.Endpoints) { tlv.AddUInt16(item); } tlv.EndContainer(); }
     }
 
+    // TLV struct deserializers
+
+    private static ActionStruct ReadActionStruct(MatterTLV tlv)
+    {
+        var value = new ActionStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ActionID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Name = tlv.GetUTF8String(1);
+                    break;
+                case 2:
+                    value.Type = (ActionTypeEnum)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.EndpointListID = (ushort)tlv.GetUnsignedIntAny(3);
+                    break;
+                case 4:
+                    value.SupportedCommands = (CommandBits)tlv.GetUnsignedIntAny(4);
+                    break;
+                case 5:
+                    value.State = (ActionStateEnum)tlv.GetUnsignedIntAny(5);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static EndpointListStruct ReadEndpointListStruct(MatterTLV tlv)
+    {
+        var value = new EndpointListStruct();
+        tlv.OpenStructure();
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.EndpointListID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.Name = tlv.GetUTF8String(1);
+                    break;
+                case 2:
+                    value.Type = (EndpointListTypeEnum)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    var items3 = new List<ushort>();
+                    tlv.OpenArray(3);
+                    while (!tlv.IsEndContainerNext())
+                    {
+                        items3.Add((ushort)tlv.GetUnsignedInt(null));
+                    }
+                    tlv.CloseContainer();
+                    value.Endpoints = [.. items3];
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
     /// <summary>Attribute identifiers.</summary>
     public static class Attributes
     {
@@ -236,6 +312,69 @@ public class ActionsCluster : ClusterBase
         public const uint StateChanged = 0x0000;
         /// <summary>ActionFailed (0x0001).</summary>
         public const uint ActionFailed = 0x0001;
+    }
+
+    /// <summary>Base type for this cluster's event reports.</summary>
+    public abstract class ClusterEvent
+        : MatterClusterEvent
+    {
+        /// <summary>Initializes a new cluster event wrapper.</summary>
+        protected ClusterEvent(MatterEventReport report, string eventName)
+            : base(report, "Actions", eventName) { }
+    }
+
+    /// <summary>Fallback event wrapper when DotMatter cannot parse a typed payload.</summary>
+    public sealed class UnknownClusterEvent(MatterEventReport report, string? reason = null)
+        : ClusterEvent(report, "Unknown")
+    {
+        /// <summary>Gets the reason the typed payload parser could not materialize this event.</summary>
+        public override string? Reason { get; } = reason;
+    }
+
+    /// <summary>StateChanged event payload.</summary>
+    public sealed class StateChangedEventData
+    {
+        /// <summary>Gets or sets ActionID.</summary>
+        public ushort ActionID { get; set; }
+        /// <summary>Gets or sets InvokeID.</summary>
+        public uint InvokeID { get; set; }
+        /// <summary>Gets or sets NewState.</summary>
+        public ActionStateEnum NewState { get; set; } = default!;
+    }
+
+    /// <summary>StateChanged event report.</summary>
+    public sealed class StateChangedEvent(MatterEventReport report, StateChangedEventData payload)
+        : ClusterEvent(report, "StateChanged")
+    {
+        /// <summary>Gets the typed StateChanged payload.</summary>
+        public StateChangedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
+    }
+
+    /// <summary>ActionFailed event payload.</summary>
+    public sealed class ActionFailedEventData
+    {
+        /// <summary>Gets or sets ActionID.</summary>
+        public ushort ActionID { get; set; }
+        /// <summary>Gets or sets InvokeID.</summary>
+        public uint InvokeID { get; set; }
+        /// <summary>Gets or sets NewState.</summary>
+        public ActionStateEnum NewState { get; set; } = default!;
+        /// <summary>Gets or sets Error.</summary>
+        public ActionErrorEnum Error { get; set; } = default!;
+    }
+
+    /// <summary>ActionFailed event report.</summary>
+    public sealed class ActionFailedEvent(MatterEventReport report, ActionFailedEventData payload)
+        : ClusterEvent(report, "ActionFailed")
+    {
+        /// <summary>Gets the typed ActionFailed payload.</summary>
+        public ActionFailedEventData Payload { get; } = payload;
+
+        /// <inheritdoc />
+        public override object? TypedPayload => Payload;
     }
 
     // Async command methods
@@ -395,4 +534,244 @@ public class ActionsCluster : ClusterBase
     /// <summary>Read SetupURL attribute (0x0002).</summary>
     public Task<string?> ReadSetupURLAsync(CancellationToken ct = default)
         => ReadRefAttributeAsync<string>(0x0002, ct);
+
+    // Event payload parsers
+
+    private static StateChangedEventData ReadStateChangedEventData(MatterTLV tlv)
+    {
+        var value = new StateChangedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ActionID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.InvokeID = tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.NewState = (ActionStateEnum)tlv.GetUnsignedIntAny(2);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadStateChangedEventData(MatterEventReport report, out StateChangedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadStateChangedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "StateChanged payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    private static ActionFailedEventData ReadActionFailedEventData(MatterTLV tlv)
+    {
+        var value = new ActionFailedEventData();
+        tlv.OpenStructure(7);
+        while (!tlv.IsEndContainerNext())
+        {
+            switch (tlv.PeekTag())
+            {
+                case 0:
+                    value.ActionID = (ushort)tlv.GetUnsignedIntAny(0);
+                    break;
+                case 1:
+                    value.InvokeID = tlv.GetUnsignedIntAny(1);
+                    break;
+                case 2:
+                    value.NewState = (ActionStateEnum)tlv.GetUnsignedIntAny(2);
+                    break;
+                case 3:
+                    value.Error = (ActionErrorEnum)tlv.GetUnsignedIntAny(3);
+                    break;
+                default:
+                    tlv.SkipElement();
+                    break;
+            }
+        }
+
+        tlv.CloseContainer();
+        return value;
+    }
+
+    private static bool TryReadActionFailedEventData(MatterEventReport report, out ActionFailedEventData? payload, out string? reason)
+    {
+        payload = null;
+        if (report.RawData is null)
+        {
+            reason = "Event payload TLV was not captured.";
+            return false;
+        }
+
+        try
+        {
+            payload = ReadActionFailedEventData(new MatterTLV(report.RawData.GetBytes()));
+            reason = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "ActionFailed payload parse failed: " + ex.Message;
+            return false;
+        }
+    }
+
+    // Event payload JSON projectors
+
+    private static JsonObject CreateActionStructJson(ActionStruct value)
+    {
+        var json = new JsonObject();
+        json["actionID"] = CreateJsonValue(value.ActionID);
+        if (value.Name is { } name)
+        {
+            json["name"] = CreateJsonValue(name);
+        }
+        if (value.Type is { } type)
+        {
+            json["type"] = CreateJsonValue(type.ToString());
+        }
+        json["endpointListID"] = CreateJsonValue(value.EndpointListID);
+        if (value.SupportedCommands is { } supportedCommands)
+        {
+            json["supportedCommands"] = CreateJsonValue(supportedCommands.ToString());
+        }
+        if (value.State is { } state)
+        {
+            json["state"] = CreateJsonValue(state.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateEndpointListStructJson(EndpointListStruct value)
+    {
+        var json = new JsonObject();
+        json["endpointListID"] = CreateJsonValue(value.EndpointListID);
+        if (value.Name is { } name)
+        {
+            json["name"] = CreateJsonValue(name);
+        }
+        if (value.Type is { } type)
+        {
+            json["type"] = CreateJsonValue(type.ToString());
+        }
+        if (value.Endpoints is { } endpointsValues)
+        {
+            var endpointsItems = new JsonArray();
+            foreach (var item in endpointsValues)
+            {
+                endpointsItems.Add((JsonNode?)CreateJsonValue(item));
+            }
+            json["endpoints"] = endpointsItems;
+        }
+        return json;
+    }
+
+    private static JsonObject CreateStateChangedEventDataJson(StateChangedEventData value)
+    {
+        var json = new JsonObject();
+        json["actionID"] = CreateJsonValue(value.ActionID);
+        json["invokeID"] = CreateJsonValue(value.InvokeID);
+        if (value.NewState is { } newState)
+        {
+            json["newState"] = CreateJsonValue(newState.ToString());
+        }
+        return json;
+    }
+
+    private static JsonObject CreateActionFailedEventDataJson(ActionFailedEventData value)
+    {
+        var json = new JsonObject();
+        json["actionID"] = CreateJsonValue(value.ActionID);
+        json["invokeID"] = CreateJsonValue(value.InvokeID);
+        if (value.NewState is { } newState)
+        {
+            json["newState"] = CreateJsonValue(newState.ToString());
+        }
+        if (value.Error is { } error)
+        {
+            json["error"] = CreateJsonValue(error.ToString());
+        }
+        return json;
+    }
+
+    internal static JsonObject? MapEventPayloadJson(ClusterEvent evt)
+    {
+        return evt switch
+        {
+            StateChangedEvent typed => CreateStateChangedEventDataJson(typed.Payload),
+            ActionFailedEvent typed => CreateActionFailedEventDataJson(typed.Payload),
+            _ => null,
+        };
+    }
+
+    // Event readers and subscriptions
+
+    /// <summary>Read event reports from this cluster.</summary>
+    public async Task<ClusterEvent[]> ReadEventsAsync(
+        uint[]? eventIds = null,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+    {
+        var events = await ReadEventsAsync(MapEventReports, eventIds, fabricFiltered, ct);
+        return [.. events];
+    }
+
+    /// <summary>Subscribe to event reports from this cluster.</summary>
+    public Task<MatterEventSubscription<ClusterEvent>> SubscribeEventsAsync(
+        uint[]? eventIds = null,
+        ushort minInterval = 1,
+        ushort maxInterval = 60,
+        bool fabricFiltered = false,
+        CancellationToken ct = default)
+        => SubscribeEventsAsync(MapEventReports, eventIds, minInterval, maxInterval, fabricFiltered, ct);
+
+    internal static ClusterEvent[] MapEventReports(IReadOnlyList<MatterEventReport> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<ClusterEvent>(reports.Count);
+        foreach (var report in reports)
+        {
+            events.Add(MapEventReport(report));
+        }
+
+        return [.. events];
+    }
+
+    internal static ClusterEvent MapEventReport(MatterEventReport report)
+    {
+        return report.EventId switch
+        {
+            Events.StateChanged when TryReadStateChangedEventData(report, out var stateChangedEventData, out _) => new StateChangedEvent(report, stateChangedEventData!),
+            Events.StateChanged when TryReadStateChangedEventData(report, out _, out var stateChangedReason) => new UnknownClusterEvent(report, stateChangedReason),
+            Events.ActionFailed when TryReadActionFailedEventData(report, out var actionFailedEventData, out _) => new ActionFailedEvent(report, actionFailedEventData!),
+            Events.ActionFailed when TryReadActionFailedEventData(report, out _, out var actionFailedReason) => new UnknownClusterEvent(report, actionFailedReason),
+            _ => new UnknownClusterEvent(report, "Event ID is not recognized by this cluster."),
+        };
+    }
 }
