@@ -1,4 +1,5 @@
 using DotMatter.Core;
+using DotMatter.Core.InteractionModel;
 using DotMatter.Core.Sessions;
 using DotMatter.Hosting;
 using Microsoft.Extensions.Logging;
@@ -45,6 +46,77 @@ public class MatterDeviceHostTests
         Assert.That(host.SubscriptionReportTimes.ContainsKey("lamp"), Is.True);
     }
 
+    [Test]
+    public void ShouldRefreshSubscription_DetectsStaleEventOnlySubscriptions()
+    {
+        using var tempDirectory = TestFileSystem.CreateTempDirectoryScope();
+
+        var host = new TestMatterDeviceHost(tempDirectory.Path);
+        host.SubscriptionReportTimes["switch"] = DateTime.UtcNow - TimeSpan.FromMinutes(10);
+        host.MarkSubscriptionShape("switch", attributePathCount: 0, eventPathCount: 1);
+        host.ActiveSubscriptions["switch"] = null!;
+
+        var shouldRefresh = host.IsSubscriptionRefreshDue("switch", DateTime.UtcNow);
+
+        Assert.That(shouldRefresh, Is.True);
+    }
+
+    [Test]
+    public void ShouldRefreshSubscription_RecoversMissingEventOnlySubscriptions()
+    {
+        using var tempDirectory = TestFileSystem.CreateTempDirectoryScope();
+
+        var host = new TestMatterDeviceHost(tempDirectory.Path);
+        host.SubscriptionReportTimes["switch"] = DateTime.UtcNow - TimeSpan.FromMinutes(10);
+        host.MarkSubscriptionShape("switch", attributePathCount: 0, eventPathCount: 1);
+
+        var shouldRefresh = host.IsSubscriptionRefreshDue("switch", DateTime.UtcNow);
+
+        Assert.That(shouldRefresh, Is.True);
+    }
+
+    [Test]
+    public void ShouldRefreshSubscription_UsesSubscriptionSpecificThreshold()
+    {
+        using var tempDirectory = TestFileSystem.CreateTempDirectoryScope();
+
+        var host = new TestMatterDeviceHost(tempDirectory.Path);
+        host.SubscriptionReportTimes["switch"] = DateTime.UtcNow - TimeSpan.FromSeconds(20);
+        host.SubscriptionStaleThresholds["switch"] = TimeSpan.FromSeconds(12);
+
+        var shouldRefresh = host.IsSubscriptionRefreshDue("switch", DateTime.UtcNow);
+
+        Assert.That(shouldRefresh, Is.True);
+    }
+
+    [Test]
+    public async Task OnSubscriptionStaleAsync_EventOnlySubscriptionReconnectsWithoutRefresh()
+    {
+        using var tempDirectory = TestFileSystem.CreateTempDirectoryScope();
+
+        var host = new TestMatterDeviceHost(tempDirectory.Path);
+        host.MarkSubscriptionShape("switch", attributePathCount: 0, eventPathCount: 1);
+        host.ActiveSubscriptions["switch"] = null!;
+
+        await host.TriggerSubscriptionStaleAsync("switch");
+
+        Assert.That(host.ReconnectScheduled, Is.True);
+    }
+
+    [Test]
+    public async Task OnSubscriptionStaleAsync_AttributeSubscriptionReconnectsWithoutRefresh()
+    {
+        using var tempDirectory = TestFileSystem.CreateTempDirectoryScope();
+
+        var host = new TestMatterDeviceHost(tempDirectory.Path);
+        host.MarkSubscriptionShape("switch", attributePathCount: 1, eventPathCount: 1);
+        host.ActiveSubscriptions["switch"] = null!;
+
+        await host.TriggerSubscriptionStaleAsync("switch");
+
+        Assert.That(host.ReconnectScheduled, Is.True);
+    }
+
     private sealed class TestMatterDeviceHost(string registryPath) : MatterDeviceHost(
         NullLogger.Instance,
         new DeviceRegistry(NullLogger<DeviceRegistry>.Instance, registryPath),
@@ -56,7 +128,9 @@ public class MatterDeviceHostTests
         public bool NextSubscriptionMessageResult { get; set; }
 
         public new DeviceRegistry Registry => base.Registry;
+        public ConcurrentDictionary<string, Subscription> ActiveSubscriptions => base.Subscriptions;
         public ConcurrentDictionary<string, DateTime> SubscriptionReportTimes => base.LastSubscriptionReport;
+        public new ConcurrentDictionary<string, TimeSpan> SubscriptionStaleThresholds => base.SubscriptionStaleThresholds;
 
         public Task TriggerSubscriptionStaleAsync(string id, CancellationToken ct = default)
             => base.OnSubscriptionStaleAsync(id, null!, null!, ct);
@@ -71,8 +145,11 @@ public class MatterDeviceHostTests
             Registry.Update(id, d => d.LastSeen = DateTime.UtcNow);
         }
 
-        protected override Task<bool> TryRefreshSubscriptionAsync(string id, ISession session, CancellationToken ct)
-            => Task.FromResult(false);
+        public void MarkSubscriptionShape(string id, int attributePathCount, int eventPathCount)
+            => base.TrackSubscriptionShape(id, attributePathCount, eventPathCount);
+
+        public bool IsSubscriptionRefreshDue(string id, DateTime utcNow)
+            => base.ShouldRefreshSubscription(id, utcNow);
 
         protected override Task<bool> TryProcessSubscriptionMessageAsync(string id, byte[] bytes)
             => Task.FromResult(NextSubscriptionMessageResult);

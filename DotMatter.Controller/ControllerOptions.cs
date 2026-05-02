@@ -1,6 +1,32 @@
 namespace DotMatter.Controller;
 
 /// <summary>
+/// Controller-side attestation policy applied during commissioning.
+/// </summary>
+public enum CommissioningAttestationPolicy
+{
+    /// <summary>Skip device attestation checks.</summary>
+    Disabled = 0,
+    /// <summary>Require DAC -> PAI chain validation and attestation signature verification.</summary>
+    RequireDacChain = 1,
+    /// <summary>Attempt attestation validation but allow test-device failures with warnings.</summary>
+    AllowTestDevices = 2,
+}
+
+/// <summary>
+/// Controller-side regulatory location passed during commissioning.
+/// </summary>
+public enum CommissioningRegulatoryLocation
+{
+    /// <summary>Indoor location.</summary>
+    Indoor = 0,
+    /// <summary>Outdoor location.</summary>
+    Outdoor = 1,
+    /// <summary>Indoor/outdoor location.</summary>
+    IndoorOutdoor = 2,
+}
+
+/// <summary>
 /// Security options for the LAN-hosted controller API.
 /// </summary>
 public sealed class ControllerSecurityOptions
@@ -45,6 +71,12 @@ public sealed class CommissioningOptions
     public string SharedFabricName { get; set; } = "DotMatter";
     /// <summary>Gets or sets the timeout for connecting to a newly commissioned device.</summary>
     public TimeSpan FollowUpConnectTimeout { get; set; } = TimeSpan.FromSeconds(30);
+    /// <summary>Gets or sets the regulatory location sent during commissioning.</summary>
+    public CommissioningRegulatoryLocation RegulatoryLocation { get; set; } = CommissioningRegulatoryLocation.IndoorOutdoor;
+    /// <summary>Gets or sets the two-letter country code sent during commissioning.</summary>
+    public string RegulatoryCountryCode { get; set; } = "XX";
+    /// <summary>Gets or sets the controller attestation policy used during commissioning.</summary>
+    public CommissioningAttestationPolicy AttestationPolicy { get; set; } = CommissioningAttestationPolicy.RequireDacChain;
 }
 
 /// <summary>

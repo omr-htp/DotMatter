@@ -40,6 +40,41 @@ public class MatterEventRegistryTests
     }
 
     [Test]
+    public void SubscriptionCoordinator_BuildAttributePaths_IncludesSwitchCurrentPosition()
+    {
+        var device = new DeviceInfo
+        {
+            Endpoints = new Dictionary<ushort, List<uint>>
+            {
+                [0] = [AccessControlCluster.ClusterId],
+                [1] = [SwitchCluster.ClusterId],
+            }
+        };
+
+        var coordinatorType = typeof(DeviceInfo).Assembly.GetType("DotMatter.Hosting.SubscriptionCoordinator");
+        Assert.That(coordinatorType, Is.Not.Null);
+
+        var buildAttributePaths = coordinatorType!.GetMethod("BuildAttributePaths", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.That(buildAttributePaths, Is.Not.Null);
+
+        var paths = ((System.Collections.IEnumerable?)buildAttributePaths!.Invoke(null, [device]))?.Cast<object>().ToArray();
+        Assert.That(paths, Is.Not.Null);
+
+        var projected = paths!
+            .Select(path =>
+            {
+                var type = path.GetType();
+                var endpointId = (ushort?)type.GetProperty("EndpointId", BindingFlags.Instance | BindingFlags.Public)?.GetValue(path);
+                var clusterId = (uint?)type.GetProperty("ClusterId", BindingFlags.Instance | BindingFlags.Public)?.GetValue(path);
+                var attributeId = (uint?)type.GetProperty("AttributeId", BindingFlags.Instance | BindingFlags.Public)?.GetValue(path);
+                return (EndpointId: endpointId, ClusterId: clusterId, AttributeId: attributeId);
+            })
+            .ToArray();
+
+        Assert.That(projected, Is.EqualTo(new[] { (1, SwitchCluster.ClusterId, SwitchCluster.Attributes.CurrentPosition) }));
+    }
+
+    [Test]
     public void SubscriptionCoordinator_BuildEventPaths_UsesDiscoveredEventClusters()
     {
         var device = new DeviceInfo
@@ -79,5 +114,61 @@ public class MatterEventRegistryTests
             Assert.That(projected, Does.Not.Contain((0, OnOffCluster.ClusterId)));
             Assert.That(projected, Does.Not.Contain((1, OnOffCluster.ClusterId)));
         }
+    }
+
+    [Test]
+    public void SubscriptionCoordinator_EventOnlySubscriptions_UseShorterMaxInterval()
+    {
+        var coordinatorType = typeof(DeviceInfo).Assembly.GetType("DotMatter.Hosting.SubscriptionCoordinator");
+        Assert.That(coordinatorType, Is.Not.Null);
+
+        var getMaxInterval = coordinatorType!.GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+            .Single(method => method.Name == "GetSubscriptionMaxIntervalSeconds" && method.GetParameters().Length == 2);
+
+        var maxInterval = (ushort?)getMaxInterval!.Invoke(null, [0, 1]);
+
+        Assert.That(maxInterval, Is.EqualTo((ushort)5));
+    }
+
+    [Test]
+    public void SubscriptionCoordinator_MixedSubscriptions_KeepLongerMaxInterval()
+    {
+        var coordinatorType = typeof(DeviceInfo).Assembly.GetType("DotMatter.Hosting.SubscriptionCoordinator");
+        Assert.That(coordinatorType, Is.Not.Null);
+
+        var getMaxInterval = coordinatorType!.GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+            .Single(method => method.Name == "GetSubscriptionMaxIntervalSeconds" && method.GetParameters().Length == 2);
+
+        var maxInterval = (ushort?)getMaxInterval!.Invoke(null, [1, 1]);
+
+        Assert.That(maxInterval, Is.EqualTo((ushort)30));
+    }
+
+    [Test]
+    public void SubscriptionCoordinator_SwitchSubscriptions_UseShorterMaxInterval()
+    {
+        var coordinatorType = typeof(DeviceInfo).Assembly.GetType("DotMatter.Hosting.SubscriptionCoordinator");
+        Assert.That(coordinatorType, Is.Not.Null);
+
+        var getMaxInterval = coordinatorType!.GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+            .Single(method => method.Name == "GetSubscriptionMaxIntervalSeconds" && method.GetParameters().Length == 3);
+
+        var maxInterval = (ushort?)getMaxInterval.Invoke(null, [1, 1, true]);
+
+        Assert.That(maxInterval, Is.EqualTo((ushort)5));
+    }
+
+    [Test]
+    public void SubscriptionCoordinator_StaleThreshold_FollowsSubscriptionMaxInterval()
+    {
+        var coordinatorType = typeof(DeviceInfo).Assembly.GetType("DotMatter.Hosting.SubscriptionCoordinator");
+        Assert.That(coordinatorType, Is.Not.Null);
+
+        var getStaleThreshold = coordinatorType!.GetMethod("GetSubscriptionStaleThreshold", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.That(getStaleThreshold, Is.Not.Null);
+
+        var staleThreshold = (TimeSpan?)getStaleThreshold!.Invoke(null, [(ushort)5]);
+
+        Assert.That(staleThreshold, Is.EqualTo(TimeSpan.FromSeconds(12)));
     }
 }

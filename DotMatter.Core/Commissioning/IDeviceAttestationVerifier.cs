@@ -12,8 +12,8 @@ public interface IDeviceAttestationVerifier
     /// <param name="dacCert">DER-encoded DAC (Device Attestation Certificate).</param>
     /// <param name="paiCert">DER-encoded PAI (Product Attestation Intermediate).</param>
     /// <param name="attestationElements">Raw attestation elements TLV from AttestationResponse.</param>
-    /// <param name="attestationSignature">ECDSA signature over attestation elements + attestation nonce.</param>
-    /// <param name="attestationNonce">The 32-byte nonce sent in AttestationRequest.</param>
+    /// <param name="attestationSignature">ECDSA signature over attestation elements + attestation challenge.</param>
+    /// <param name="attestationChallenge">The attestation challenge derived from the secure session.</param>
     byte[] Verify(byte[] dacCert, byte[] paiCert, byte[] attestationElements,
-        byte[] attestationSignature, byte[] attestationNonce);
+        byte[] attestationSignature, byte[] attestationChallenge);
 }

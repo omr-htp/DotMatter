@@ -10,6 +10,7 @@ public class PaseSecureSession : ISession
     private readonly IConnection _connection;
     private readonly byte[] _encryptionKey;
     private readonly byte[] _decryptionKey;
+    private readonly byte[] _attestationChallenge;
     private readonly CancellationTokenSource _cancellationTokenSource = new();
     private readonly HashSet<ushort> _activeExchangeIds = [];
     private int _messageCounter;
@@ -17,11 +18,18 @@ public class PaseSecureSession : ISession
     /// <summary>
     /// Initializes a new instance of the <see cref="PaseSecureSession"/> class.
     /// </summary>
-    public PaseSecureSession(IConnection connection, ushort sessionId, ushort peerSessionId, byte[] encryptionKey, byte[] decryptionKey)
+    public PaseSecureSession(
+        IConnection connection,
+        ushort sessionId,
+        ushort peerSessionId,
+        byte[] encryptionKey,
+        byte[] decryptionKey,
+        byte[]? attestationChallenge = null)
     {
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
         _encryptionKey = encryptionKey ?? throw new ArgumentNullException(nameof(encryptionKey));
         _decryptionKey = decryptionKey ?? throw new ArgumentNullException(nameof(decryptionKey));
+        _attestationChallenge = attestationChallenge?.ToArray() ?? [];
 
         SessionId = sessionId;
         PeerSessionId = peerSessionId;
@@ -39,6 +47,11 @@ public class PaseSecureSession : ISession
 
     /// <inheritdoc />
     public IConnection Connection => _connection;
+
+    /// <summary>
+    /// Gets the attestation challenge derived from the PASE secure-session transcript.
+    /// </summary>
+    public byte[] AttestationChallenge => _attestationChallenge;
 
     /// <inheritdoc />
     public ulong SourceNodeId

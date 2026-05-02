@@ -43,6 +43,10 @@ public abstract class MatterDeviceHost(
     protected readonly ConcurrentDictionary<string, DateTime> LastPing = new();
     /// <summary>Last subscription report time keyed by device ID.</summary>
     protected readonly ConcurrentDictionary<string, DateTime> LastSubscriptionReport = new();
+    /// <summary>Subscription stale threshold keyed by device ID.</summary>
+    protected readonly ConcurrentDictionary<string, TimeSpan> SubscriptionStaleThresholds = new();
+    /// <summary>Tracks devices whose active subscription currently contains only event paths.</summary>
+    protected readonly ConcurrentDictionary<string, bool> EventOnlySubscriptions = new();
     /// <summary>Background listener tasks keyed by device ID.</summary>
     protected readonly ConcurrentDictionary<string, Task> DeviceListeners = new();
 
@@ -64,6 +68,8 @@ public abstract class MatterDeviceHost(
             Registry,
             Subscriptions,
             LastSubscriptionReport,
+            SubscriptionStaleThresholds,
+            TrackSubscriptionShape,
             ProcessAttributeReports,
             ProcessEventReports);
 
@@ -73,6 +79,7 @@ public abstract class MatterDeviceHost(
             Registry,
             LastPing,
             LastSubscriptionReport,
+            SubscriptionStaleThresholds,
             Subscriptions,
             DeviceStateProbe,
             SubscriptionCoordinator,
@@ -117,7 +124,10 @@ public abstract class MatterDeviceHost(
 
                 try
                 {
-                    await rs.ConnectAsync(connectCts.Token);
+                    if (await rs.ConnectAsync(connectCts.Token))
+                    {
+                        EnsureListenerRunning(id, rs, token);
+                    }
                 }
                 catch (OperationCanceledException) when (connectCts.IsCancellationRequested && !token.IsCancellationRequested)
                 {
@@ -148,8 +158,7 @@ public abstract class MatterDeviceHost(
                         continue;
                     }
 
-                    if (LastSubscriptionReport.TryGetValue(id, out var lastReport) &&
-                        DateTime.UtcNow - lastReport > _recoveryOptions.SubscriptionStaleThreshold)
+                    if (ShouldRefreshSubscription(id, DateTime.UtcNow))
                     {
                         await OnSubscriptionStaleAsync(id, rs, session, token);
                     }
@@ -190,6 +199,8 @@ public abstract class MatterDeviceHost(
 
             rs.Disconnect();
             LastSubscriptionReport.TryRemove(id, out _);
+            SubscriptionStaleThresholds.TryRemove(id, out _);
+            EventOnlySubscriptions.TryRemove(id, out _);
             DeviceListeners.TryRemove(id, out _);
             Registry.Update(id, d => d.IsOnline = false);
             OnDeviceDisconnected(id);
@@ -214,20 +225,17 @@ public abstract class MatterDeviceHost(
     /// <summary>Called when a device state changes from a subscription report.</summary>
     protected virtual void OnStateChanged(string id, string endpoint, string capability, string value) { }
 
-    /// <summary>Called when a subscription becomes stale. Default: re-subscribe.</summary>
-    protected virtual async Task OnSubscriptionStaleAsync(
+    /// <summary>Called when a subscription becomes stale. Default: reconnect and recreate subscription.</summary>
+    protected virtual Task OnSubscriptionStaleAsync(
         string id, ResilientSession rs, ISession session, CancellationToken ct)
     {
-        Log.LogInformation("[MATTER] {Id}: subscription stale, re-subscribing...", id);
-        if (await TryRefreshSubscriptionAsync(id, session, ct))
-        {
-            return;
-        }
-
+        Log.LogInformation("[MATTER] {Id}: subscription stale, reconnecting to refresh subscription", id);
         if (TryScheduleManagedReconnect(id, rs))
         {
-            Log.LogInformation("[MATTER] {Id}: scheduling managed reconnect after subscription failure", id);
+            Log.LogInformation("[MATTER] {Id}: scheduling managed reconnect after subscription became stale", id);
         }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>Creates a resilient session for a known device.</summary>
@@ -244,6 +252,37 @@ public abstract class MatterDeviceHost(
 
         var task = TrackDeviceListenerAsync(id, rs, ct);
         DeviceListeners[id] = task;
+    }
+
+    /// <summary>Tracks whether the current subscription shape for a device is event-only.</summary>
+    protected void TrackSubscriptionShape(string id, int attributePathCount, int eventPathCount)
+    {
+        if (attributePathCount == 0 && eventPathCount > 0)
+        {
+            EventOnlySubscriptions[id] = true;
+            return;
+        }
+
+        EventOnlySubscriptions.TryRemove(id, out _);
+    }
+
+    /// <summary>Returns whether the device subscription should be refreshed based on observed liveness.</summary>
+    protected bool ShouldRefreshSubscription(string id, DateTime utcNow)
+    {
+        if (!LastSubscriptionReport.TryGetValue(id, out var lastReport))
+        {
+            return false;
+        }
+
+        var staleThreshold = SubscriptionStaleThresholds.TryGetValue(id, out var threshold)
+            ? threshold
+            : _recoveryOptions.SubscriptionStaleThreshold;
+        if (utcNow - lastReport <= staleThreshold)
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private async Task TrackDeviceListenerAsync(string id, ResilientSession rs, CancellationToken ct)
@@ -331,23 +370,6 @@ public abstract class MatterDeviceHost(
         return true;
     }
 
-    /// <summary>Attempts to refresh a stale subscription.</summary>
-    protected virtual async Task<bool> TryRefreshSubscriptionAsync(string id, ISession session, CancellationToken ct)
-    {
-        try
-        {
-            using var subCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            subCts.CancelAfter(_recoveryOptions.SubscriptionSetupTimeout);
-            await StartSubscriptionAsync(id, session, subCts.Token);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Log.LogWarning(ex, "[MATTER] {Id}: re-subscribe failed", id);
-            return false;
-        }
-    }
-
     /// <summary>Schedules a managed reconnect for a device session.</summary>
     protected virtual bool TryScheduleManagedReconnect(string id, ResilientSession rs)
         => ScheduleOwnedOperation($"reconnect:{id}", async ct =>
@@ -356,6 +378,7 @@ public abstract class MatterDeviceHost(
             {
                 Log.LogInformation("[MATTER] {Id}: starting managed reconnect", id);
                 await rs.ReconnectAsync(ct);
+                EnsureListenerRunning(id, rs, ct);
             }
             catch (OperationCanceledException)
             {

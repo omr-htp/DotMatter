@@ -275,6 +275,54 @@ public class InteractionModelTests
     }
 
     [Test]
+    public void InvokeResponse_CommandStatusWithoutStatusCode_FailsInsteadOfReportingSuccess()
+    {
+        var tlv = new MatterTLV();
+        tlv.AddStructure();
+        tlv.AddArray(1);
+        tlv.AddStructure();
+        tlv.AddStructure(1);
+        tlv.AddList(0);
+        tlv.AddUInt16(2, 1);
+        tlv.AddUInt32(3, GeneralCommissioningCluster.ClusterId);
+        tlv.AddUInt32(4, GeneralCommissioningCluster.Commands.ArmFailSafe);
+        tlv.EndContainer();
+        tlv.AddStructure(1);
+        tlv.EndContainer();
+        tlv.EndContainer();
+        tlv.EndContainer();
+        tlv.AddUInt8(255, 12);
+        tlv.EndContainer();
+
+        var response = ParseInvokeResponse(CreateImFrame(0x09, tlv));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Success, Is.False);
+            Assert.That(response.Error, Does.Contain("missing status code"));
+        }
+    }
+
+    [Test]
+    public void InvokeResponse_StatusResponse_IsFailureWithDetail()
+    {
+        var tlv = new MatterTLV();
+        tlv.AddStructure();
+        tlv.AddUInt8(0, (byte)MatterStatusCode.ConstraintError);
+        tlv.AddUInt8(255, 12);
+        tlv.EndContainer();
+
+        var response = ParseInvokeResponse(CreateImFrame(0x01, tlv));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Success, Is.False);
+            Assert.That(response.StatusCode, Is.EqualTo((byte)MatterStatusCode.ConstraintError));
+            Assert.That(response.Error, Does.Contain("Unexpected StatusResponse"));
+        }
+    }
+
+    [Test]
     public void AccessControlEntryStruct_ReadsFabricScopedAclEntry()
     {
         const ulong subject = 1606652096310243993UL;
@@ -384,6 +432,11 @@ public class InteractionModelTests
             ProtocolId = 0x01,
             ProtocolOpCode = opCode,
         });
+
+    private static InvokeResponse ParseInvokeResponse(MessageFrame frame)
+        => (InvokeResponse)typeof(InteractionManager)
+            .GetMethod("ParseInvokeResponse", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [frame])!;
 
     private static T InvokePrivateStructReader<T>(Type clusterType, string methodName, MatterTLV tlv)
     {

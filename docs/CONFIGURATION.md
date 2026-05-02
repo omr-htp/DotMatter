@@ -49,6 +49,9 @@ machine-local env file.
 | `Controller__Commissioning__DefaultFabricNamePrefix` | `device` | Prefix used when naming new device fabrics. |
 | `Controller__Commissioning__SharedFabricName` | `DotMatter` | Existing fabric directory whose controller fabric material is copied into newly named device directories so commissioned devices join the shared fabric. |
 | `Controller__Commissioning__FollowUpConnectTimeout` | `00:00:30` | Timeout for post-commission connect attempts. |
+| `Controller__Commissioning__RegulatoryLocation` | `IndoorOutdoor` | Regulatory location sent during commissioning. Valid values: `Indoor`, `Outdoor`, `IndoorOutdoor`. |
+| `Controller__Commissioning__RegulatoryCountryCode` | `XX` | Two-letter uppercase country code sent during commissioning. |
+| `Controller__Commissioning__AttestationPolicy` | `RequireDacChain` | Device attestation policy. `RequireDacChain` validates DAC -> PAI and the attestation signature, `AllowTestDevices` logs warnings and continues for failing test devices, and `Disabled` skips verifier wiring. Full PAA trust-store validation is still future work. |
 
 `SharedFabricName` is important for Binding: the source switch and target device must be on the same Matter fabric before the controller can write a useful ACL entry on the target and Binding entry on the switch. The default shared fabric name is `DotMatter`.
 

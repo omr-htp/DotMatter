@@ -174,11 +174,17 @@ public class FabricDiskStorage : IFabricStorageProvider
 
         var json = JsonSerializer.Serialize(details, FabricStorageJsonContext.Default.FabricDetails);
 
-        await WriteAtomicAsync(Path.Combine(fabricDir, "fabric.json"), json);
+        var fabricJsonPath = Path.Combine(fabricDir, "fabric.json");
+        await WriteAtomicAsync(fabricJsonPath, json);
+        FabricStorageSecurity.TryApplyOwnerOnlyFilePermissions(fabricJsonPath);
         WritePemAtomic(Path.Combine(fabricDir, "rootCertificate.pem"), fabric.RootCACertificate);
-        WritePemAtomic(Path.Combine(fabricDir, "rootKeyPair.pem"), P256KeyInterop.ToBouncyCastleKeyPair(fabric.RootCAKeyPair));
+        var rootKeyPairPath = Path.Combine(fabricDir, "rootKeyPair.pem");
+        WritePemAtomic(rootKeyPairPath, P256KeyInterop.ToBouncyCastleKeyPair(fabric.RootCAKeyPair));
+        FabricStorageSecurity.TryApplyOwnerOnlyFilePermissions(rootKeyPairPath);
         WritePemAtomic(Path.Combine(fabricDir, "operationalCertificate.pem"), fabric.OperationalCertificate);
-        WritePemAtomic(Path.Combine(fabricDir, "operationalKeyPair.pem"), P256KeyInterop.ToBouncyCastleKeyPair(fabric.OperationalCertificateKeyPair));
+        var operationalKeyPairPath = Path.Combine(fabricDir, "operationalKeyPair.pem");
+        WritePemAtomic(operationalKeyPairPath, P256KeyInterop.ToBouncyCastleKeyPair(fabric.OperationalCertificateKeyPair));
+        FabricStorageSecurity.TryApplyOwnerOnlyFilePermissions(operationalKeyPairPath);
 
         foreach (var node in fabric.Nodes)
         {

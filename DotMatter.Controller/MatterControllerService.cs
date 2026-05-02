@@ -308,6 +308,7 @@ public sealed class MatterControllerService(
                     Sessions[deviceId] = rs;
                     if (await rs.ConnectAsync(connectCts.Token))
                     {
+                        EnsureListenerRunning(deviceId, rs, ct);
                         PublishEvent(deviceId, "commissioned", "online");
                     }
                 }

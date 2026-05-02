@@ -151,7 +151,7 @@ public class ResilientSession(
 
                 var unsecure = new UnsecureSession(_udpConn);
                 var caseClient = new CASEClient(_node, _fabric, unsecure);
-                _session = (CaseSecureSession?)await caseClient.EstablishSessionAsync();
+                _session = (CaseSecureSession?)await caseClient.EstablishSessionAsync(attemptCts.Token);
                 if (_session?.Connection is UdpConnection secureConnection)
                 {
                     if (!ReferenceEquals(_udpConn, secureConnection))

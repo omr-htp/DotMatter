@@ -134,6 +134,7 @@ public class UdpConnection : IConnection, IDisposable
     public void Close()
     {
         Task receiveTask;
+        Channel<byte[]>[] exchangeChannels;
         lock (_closeLock)
         {
             if (_disposed)
@@ -148,6 +149,14 @@ public class UdpConnection : IConnection, IDisposable
             _udpClient = null;
             receiveTask = _receiveTask;
         }
+
+        _unroutedChannel.Writer.TryComplete();
+        exchangeChannels = _exchangeChannels.Values.ToArray();
+        foreach (var channel in exchangeChannels)
+        {
+            channel.Writer.TryComplete();
+        }
+        _exchangeChannels.Clear();
 
         try
         {

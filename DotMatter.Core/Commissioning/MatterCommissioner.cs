@@ -30,6 +30,9 @@ namespace DotMatter.Core.Commissioning;
 /// </summary>
 public class MatterCommissioner
 {
+    private const int OperationalCaseMaxAttempts = 3;
+    private static readonly TimeSpan OperationalCaseAttemptTimeout = TimeSpan.FromSeconds(10);
+
     private readonly ILogger _log;
 
     /// <summary>MatterCommissioner.</summary>
@@ -57,6 +60,8 @@ public class MatterCommissioner
     /// <param name="threadDataset">Thread operational dataset bytes (from OTBR), or null to skip Thread provisioning</param>
     /// <param name="wifiSsid">Wi-Fi SSID for network provisioning, or null to skip Wi-Fi</param>
     /// <param name="wifiPassword">Wi-Fi password, or null to skip Wi-Fi</param>
+    /// <param name="regulatoryLocation">Regulatory location sent through General Commissioning.</param>
+    /// <param name="regulatoryCountryCode">Two-letter uppercase regulatory country code sent through General Commissioning.</param>
     /// <param name="attestationVerifier">Optional device attestation verifier</param>
     /// <param name="onProgress">Optional progress callback</param>
     /// <param name="ct">Cancellation token</param>
@@ -67,11 +72,14 @@ public class MatterCommissioner
         byte[]? threadDataset,
         string? wifiSsid = null,
         string? wifiPassword = null,
+        GeneralCommissioningCluster.RegulatoryLocationTypeEnum regulatoryLocation = GeneralCommissioningCluster.RegulatoryLocationTypeEnum.IndoorOutdoor,
+        string regulatoryCountryCode = "XX",
         IDeviceAttestationVerifier? attestationVerifier = null,
         Action<CommissioningProgress>? onProgress = null,
         CancellationToken ct = default)
     {
         var progress = onProgress ?? (_ => { });
+        ValidateRegulatoryConfiguration(regulatoryCountryCode);
 
         try
         {
@@ -85,12 +93,18 @@ public class MatterCommissioner
             // ── ArmFailSafe ──
             Report(progress, "ArmFailSafe", 30, "Arming fail-safe timer (120s)...");
             var gc = new GeneralCommissioningCluster(paseSession, endpointId: 0);
-            await gc.ArmFailSafeAsync(expiryLengthSeconds: 120, breadcrumb: 0, ct: ct);
+            var armFailSafeResponse = await gc.ArmFailSafeAsync(expiryLengthSeconds: 120, breadcrumb: 0, ct: ct);
+            EnsureCommissioningCommandSucceeded(armFailSafeResponse, "ArmFailSafe");
             _log.LogInformation("ArmFailSafe OK");
 
             // ── SetRegulatoryConfig ──
             Report(progress, "RegulatoryConfig", 35, "Setting regulatory config...");
-            await gc.SetRegulatoryConfigAsync(newRegulatoryConfig: (GeneralCommissioningCluster.RegulatoryLocationTypeEnum)2, countryCode: "XX", breadcrumb: 0, ct: ct);
+            var regulatoryResponse = await gc.SetRegulatoryConfigAsync(
+                newRegulatoryConfig: regulatoryLocation,
+                countryCode: regulatoryCountryCode,
+                breadcrumb: 0,
+                ct: ct);
+            EnsureCommissioningCommandSucceeded(regulatoryResponse, "SetRegulatoryConfig");
             _log.LogInformation("SetRegulatoryConfig OK");
 
             // ── CSR ──
@@ -133,7 +147,8 @@ public class MatterCommissioner
                     throw new MatterCommissioningException("Attestation", "CertificateChainRequest(DAC) failed");
                 }
 
-                var dacCert = dacResp.ResponseFields.GetOctetString(0);
+                var dacFields = CreateResponseFieldsReader(dacResp.ResponseFields);
+                var dacCert = dacFields.GetOctetString(0);
 
                 // Request PAI
                 var paiResp = await opCreds.CertificateChainRequestAsync(OperationalCredentialsCluster.CertificateChainTypeEnum.PAICertificate, ct);
@@ -142,7 +157,8 @@ public class MatterCommissioner
                     throw new MatterCommissioningException("Attestation", "CertificateChainRequest(PAI) failed");
                 }
 
-                var paiCert = paiResp.ResponseFields.GetOctetString(0);
+                var paiFields = CreateResponseFieldsReader(paiResp.ResponseFields);
+                var paiCert = paiFields.GetOctetString(0);
 
                 // Request attestation
                 var attestationNonce = RandomNumberGenerator.GetBytes(32);
@@ -152,11 +168,12 @@ public class MatterCommissioner
                     throw new MatterCommissioningException("Attestation", "AttestationRequest failed");
                 }
 
-                var attestElements = attestResp.ResponseFields.GetOctetString(0);
-                var attestSignature = attestResp.ResponseFields.GetOctetString(1);
+                var attestationFields = CreateResponseFieldsReader(attestResp.ResponseFields);
+                var attestElements = attestationFields.GetOctetString(0);
+                var attestSignature = attestationFields.GetOctetString(1);
 
                 // Verify DAC→PAI chain and attestation signature
-                attestationVerifier.Verify(dacCert, paiCert, attestElements, attestSignature, attestationNonce);
+                attestationVerifier.Verify(dacCert, paiCert, attestElements, attestSignature, paseSession.AttestationChallenge);
                 _log.LogInformation("Device attestation verified");
             }
 
@@ -177,7 +194,7 @@ public class MatterCommissioner
             var rootResp = await opCreds.AddTrustedRootCertificateAsync(encodedRootCert, ct);
             if (!rootResp.Success)
             {
-                return Fail($"AddTrustedRootCertificate rejected: status=0x{rootResp.StatusCode:X2}");
+                return Fail(FormatInvokeFailure("AddTrustedRootCertificate", rootResp));
             }
 
             _log.LogInformation("AddTrustedRootCertificate OK");
@@ -186,9 +203,13 @@ public class MatterCommissioner
             Report(progress, "AddNOC", 58, "Installing node operational certificate...");
             var encodedNoc = EncodeMatterNoc(node, fabric, peerNoc, serial, peerPublicKeyBytes, peerKeyId);
             var addNocResp = await opCreds.AddNOCAsync(nOCValue: encodedNoc, iPKValue: fabric.IPK, caseAdminSubject: BitConverter.ToUInt64(fabric.RootNodeId.ToByteArrayUnsigned()), adminVendorId: fabric.AdminVendorId, ct: ct);
-            if (!addNocResp.Success)
+            try
             {
-                return Fail($"AddNOC rejected: status=0x{addNocResp.StatusCode:X2}");
+                EnsureNocCommandSucceeded(addNocResp, "AddNOC");
+            }
+            catch (MatterCommissioningException ex)
+            {
+                return Fail(ex.Message);
             }
 
             _log.LogInformation("AddNOC OK");
@@ -215,7 +236,7 @@ public class MatterCommissioner
                 _log.LogWarning("ACL write over PASE was not verified ({Reason}); retrying over CASE", aclResult.Error);
                 try
                 {
-                    var caseOverBle = await new CASEClient(node, fabric, new UnsecureSession(connection)).EstablishSessionAsync();
+                    var caseOverBle = await new CASEClient(node, fabric, new UnsecureSession(connection)).EstablishSessionAsync(ct);
                     aclResult = await WriteAndVerifyCommissioningAclAsync(
                         new AccessControlCluster(caseOverBle, endpointId: 0),
                         [adminAclEntry],
@@ -248,11 +269,13 @@ public class MatterCommissioner
                 var passwordBytes = Encoding.UTF8.GetBytes(wifiPassword ?? "");
 
                 var netComm = new NetworkCommissioningCluster(paseSession, endpointId: 0);
-                await netComm.AddOrUpdateWiFiNetworkAsync(sSID: ssidBytes, credentials: passwordBytes, breadcrumb: 0, ct: ct);
+                var addWifiResponse = await netComm.AddOrUpdateWiFiNetworkAsync(sSID: ssidBytes, credentials: passwordBytes, breadcrumb: 0, ct: ct);
+                EnsureNetworkConfigurationSucceeded(addWifiResponse, "AddOrUpdateWiFiNetwork");
                 _log.LogInformation("AddOrUpdateWiFiNetwork OK (SSID={Ssid})", wifiSsid);
 
                 Report(progress, "ConnectNetwork", 75, "Connecting device to WiFi...");
-                await netComm.ConnectNetworkAsync(networkID: ssidBytes, breadcrumb: 0, ct: ct);
+                var connectWifiResponse = await netComm.ConnectNetworkAsync(networkID: ssidBytes, breadcrumb: 0, ct: ct);
+                EnsureConnectNetworkSucceeded(connectWifiResponse, "ConnectNetwork(WiFi)");
                 _log.LogInformation("ConnectNetwork (WiFi) OK");
             }
             else if (threadDataset is { Length: > 0 })
@@ -265,11 +288,13 @@ public class MatterCommissioner
                     threadDataset.Length, BitConverter.ToString(extPanId));
 
                 var netComm = new NetworkCommissioningCluster(paseSession, endpointId: 0);
-                await netComm.AddOrUpdateThreadNetworkAsync(operationalDataset: threadDataset, breadcrumb: 0, ct: ct);
+                var addThreadResponse = await netComm.AddOrUpdateThreadNetworkAsync(operationalDataset: threadDataset, breadcrumb: 0, ct: ct);
+                EnsureNetworkConfigurationSucceeded(addThreadResponse, "AddOrUpdateThreadNetwork");
                 _log.LogInformation("AddOrUpdateThreadNetwork OK");
 
                 Report(progress, "ConnectNetwork", 75, "Connecting device to Thread network...");
-                await netComm.ConnectNetworkAsync(networkID: extPanId, breadcrumb: 0, ct: ct);
+                var connectThreadResponse = await netComm.ConnectNetworkAsync(networkID: extPanId, breadcrumb: 0, ct: ct);
+                EnsureConnectNetworkSucceeded(connectThreadResponse, "ConnectNetwork(Thread)");
                 _log.LogInformation("ConnectNetwork (Thread) OK");
             }
 
@@ -312,30 +337,18 @@ public class MatterCommissioner
             // Prefer operational network (UDP) for CASE, fall back to BLE if unavailable
             Report(progress, "CASE", 80, "Establishing CASE secure session...");
             ISession caseSession;
-            UdpConnection? udpConn = null;
             try
             {
-                IConnection caseConnection;
-                if (operationalAddress != null)
-                {
-                    _log.LogInformation("Establishing CASE over UDP to {Addr}:{Port}",
-                        operationalAddress, operationalPort);
-                    udpConn = new UdpConnection(operationalAddress, operationalPort);
-                    caseConnection = udpConn;
-                }
-                else
-                {
-                    _log.LogInformation("Establishing CASE over BLE (fallback)");
-                    caseConnection = connection;
-                }
-
-                var unsecureSession = new UnsecureSession(caseConnection);
-                var caseClient = new CASEClient(node, fabric, unsecureSession);
-                caseSession = await caseClient.EstablishSessionAsync();
+                caseSession = await EstablishCommissioningCaseSessionAsync(
+                    node,
+                    fabric,
+                    connection,
+                    operationalAddress,
+                    operationalPort,
+                    ct);
             }
             catch (Exception ex)
             {
-                udpConn?.Dispose();
                 return Fail($"CASE session establishment failed: {ex.Message}");
             }
             _log.LogInformation("CASE session established");
@@ -347,11 +360,12 @@ public class MatterCommissioner
             {
                 using var completeCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 completeCts.CancelAfter(TimeSpan.FromSeconds(15));
-                await caseGc.CommissioningCompleteAsync(completeCts.Token);
+                var completeResponse = await caseGc.CommissioningCompleteAsync(completeCts.Token);
+                EnsureCommissioningCommandSucceeded(completeResponse, "CommissioningComplete");
             }
             catch (Exception ex)
             {
-                _log.LogWarning("CommissioningComplete exception (may be expected): {Msg}", ex.Message);
+                return Fail($"CommissioningComplete failed: {ex.Message}");
             }
             _log.LogInformation("CommissioningComplete OK");
 
@@ -510,6 +524,7 @@ public class MatterCommissioner
             var keys = HKDF.DeriveKey(HashAlgorithmName.SHA256, Ke, 48, [], info);
             var encryptKey = keys.AsSpan()[..16].ToArray();
             var decryptKey = keys.AsSpan().Slice(16, 16).ToArray();
+            var attestationChallenge = keys.AsSpan().Slice(32, 16).ToArray();
 
             _log.LogInformation("[PASE] Session keys derived");
             Report(progress, "PASE", 25, "PASE session established");
@@ -517,7 +532,7 @@ public class MatterCommissioner
             exchange.Close();
             exchange = null!;
 
-            return new PaseSecureSession(connection, mySessionId, peerSessionId, encryptKey, decryptKey);
+            return new PaseSecureSession(connection, mySessionId, peerSessionId, encryptKey, decryptKey, attestationChallenge);
         }
         finally
         {
@@ -531,6 +546,100 @@ public class MatterCommissioner
         }
     }
 
+    private async Task<ISession> EstablishCommissioningCaseSessionAsync(
+        Node node,
+        Fabric fabric,
+        IConnection commissioningConnection,
+        IPAddress? operationalAddress,
+        ushort operationalPort,
+        CancellationToken ct)
+    {
+        if (operationalAddress == null)
+        {
+            _log.LogInformation("Establishing CASE over BLE (fallback)");
+            return await EstablishCaseOverConnectionAsync(node, fabric, commissioningConnection, ct);
+        }
+
+        Exception? lastOperationalFailure = null;
+        for (var attempt = 1; attempt <= OperationalCaseMaxAttempts; attempt++)
+        {
+            try
+            {
+                using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                attemptCts.CancelAfter(OperationalCaseAttemptTimeout);
+
+                _log.LogInformation(
+                    "Establishing CASE over UDP to {Addr}:{Port} (attempt {Attempt}/{MaxAttempts})",
+                    operationalAddress,
+                    operationalPort,
+                    attempt,
+                    OperationalCaseMaxAttempts);
+
+                return await EstablishCaseOverUdpAsync(
+                    node,
+                    fabric,
+                    operationalAddress,
+                    operationalPort,
+                    attemptCts.Token);
+            }
+            catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+            {
+                lastOperationalFailure = ex;
+                _log.LogWarning(
+                    "Operational CASE attempt {Attempt}/{MaxAttempts} timed out waiting for a response.",
+                    attempt,
+                    OperationalCaseMaxAttempts);
+            }
+
+            if (attempt < OperationalCaseMaxAttempts)
+            {
+                var delay = ComputeOperationalCaseRetryDelay(attempt);
+                _log.LogInformation("Retrying operational CASE in {DelayMs} ms.", (int)delay.TotalMilliseconds);
+                await Task.Delay(delay, ct);
+            }
+        }
+
+        _log.LogWarning(
+            lastOperationalFailure,
+            "Operational CASE over UDP failed after {MaxAttempts} attempt(s); falling back to BLE.",
+            OperationalCaseMaxAttempts);
+        _log.LogInformation("Establishing CASE over BLE (fallback after UDP timeout)");
+        return await EstablishCaseOverConnectionAsync(node, fabric, commissioningConnection, ct);
+    }
+
+    private static async Task<ISession> EstablishCaseOverConnectionAsync(
+        Node node,
+        Fabric fabric,
+        IConnection connection,
+        CancellationToken ct)
+        => await new CASEClient(node, fabric, new UnsecureSession(connection)).EstablishSessionAsync(ct);
+
+    private static async Task<ISession> EstablishCaseOverUdpAsync(
+        Node node,
+        Fabric fabric,
+        IPAddress operationalAddress,
+        ushort operationalPort,
+        CancellationToken ct)
+    {
+        var udpConnection = new UdpConnection(operationalAddress, operationalPort);
+        try
+        {
+            return await EstablishCaseOverConnectionAsync(node, fabric, udpConnection, ct);
+        }
+        catch
+        {
+            udpConnection.Dispose();
+            throw;
+        }
+    }
+
+    private static TimeSpan ComputeOperationalCaseRetryDelay(int completedAttempt)
+        => completedAttempt switch
+        {
+            1 => TimeSpan.FromSeconds(2),
+            _ => TimeSpan.FromSeconds(4),
+        };
+
     // ─────────────────────────────────────────────────────────
     //  CSR response parsing
     // ─────────────────────────────────────────────────────────
@@ -542,8 +651,8 @@ public class MatterCommissioner
     /// </summary>
     public static ECPublicKeyParameters ParseCsrResponse(MatterTLV responseFields)
     {
-        responseFields.OpenStructure(1);  // CommandDataIB Fields struct (context tag 1)
-        var nocsrBytes = responseFields.GetOctetString(0);
+        var reader = CreateResponseFieldsReader(responseFields);
+        var nocsrBytes = reader.GetOctetString(0);
 
         var nocPayload = new MatterTLV(nocsrBytes);
         nocPayload.OpenStructure();
@@ -622,12 +731,12 @@ public class MatterCommissioner
         enc.AddOctetString(1, fabric.RootCACertificate.SerialNumber.ToByteArrayUnsigned());
         enc.AddUInt8(2, 1);
         enc.AddList(3); // Issuer
-        enc.AddUInt64(20, fabric.RootCACertificateId.ToByteArrayUnsigned());
+        enc.AddUInt64(20, ToMatterUInt64Bytes(fabric.RootCACertificateId, nameof(fabric.RootCACertificateId)));
         enc.EndContainer();
         enc.AddUInt32(4, (uint)nbRoot);
         enc.AddUInt32(5, (uint)naRoot);
         enc.AddList(6); // Subject
-        enc.AddUInt64(20, fabric.RootCACertificateId.ToByteArrayUnsigned());
+        enc.AddUInt64(20, ToMatterUInt64Bytes(fabric.RootCACertificateId, nameof(fabric.RootCACertificateId)));
         enc.EndContainer();
         enc.AddUInt8(7, 1);
         enc.AddUInt8(8, 1);
@@ -669,13 +778,13 @@ public class MatterCommissioner
         enc.AddOctetString(1, noc.SerialNumber.ToByteArrayUnsigned());
         enc.AddUInt8(2, 1);
         enc.AddList(3); // Issuer
-        enc.AddUInt64(20, fabric.RootCACertificateId.ToByteArrayUnsigned());
+        enc.AddUInt64(20, ToMatterUInt64Bytes(fabric.RootCACertificateId, nameof(fabric.RootCACertificateId)));
         enc.EndContainer();
         enc.AddUInt32(4, (uint)nbNoc);
         enc.AddUInt32(5, (uint)naNoc);
         enc.AddList(6); // Subject
-        enc.AddUInt64(17, node.NodeId.ToByteArrayUnsigned());
-        enc.AddUInt64(21, fabric.FabricId.ToByteArrayUnsigned());
+        enc.AddUInt64(17, ToMatterUInt64Bytes(node.NodeId, nameof(node.NodeId)));
+        enc.AddUInt64(21, ToMatterUInt64Bytes(fabric.FabricId, nameof(fabric.FabricId)));
         enc.EndContainer();
         enc.AddUInt8(7, 1);
         enc.AddUInt8(8, 1);
@@ -709,6 +818,19 @@ public class MatterCommissioner
         return enc.GetBytes();
     }
 
+    private static byte[] ToMatterUInt64Bytes(BigInteger value, string valueName)
+    {
+        var bytes = value.ToByteArrayUnsigned();
+        if (bytes.Length > sizeof(ulong))
+        {
+            throw new ArgumentOutOfRangeException(valueName, "Matter UInt64 values must fit in 8 bytes.");
+        }
+
+        Span<byte> padded = stackalloc byte[sizeof(ulong)];
+        bytes.CopyTo(padded[(sizeof(ulong) - bytes.Length)..]);
+        return padded.ToArray();
+    }
+
     // ─────────────────────────────────────────────────────────
     //  Thread helpers
     // ─────────────────────────────────────────────────────────
@@ -735,6 +857,22 @@ public class MatterCommissioner
     //  Helpers
     // ─────────────────────────────────────────────────────────
 
+    private static void ValidateRegulatoryConfiguration(string regulatoryCountryCode)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(regulatoryCountryCode);
+        if (regulatoryCountryCode.Length != 2 || regulatoryCountryCode.Any(static c => c is < 'A' or > 'Z'))
+        {
+            throw new ArgumentException("Regulatory country code must be exactly two uppercase ASCII letters.", nameof(regulatoryCountryCode));
+        }
+    }
+
+    private static MatterTLV CreateResponseFieldsReader(MatterTLV responseFields)
+    {
+        var reader = new MatterTLV(responseFields.GetBytes());
+        reader.OpenStructure(1);
+        return reader;
+    }
+
     private static void Report(Action<CommissioningProgress> progress, string step, int percent, string message)
     {
         progress(new CommissioningProgress(step, percent, message));
@@ -742,6 +880,134 @@ public class MatterCommissioner
 
     private static CommissioningResult Fail(string error) =>
         new(false, null, null, error);
+
+    private static void EnsureCommissioningCommandSucceeded(InvokeResponse response, string commandName)
+    {
+        if (!response.Success)
+        {
+            throw new MatterCommissioningException(commandName, FormatInvokeFailure(commandName, response));
+        }
+
+        if (response.ResponseFields is null)
+        {
+            throw new MatterCommissioningException(commandName, $"{commandName} succeeded without response fields.");
+        }
+
+        var (errorCode, debugText) = ParseCommissioningCommandResponse(response.ResponseFields);
+        if (errorCode != (byte)GeneralCommissioningCluster.CommissioningErrorEnum.OK)
+        {
+            throw new MatterCommissioningException(
+                commandName,
+                $"{commandName} rejected: error=0x{errorCode:X2}{FormatDebugText(debugText)}");
+        }
+    }
+
+    private static void EnsureNetworkConfigurationSucceeded(InvokeResponse response, string commandName)
+    {
+        if (!response.Success)
+        {
+            throw new MatterCommissioningException(commandName, FormatInvokeFailure(commandName, response));
+        }
+
+        if (response.ResponseFields is null)
+        {
+            throw new MatterCommissioningException(commandName, $"{commandName} succeeded without response fields.");
+        }
+
+        var (status, debugText) = ParseNetworkConfigurationResponse(response.ResponseFields);
+        if (status != (byte)NetworkCommissioningCluster.NetworkCommissioningStatusEnum.Success)
+        {
+            throw new MatterCommissioningException(
+                commandName,
+                $"{commandName} rejected: networkingStatus=0x{status:X2}{FormatDebugText(debugText)}");
+        }
+    }
+
+    private static void EnsureConnectNetworkSucceeded(InvokeResponse response, string commandName)
+    {
+        if (!response.Success)
+        {
+            throw new MatterCommissioningException(commandName, FormatInvokeFailure(commandName, response));
+        }
+
+        if (response.ResponseFields is null)
+        {
+            throw new MatterCommissioningException(commandName, $"{commandName} succeeded without response fields.");
+        }
+
+        var (status, debugText) = ParseConnectNetworkResponse(response.ResponseFields);
+        if (status != (byte)NetworkCommissioningCluster.NetworkCommissioningStatusEnum.Success)
+        {
+            throw new MatterCommissioningException(
+                commandName,
+                $"{commandName} rejected: networkingStatus=0x{status:X2}{FormatDebugText(debugText)}");
+        }
+    }
+
+    private static void EnsureNocCommandSucceeded(InvokeResponse response, string commandName)
+    {
+        if (!response.Success)
+        {
+            throw new MatterCommissioningException(commandName, FormatInvokeFailure(commandName, response));
+        }
+
+        if (response.ResponseFields is null)
+        {
+            throw new MatterCommissioningException(commandName, $"{commandName} succeeded without response fields.");
+        }
+
+        var (statusCode, debugText) = ParseNocResponse(response.ResponseFields);
+        if (statusCode != (byte)OperationalCredentialsCluster.NodeOperationalCertStatusEnum.OK)
+        {
+            throw new MatterCommissioningException(
+                commandName,
+                $"{commandName} rejected: status=0x{statusCode:X2}{FormatDebugText(debugText)}");
+        }
+    }
+
+    private static (byte ErrorCode, string? DebugText) ParseCommissioningCommandResponse(MatterTLV responseFields)
+    {
+        var reader = CreateResponseFieldsReader(responseFields);
+        var errorCode = reader.GetUnsignedInt8(0);
+        string? debugText = reader.IsNextTag(1) ? reader.GetUTF8String(1) : null;
+        return (errorCode, debugText);
+    }
+
+    private static (byte Status, string? DebugText) ParseNetworkConfigurationResponse(MatterTLV responseFields)
+    {
+        var reader = CreateResponseFieldsReader(responseFields);
+        var status = reader.GetUnsignedInt8(0);
+        string? debugText = reader.IsNextTag(1) ? reader.GetUTF8String(1) : null;
+        return (status, debugText);
+    }
+
+    private static (byte Status, string? DebugText) ParseConnectNetworkResponse(MatterTLV responseFields)
+    {
+        var reader = CreateResponseFieldsReader(responseFields);
+        var status = reader.GetUnsignedInt8(0);
+        string? debugText = reader.IsNextTag(1) ? reader.GetUTF8String(1) : null;
+        return (status, debugText);
+    }
+
+    private static (byte StatusCode, string? DebugText) ParseNocResponse(MatterTLV responseFields)
+    {
+        var reader = CreateResponseFieldsReader(responseFields);
+        var statusCode = reader.GetUnsignedInt8(0);
+        if (reader.IsNextTag(1))
+        {
+            reader.SkipElement();
+        }
+
+        string? debugText = reader.IsNextTag(2) ? reader.GetUTF8String(2) : null;
+        return (statusCode, debugText);
+    }
+
+    private static string FormatInvokeFailure(string commandName, InvokeResponse response)
+        => $"{commandName} failed: status=0x{response.StatusCode:X2}"
+            + (string.IsNullOrWhiteSpace(response.Error) ? string.Empty : $" ({response.Error})");
+
+    private static string FormatDebugText(string? debugText)
+        => string.IsNullOrWhiteSpace(debugText) ? string.Empty : $", debugText=\"{debugText}\"";
 
     private async Task<(bool Success, string? Error)> WriteAndVerifyCommissioningAclAsync(
         AccessControlCluster accessControl,

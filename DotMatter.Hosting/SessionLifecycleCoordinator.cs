@@ -13,6 +13,7 @@ internal sealed class SessionLifecycleCoordinator(
     DeviceRegistry registry,
     ConcurrentDictionary<string, DateTime> lastPing,
     ConcurrentDictionary<string, DateTime> lastSubscriptionReport,
+    ConcurrentDictionary<string, TimeSpan> subscriptionStaleThresholds,
     ConcurrentDictionary<string, Subscription> subscriptions,
     DeviceStateProbe stateProbe,
     SubscriptionCoordinator subscriptionCoordinator,
@@ -84,6 +85,7 @@ internal sealed class SessionLifecycleCoordinator(
 
             lastPing.TryRemove(id, out _);
             lastSubscriptionReport.TryRemove(id, out _);
+            subscriptionStaleThresholds.TryRemove(id, out _);
             registry.Update(id, d => d.IsOnline = false);
             onDeviceDisconnected(id);
         };

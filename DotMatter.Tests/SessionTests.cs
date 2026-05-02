@@ -1,4 +1,5 @@
 using DotMatter.Core;
+using DotMatter.Core.Fabrics;
 using DotMatter.Core.Sessions;
 using System.Reflection;
 
@@ -33,6 +34,45 @@ public class SessionTests
 
         ex1.Close();
         ex2.Close();
+    }
+
+    [Test]
+    public void UnsecureSession_Close_ReleasesExchangeId()
+    {
+        var session = new UnsecureSession(new FakeConnection());
+        var exchange = session.CreateExchange();
+
+        Assert.That(GetActiveExchangeCount(session), Is.EqualTo(1));
+
+        exchange.Close();
+
+        Assert.That(GetActiveExchangeCount(session), Is.Zero);
+    }
+
+    [Test]
+    public void PaseSession_Close_ReleasesExchangeId()
+    {
+        var session = new PaseSecureSession(new FakeConnection(), 1, 2, new byte[16], new byte[16]);
+        var exchange = session.CreateExchange();
+
+        Assert.That(GetActiveExchangeCount(session), Is.EqualTo(1));
+
+        exchange.Close();
+
+        Assert.That(GetActiveExchangeCount(session), Is.Zero);
+    }
+
+    [Test]
+    public void CaseSession_Close_ReleasesExchangeId()
+    {
+        var session = new CaseSecureSession(new FakeConnection(), 1, 2, 1, 2, new byte[16], new byte[16]);
+        var exchange = session.CreateExchange();
+
+        Assert.That(GetActiveExchangeCount(session), Is.EqualTo(1));
+
+        exchange.Close();
+
+        Assert.That(GetActiveExchangeCount(session), Is.Zero);
     }
 
     [Test]
@@ -74,5 +114,60 @@ public class SessionTests
             .SetValue(session, uint.MaxValue);
 
         Assert.Throws<MatterSessionException>(() => _ = session.MessageCounter);
+    }
+
+    [Test]
+    public async Task CaseClient_EstablishSessionAsync_HonorsExternalCancellation()
+    {
+        using var tempDirectory = TestFileSystem.CreateTempDirectoryScope();
+        var storage = new FabricDiskStorage(tempDirectory.Path);
+        var manager = new FabricManager(storage);
+        var fabric = await manager.GetAsync("case-timeout");
+        var node = Fabric.CreateNode();
+        var client = new CASEClient(node, fabric, new UnsecureSession(new BlockingConnection()));
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+
+        Assert.That(
+            async () => await client.EstablishSessionAsync(cts.Token),
+            Throws.InstanceOf<OperationCanceledException>());
+    }
+
+    [Test]
+    public void UdpConnection_Close_CompletesUnroutedReaders()
+    {
+        using var conn = new UdpConnection(System.Net.IPAddress.Loopback, 5540);
+
+        var readTask = conn.ReadAsync(CancellationToken.None);
+
+        conn.Close();
+
+        Assert.That(
+            async () => await readTask.WaitAsync(TimeSpan.FromSeconds(1)),
+            Throws.InstanceOf<System.Threading.Channels.ChannelClosedException>());
+    }
+
+    private static int GetActiveExchangeCount(object session)
+    {
+        var exchangeIds = session.GetType()
+            .GetField("_activeExchangeIds", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(session)!;
+        return (int)exchangeIds.GetType().GetProperty("Count")!.GetValue(exchangeIds)!;
+    }
+
+    private sealed class BlockingConnection : IConnection
+    {
+        public event EventHandler ConnectionClosed = delegate { };
+
+        public async Task<byte[]> ReadAsync(CancellationToken token)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            return [];
+        }
+
+        public Task SendAsync(byte[] message) => Task.CompletedTask;
+
+        public void Close() => ConnectionClosed(this, EventArgs.Empty);
+
+        public IConnection OpenConnection() => new BlockingConnection();
     }
 }

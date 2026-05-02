@@ -127,7 +127,10 @@ public record RuntimeDetailedDiagnostics(
     int MaxRenderedBytes,
     string SharedFabricName,
     string DefaultFabricNamePrefix,
-    string FollowUpConnectTimeout);
+    string FollowUpConnectTimeout,
+    string RegulatoryLocation,
+    string RegulatoryCountryCode,
+    string AttestationPolicy);
 /// <summary>Detailed runtime diagnostics payload, gated by configuration.</summary>
 public record RuntimeDetailedResponse(
     RuntimeSnapshotResponse Runtime,

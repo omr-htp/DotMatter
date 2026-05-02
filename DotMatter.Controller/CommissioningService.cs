@@ -1,3 +1,4 @@
+using DotMatter.Core.Clusters;
 using DotMatter.Core.Commissioning;
 using DotMatter.Core.Fabrics;
 using DotMatter.Core.LinuxBle;
@@ -245,7 +246,12 @@ public class CommissioningService(
                 throw new FileNotFoundException($"Shared fabric file '{fileName}' was not found in {sharedDir}", source);
             }
 
-            File.Copy(source, Path.Combine(targetDir, fileName), overwrite: false);
+            var destination = Path.Combine(targetDir, fileName);
+            File.Copy(source, destination, overwrite: false);
+            if (FabricStorageSecurity.IsSensitiveFabricFile(fileName))
+            {
+                FabricStorageSecurity.TryApplyOwnerOnlyFilePermissions(destination);
+            }
         }
 
         _log.LogInformation(
@@ -273,6 +279,9 @@ public class CommissioningService(
             threadDataset,
             wifiSsid: wifiSsid,
             wifiPassword: wifiPassword,
+            regulatoryLocation: MapRegulatoryLocation(_options.RegulatoryLocation),
+            regulatoryCountryCode: _options.RegulatoryCountryCode,
+            attestationVerifier: CreateAttestationVerifier(_options.AttestationPolicy),
             onProgress: onProgress,
             ct: ct);
     }
@@ -331,4 +340,22 @@ public class CommissioningService(
             return null;
         }
     }
+
+    private static GeneralCommissioningCluster.RegulatoryLocationTypeEnum MapRegulatoryLocation(
+        CommissioningRegulatoryLocation location)
+        => location switch
+        {
+            CommissioningRegulatoryLocation.Indoor => GeneralCommissioningCluster.RegulatoryLocationTypeEnum.Indoor,
+            CommissioningRegulatoryLocation.Outdoor => GeneralCommissioningCluster.RegulatoryLocationTypeEnum.Outdoor,
+            _ => GeneralCommissioningCluster.RegulatoryLocationTypeEnum.IndoorOutdoor,
+        };
+
+    private static IDeviceAttestationVerifier? CreateAttestationVerifier(CommissioningAttestationPolicy policy)
+        => policy switch
+        {
+            CommissioningAttestationPolicy.Disabled => null,
+            CommissioningAttestationPolicy.RequireDacChain => new DefaultDeviceAttestationVerifier(),
+            CommissioningAttestationPolicy.AllowTestDevices => new DefaultDeviceAttestationVerifier(allowTestDevices: true),
+            _ => throw new InvalidOperationException($"Unsupported attestation policy '{policy}'.")
+        };
 }

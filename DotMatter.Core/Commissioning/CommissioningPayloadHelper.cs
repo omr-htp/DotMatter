@@ -61,8 +61,18 @@ public class CommissioningPayloadHelper
     }
 
     /// <summary>ParseQRCode.</summary>
-    public static CommissioningPayload ParseQRCode(string _)
+    public static CommissioningPayload ParseQRCode(string qrCode)
     {
-        return new CommissioningPayload();
+        var parsed = PairingCodeParser.ParseQrCode(qrCode);
+        if (parsed is null)
+        {
+            throw new ArgumentException("QR code payload is invalid.", nameof(qrCode));
+        }
+
+        return new CommissioningPayload
+        {
+            Discriminator = (ushort)parsed.Value.Discriminator,
+            Passcode = parsed.Value.Passcode
+        };
     }
 }

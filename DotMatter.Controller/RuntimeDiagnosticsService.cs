@@ -66,7 +66,10 @@ internal sealed class RuntimeDiagnosticsService(
                 _matterLog.MaxRenderedBytes,
                 _commissioning.SharedFabricName,
                 _commissioning.DefaultFabricNamePrefix,
-                _commissioning.FollowUpConnectTimeout.ToString()));
+                _commissioning.FollowUpConnectTimeout.ToString(),
+                _commissioning.RegulatoryLocation.ToString(),
+                _commissioning.RegulatoryCountryCode,
+                _commissioning.AttestationPolicy.ToString()));
 
     private static string GetStatus(MatterRuntimeStatus runtimeStatus)
     {

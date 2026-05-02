@@ -3,7 +3,12 @@ using DotMatter.Core.TLV;
 namespace DotMatter.Core.InteractionModel;
 
 /// <summary>Result of an InvokeCommand operation.</summary>
-public sealed class InvokeResponse(bool success, byte statusCode, MessageFrame rawFrame, MatterTLV? responseFields)
+public sealed class InvokeResponse(
+    bool success,
+    byte statusCode,
+    MessageFrame rawFrame,
+    MatterTLV? responseFields,
+    string? error = null)
 {
     /// <summary>True if the device returned InvokeResponse (opcode 0x09).</summary>
     public bool Success { get; } = success;
@@ -16,6 +21,9 @@ public sealed class InvokeResponse(bool success, byte statusCode, MessageFrame r
 
     /// <summary>TLV payload of the response for extracting response fields.</summary>
     public MatterTLV? ResponseFields { get; } = responseFields;
+
+    /// <summary>Failure detail when the invoke returned an unexpected opcode or could not be parsed safely.</summary>
+    public string? Error { get; } = error;
 }
 
 /// <summary>Result of a WriteAttribute operation.</summary>

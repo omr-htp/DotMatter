@@ -20,7 +20,7 @@ public class CASEClient(Node node, Fabric fabric, UnsecureSession unsecureSessio
     private readonly UnsecureSession _unsecureSession = unsecureSession;
 
     /// <summary>EstablishSessionAsync.</summary>
-    public async Task<ISession> EstablishSessionAsync()
+    public async Task<ISession> EstablishSessionAsync(CancellationToken ct = default)
     {
         MatterLog.Info("┌───────────────────────┐");
         MatterLog.Debug("| SENDING CASE - Sigma1 |");
@@ -117,7 +117,7 @@ public class CASEClient(Node node, Fabric fabric, UnsecureSession unsecureSessio
 
         await caseExchange.SendAsync(sigma1MessageFrame);
 
-        var sigma2MessageFrame = await caseExchange.WaitForNextMessageAsync();
+        var sigma2MessageFrame = await caseExchange.WaitForNextMessageAsync(ct);
 
         // Check if we got a StatusReport instead of Sigma2
         if (sigma2MessageFrame.MessagePayload.ProtocolOpCode == 0x40)
@@ -417,7 +417,7 @@ public class CASEClient(Node node, Fabric fabric, UnsecureSession unsecureSessio
 
         await caseExchange.SendAsync(sigma3MessageFrame);
 
-        var successMessageFrame = await caseExchange.WaitForNextMessageAsync();
+        var successMessageFrame = await caseExchange.WaitForNextMessageAsync(ct);
 
         await caseExchange.AcknowledgeMessageAsync(successMessageFrame.MessageCounter);
 

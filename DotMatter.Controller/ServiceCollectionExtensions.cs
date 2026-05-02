@@ -8,6 +8,9 @@ internal static class ServiceCollectionExtensions
     internal static IServiceCollection AddControllerOptions(
         this IServiceCollection services, IConfiguration configuration)
     {
+        static bool IsTwoLetterCountryCode(string value)
+            => value.Length == 2 && value.All(static c => c is >= 'A' and <= 'Z');
+
         services.AddOptions<ControllerSecurityOptions>()
             .Bind(configuration.GetSection("Controller:Security"))
             .Validate(o => !o.RequireApiKey || !string.IsNullOrWhiteSpace(o.ApiKey),
@@ -20,6 +23,16 @@ internal static class ServiceCollectionExtensions
 
         services.AddOptions<CommissioningOptions>()
             .Bind(configuration.GetSection("Controller:Commissioning"))
+            .Validate(o => !string.IsNullOrWhiteSpace(o.DefaultFabricNamePrefix),
+                "Controller commissioning requires a non-empty default fabric name prefix.")
+            .Validate(o => !string.IsNullOrWhiteSpace(o.SharedFabricName),
+                "Controller commissioning requires a non-empty shared fabric name.")
+            .Validate(o => IsTwoLetterCountryCode(o.RegulatoryCountryCode),
+                "Controller commissioning requires a two-letter uppercase regulatory country code.")
+            .Validate(o => Enum.IsDefined(o.RegulatoryLocation),
+                "Controller commissioning regulatory location must be a supported value.")
+            .Validate(o => Enum.IsDefined(o.AttestationPolicy),
+                "Controller commissioning attestation policy must be a supported value.")
             .ValidateOnStart();
 
         services.AddOptions<ControllerDiagnosticsOptions>()

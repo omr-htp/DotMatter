@@ -19,7 +19,7 @@ public sealed class DefaultDeviceAttestationVerifier(bool allowTestDevices = fal
 
     /// <summary>Verify.</summary>
     public byte[] Verify(byte[] dacCert, byte[] paiCert, byte[] attestationElements,
-        byte[] attestationSignature, byte[] attestationNonce)
+        byte[] attestationSignature, byte[] attestationChallenge)
     {
         try
         {
@@ -34,10 +34,10 @@ public sealed class DefaultDeviceAttestationVerifier(bool allowTestDevices = fal
             var dacPubKeyBytes = P256KeyInterop.ExportPublicKey(dacPubKeyParameters);
             using var dacECDsa = P256KeyInterop.ImportPublicKey(dacPubKeyParameters);
 
-            // Verify attestation signature: ECDSA-SHA256 over (attestationElements || attestationNonce)
-            var tbs = new byte[attestationElements.Length + attestationNonce.Length];
+            // Verify attestation signature: ECDSA-SHA256 over (attestationElements || attestationChallenge)
+            var tbs = new byte[attestationElements.Length + attestationChallenge.Length];
             Buffer.BlockCopy(attestationElements, 0, tbs, 0, attestationElements.Length);
-            Buffer.BlockCopy(attestationNonce, 0, tbs, attestationElements.Length, attestationNonce.Length);
+            Buffer.BlockCopy(attestationChallenge, 0, tbs, attestationElements.Length, attestationChallenge.Length);
 
             if (!dacECDsa.VerifyData(tbs, attestationSignature, System.Security.Cryptography.HashAlgorithmName.SHA256, System.Security.Cryptography.DSASignatureFormat.IeeeP1363FixedFieldConcatenation))
             {

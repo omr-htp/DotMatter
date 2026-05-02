@@ -1,6 +1,10 @@
 using DotMatter.Core;
+using DotMatter.Core.Commissioning;
+using DotMatter.Core.Cryptography;
 using DotMatter.Core.Fabrics;
 using DotMatter.Core.TLV;
+using Org.BouncyCastle.Math;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace DotMatter.Tests;
@@ -60,6 +64,27 @@ public class CoreProductionReadinessTests
             Assert.That(reloaded.CompressedFabricId, Is.EqualTo("AABBCCDDEEFF0011"));
             Assert.That(reloaded.IPK, Is.EqualTo(fabric.IPK));
         }
+    }
+
+    [Test]
+    public async Task EncodeMatterNoc_AllowsShortUInt64Identifiers()
+    {
+        using var tempDirectory = TestFileSystem.CreateTempDirectoryScope();
+        using var peerKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+
+        var storage = new FabricDiskStorage(tempDirectory.Path);
+        var manager = new FabricManager(storage);
+        var fabric = await manager.GetAsync("short-ids");
+        fabric.FabricId = new BigInteger("1234", 16);
+        var node = new Node { NodeId = new BigInteger("123456", 16) };
+        var peerPublicKey = P256KeyInterop.ToBouncyCastlePublicKey(peerKey);
+        var peerPublicKeyBytes = P256KeyInterop.ExportPublicKey(peerKey);
+        var peerKeyId = SHA1.HashData(peerPublicKeyBytes).AsSpan()[..20].ToArray();
+        var (noc, serial) = MatterCommissioner.GenerateNoc(node, fabric, peerPublicKey, peerKeyId);
+
+        var encoded = MatterCommissioner.EncodeMatterNoc(node, fabric, noc, serial, peerPublicKeyBytes, peerKeyId);
+
+        Assert.That(encoded, Is.Not.Empty);
     }
 
     [Test]

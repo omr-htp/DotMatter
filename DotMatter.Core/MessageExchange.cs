@@ -11,6 +11,7 @@ public class MessageExchange
     private readonly Channel<byte[]>? _routedChannel;
     private readonly bool _incomingInitiator;
     private readonly CancellationTokenSource _cts = new();
+    private int _closed;
 
     private readonly MessageCounterWindow _counterWindow = new();
     private uint _lastReceivedCounter;
@@ -52,12 +53,19 @@ public class MessageExchange
     /// <summary>Close.</summary>
     public void Close()
     {
+        if (Interlocked.Exchange(ref _closed, 1) != 0)
+        {
+            return;
+        }
+
         _cts.Cancel();
 
         if (_routedChannel != null && _session.Connection is UdpConnection udp)
         {
             udp.UnregisterExchange(_exchangeId, _incomingInitiator);
         }
+
+        ReleaseExchangeId();
 
         MatterLog.Info("Closed MessageExchange [E: {0}]", _exchangeId);
     }
@@ -222,13 +230,20 @@ public class MessageExchange
                     _ackTcs?.TrySetResult();
                 }
 
+                var isStandaloneAck = messageFrame.MessagePayload.ProtocolId == 0x00 &&
+                    messageFrame.MessagePayload.ProtocolOpCode == 0x10;
+
                 // Standalone ACK - consume silently
-                if (messageFrame.MessagePayload.ProtocolId == 0x00 &&
-                    messageFrame.MessagePayload.ProtocolOpCode == 0x10)
+                if (isStandaloneAck)
                 {
+                    _ackTcs?.TrySetResult();
                     MatterLog.Debug("Standalone ACK for {0}", messageFrame.MessagePayload.AcknowledgedMessageCounter);
                     continue;
                 }
+
+                // A response on this exchange proves the peer received the request even
+                // when the response does not carry an explicit MRP acknowledgement flag.
+                _ackTcs?.TrySetResult();
 
                 return messageFrame;
             }
@@ -259,5 +274,21 @@ public class MessageExchange
         // SendAsync sets them from the session (avoids double MessageCounter consumption)
 
         await SendAsync(messageFrame);
+    }
+
+    private void ReleaseExchangeId()
+    {
+        switch (_session)
+        {
+            case UnsecureSession unsecureSession:
+                unsecureSession.ReleaseExchangeId(_exchangeId);
+                break;
+            case PaseSecureSession paseSession:
+                paseSession.ReleaseExchangeId(_exchangeId);
+                break;
+            case CaseSecureSession caseSession:
+                caseSession.ReleaseExchangeId(_exchangeId);
+                break;
+        }
     }
 }

@@ -220,6 +220,9 @@ public class ControllerProductionReadinessTests
             Assert.That(detailed.Diagnostics.SensitiveDiagnosticsEnabled, Is.False);
             Assert.That(detailed.Api.RequireApiKey, Is.True);
             Assert.That(detailed.Runtime.Environment, Is.EqualTo("Testing"));
+            Assert.That(detailed.Diagnostics.RegulatoryLocation, Is.EqualTo("IndoorOutdoor"));
+            Assert.That(detailed.Diagnostics.RegulatoryCountryCode, Is.EqualTo("XX"));
+            Assert.That(detailed.Diagnostics.AttestationPolicy, Is.EqualTo("RequireDacChain"));
         }
     }
 
@@ -316,7 +319,10 @@ public class ControllerProductionReadinessTests
                 MaxRenderedBytes: 32,
                 SharedFabricName: "DotMatter",
                 DefaultFabricNamePrefix: "device",
-                FollowUpConnectTimeout: "00:00:30"));
+                FollowUpConnectTimeout: "00:00:30",
+                RegulatoryLocation: "IndoorOutdoor",
+                RegulatoryCountryCode: "XX",
+                AttestationPolicy: "RequireDacChain"));
 
         var json = System.Text.Json.JsonSerializer.Serialize(
             response,
