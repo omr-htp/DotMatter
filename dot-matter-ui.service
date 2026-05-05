@@ -1,7 +1,7 @@
 [Unit]
 Description=DotMatter UI
-After=network-online.target dot-matter.service
-Wants=network-online.target dot-matter.service
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple

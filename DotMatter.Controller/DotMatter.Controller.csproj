@@ -49,6 +49,8 @@
     <PiSharePassword Condition="'$(PiSharePassword)' == ''"></PiSharePassword>
     <PiService Condition="'$(PiService)' == '' and '$(DeployType)' == 'Fast'">dot-matter</PiService>
     <PiService Condition="'$(PiService)' == '' and '$(DeployType)' == 'Aot'">dot-matter-aot</PiService>
+    <PiAppDir Condition="'$(PiAppDir)' == '' and '$(DeployType)' == 'Fast'">/opt/dot-matter</PiAppDir>
+    <PiAppDir Condition="'$(PiAppDir)' == '' and '$(DeployType)' == 'Aot'">/opt/dot-matter-aot</PiAppDir>
   </PropertyGroup>
 
   <Target Name="ValidateDeploySettings">
@@ -68,6 +70,7 @@
 
     <Exec Condition="'$(DeployType)' == 'Fast'" Command="robocopy &quot;$(TargetDir).&quot; &quot;$(PiShare)&quot; /MIR /NJH /NJS /NDL /NP /NS /NC" IgnoreExitCode="true" />
     <Exec Condition="'$(DeployType)' == 'Aot'" Command="robocopy &quot;bin\Release\$(TargetFramework)\$(RuntimeIdentifier)\publish\.&quot; &quot;$(PiShare)&quot; /MIR /NJH /NJS /NDL /NP /NS /NC" IgnoreExitCode="true" />
+    <Exec Condition="'$(DeployType)' == 'Aot'" Command="ssh &quot;$(PiHost)&quot; sudo chmod 0755 &quot;$(PiAppDir)/DotMatter.Controller&quot;" />
 
     <Exec Command="ssh &quot;$(PiHost)&quot; sudo systemctl start &quot;$(PiService)&quot;" />
   </Target>

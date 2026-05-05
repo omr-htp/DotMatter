@@ -22,7 +22,7 @@ The companion UI runs as a separate framework-dependent service and does **not**
 |---------|------|---------|------------------|-------------|
 | `dot-matter-ui` | Debug (FDD) | `/opt/dot-matter-ui` | `/etc/dotmatter/dot-matter-ui.env` | `http://<pi>:5001` |
 
-`dot-matter-ui` talks to the controller through `ControllerApi__BaseUrl`, which defaults to `http://127.0.0.1:5000` in the service file shipped with the current worktree.
+`dot-matter-ui` talks to the controller through `ControllerApi__BaseUrl`, which defaults to `http://127.0.0.1:5000` in the service file shipped with the current worktree. The UI unit does not depend on a specific controller implementation, so it can stay up while either `dot-matter` or `dot-matter-aot` owns port `5000`.
 
 For page coverage, screenshots, and local operator workflows, see the dedicated [UI Guide](UI.md).
 
@@ -151,6 +151,10 @@ Recommended contents:
 - `dot-matter-ui.env`: optional UI overrides such as `ASPNETCORE_URLS`, `ControllerApi__BaseUrl`, and `ControllerApi__ApiKey`
 - For trusted-LAN development only, add `DOTNET_ENVIRONMENT=Development` and `Controller__Security__RequireApiKey=false` to the local env file. Do not use that mode on untrusted networks.
 
+Keep `dot-matter.env` and `dot-matter-aot.env` identical unless you intentionally
+want different behavior when switching between the framework-dependent and AOT
+controller services.
+
 The UI env file is optional; the UI deploy target auto-creates an empty `/etc/dotmatter/dot-matter-ui.env` when needed.
 If the controller keeps auth enabled, ensure both `dot-matter.env` and `dot-matter-ui.env` carry the matching API key values before you start the services.
 
@@ -191,7 +195,8 @@ dotnet msbuild DotMatter.Ui -t:Deploy
 4. Stops the target service via SSH
 5. Authenticates to the configured Samba share with `net use`
 6. Copies files via `robocopy` over Samba (`/MIR` mirrors source to destination)
-7. Starts the target service via SSH
+7. For AOT deploys, restores execute permission on `/opt/dot-matter-aot/DotMatter.Controller`
+8. Starts the target service via SSH
 
 Because the service units use `EnvironmentFile=`, runtime tuning stays on the Pi and does not require editing tracked repo files before deploy.
 

@@ -100,6 +100,8 @@ Controller__Otbr__SudoCommand=sudo
 
 For systemd-based Pi installs, place these values in `/etc/dotmatter/dot-matter.env`
 or `/etc/dotmatter/dot-matter-aot.env` rather than editing tracked project files.
+Keep the two controller env files identical unless you intentionally need
+different fast-vs-AOT behavior.
 
 ## DotMatter.Ui controller client
 
