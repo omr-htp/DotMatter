@@ -1,0 +1,95 @@
+@inherits LayoutComponentBase
+@inject Microsoft.Extensions.Options.IOptions<ControllerApiOptions> Options
+
+<RadzenDialog />
+<RadzenNotification />
+<RadzenTooltip />
+<RadzenContextMenu />
+
+<div class="shell-frame" id="shell-frame">
+    <aside class="shell-sidebar">
+        <NavMenu />
+    </aside>
+
+    <main class="shell-main">
+        <header class="shell-topbar">
+            <div class="shell-topbar-left">
+                <button class="shell-icon-button"
+                        type="button"
+                        title="Collapse sidebar"
+                        data-shell-toggle="sidebar">
+                    <span id="shell-sidebar-toggle-label">&lt;&lt;</span>
+                </button>
+
+                <div class="shell-topbar-copy">
+                    <div class="shell-kicker">Matter operator console</div>
+                    <div class="shell-topbar-title">DotMatter Lab Deck</div>
+                    <div class="shell-topbar-meta">@Options.Value.BaseUrl</div>
+                </div>
+            </div>
+
+            <div class="shell-topbar-right">
+                <button class="shell-status-chip shell-feed-toggle"
+                        type="button"
+                        id="shell-feed-toggle"
+                        data-shell-toggle="feed-drawer"
+                        aria-expanded="false"
+                        aria-controls="shell-feed-drawer">
+                    <span>controller feed</span>
+                    <div class="shell-status-chip-row">
+                        <span id="shell-live-feed-badge" class="status-badge status-badge-neutral">pending</span>
+                        <small id="shell-live-feed-meta">waiting for events</small>
+                    </div>
+                    <div class="shell-feed-toggle-latest" id="shell-live-feed-latest">No recent controller events</div>
+                </button>
+
+                <div class="shell-status-chip">
+                    <span>auth</span>
+                    <strong>@(string.IsNullOrWhiteSpace(Options.Value.ApiKey) ? "open / dev" : "api-key")</strong>
+                </div>
+            </div>
+        </header>
+
+        <div class="shell-feed-toast-stack" id="shell-live-feed-toasts" aria-live="polite" aria-atomic="false"></div>
+
+        <div class="shell-feed-backdrop"
+             id="shell-feed-backdrop"
+             hidden
+             data-shell-toggle="feed-drawer-close"></div>
+
+        <aside class="shell-feed-panel"
+               id="shell-feed-drawer"
+               hidden
+               aria-hidden="true"
+               aria-labelledby="shell-feed-title">
+            <div class="shell-feed-drawer-header">
+                <div>
+                    <div class="page-kicker">Controller feed</div>
+                    <h2 id="shell-feed-title">Recent controller events</h2>
+                    <small id="shell-feed-drawer-meta">Waiting for controller activity</small>
+                </div>
+
+                <button class="shell-feed-close"
+                        type="button"
+                        data-shell-toggle="feed-drawer-close">
+                    Close
+                </button>
+            </div>
+
+            <p class="shell-feed-intro">Fresh controller activity appears as quick toasts and stays here for review.</p>
+
+            <div class="shell-feed-empty" id="shell-feed-empty">Waiting for the first controller event.</div>
+            <div class="shell-feed-list" id="shell-feed-list"></div>
+        </aside>
+
+        <section class="shell-content">
+            @Body
+        </section>
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">x</span>
+</div>

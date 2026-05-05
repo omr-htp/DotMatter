@@ -1,0 +1,22 @@
+[Unit]
+Description=DotMatter UI
+After=network-online.target dot-matter.service
+Wants=network-online.target dot-matter.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/dot-matter-ui
+ExecStart=/usr/bin/dotnet /opt/dot-matter-ui/DotMatter.Ui.dll
+Restart=on-failure
+RestartSec=5
+User=dotmatter
+Group=dotmatter
+Environment=DOTNET_ENVIRONMENT=Production
+Environment=ASPNETCORE_URLS=http://0.0.0.0:5001
+Environment=ControllerApi__BaseUrl=http://127.0.0.1:5000
+EnvironmentFile=-/etc/dotmatter/dot-matter-ui.env
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

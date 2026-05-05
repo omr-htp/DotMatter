@@ -1,0 +1,15 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="ARM64" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="DotMatter.Benchmarks/DotMatter.Benchmarks.csproj" />
+  <Project Path="DotMatter.CodeGen/DotMatter.CodeGen.csproj" />
+  <Project Path="DotMatter.Controller/DotMatter.Controller.csproj" />
+  <Project Path="DotMatter.Core/DotMatter.Core.csproj" />
+  <Project Path="DotMatter.Hosting/DotMatter.Hosting.csproj" />
+  <Project Path="DotMatter.Tests/DotMatter.Tests.csproj" />
+  <Project Path="DotMatter.Ui/DotMatter.Ui.csproj" />
+</Solution>

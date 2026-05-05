@@ -1,0 +1,13 @@
+@if (string.IsNullOrWhiteSpace(Content))
+{
+    <div class="json-panel json-panel-empty">@EmptyMessage</div>
+}
+else
+{
+    <pre class="json-panel"><code>@Content</code></pre>
+}
+
+@code {
+    [Parameter] public string? Content { get; set; }
+    [Parameter] public string EmptyMessage { get; set; } = "No payload yet.";
+}

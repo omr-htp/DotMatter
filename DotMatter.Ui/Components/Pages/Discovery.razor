@@ -1,0 +1,334 @@
+@page "/discovery"
+@rendermode InteractiveServer
+@inject ControllerApiClient Api
+
+<PageTitle>Discovery</PageTitle>
+
+<section class="hero-panel">
+    <div>
+        <div class="page-kicker">Commissionable discovery</div>
+        <h1>Discovery</h1>
+        <p>
+            Browse current commissionable advertisements, resolve by discriminator, and inspect raw TXT metadata
+            without hand-assembling query strings.
+        </p>
+    </div>
+</section>
+
+<div class="page-grid page-grid-two">
+    <section class="surface-panel">
+        <div class="section-heading">
+            <div>
+                <div class="page-kicker">Browse</div>
+                <h2>Commissionable browse</h2>
+            </div>
+            <RadzenButton Text="Browse"
+                          ButtonStyle="ButtonStyle.Primary"
+                          Shade="Shade.Lighter"
+                          Click="@BrowseAsync"
+                          Disabled="@_browseBusy" />
+        </div>
+
+        <div class="operation-field-grid">
+            <div class="operation-field">
+                <label>Transport</label>
+                <select class="console-select" @bind="_browseTransport">
+                    <option value="all">All</option>
+                    <option value="mdns">mDNS</option>
+                    <option value="ble">BLE</option>
+                </select>
+            </div>
+            <div class="operation-field">
+                <label>Timeout (ms)</label>
+                <RadzenTextBox Value="@_browseTimeoutMs" Change="@((string? value) => _browseTimeoutMs = value ?? "3000")" Style="width: 100%;" />
+            </div>
+            <div class="operation-field">
+                <label>Discriminator</label>
+                <RadzenTextBox Value="@_browseDiscriminator" Change="@((string? value) => _browseDiscriminator = value ?? string.Empty)" Style="width: 100%;" />
+            </div>
+            <div class="operation-field">
+                <label>Vendor ID</label>
+                <RadzenTextBox Value="@_browseVendorId" Change="@((string? value) => _browseVendorId = value ?? string.Empty)" Style="width: 100%;" />
+            </div>
+            <div class="operation-field">
+                <label>Product ID</label>
+                <RadzenTextBox Value="@_browseProductId" Change="@((string? value) => _browseProductId = value ?? string.Empty)" Style="width: 100%;" />
+            </div>
+            <div class="operation-field">
+                <label>Device type</label>
+                <RadzenTextBox Value="@_browseDeviceType" Change="@((string? value) => _browseDeviceType = value ?? string.Empty)" Style="width: 100%;" />
+            </div>
+            <div class="operation-field">
+                <label>Commissioning mode</label>
+                <RadzenTextBox Value="@_browseCommissioningMode" Change="@((string? value) => _browseCommissioningMode = value ?? string.Empty)" Style="width: 100%;" />
+            </div>
+            <div class="operation-field">
+                <label>Device name contains</label>
+                <RadzenTextBox Value="@_browseDeviceNameContains" Change="@((string? value) => _browseDeviceNameContains = value ?? string.Empty)" Style="width: 100%;" />
+            </div>
+            <div class="operation-field">
+                <label>Instance name contains</label>
+                <RadzenTextBox Value="@_browseInstanceNameContains" Change="@((string? value) => _browseInstanceNameContains = value ?? string.Empty)" Style="width: 100%;" />
+            </div>
+            <div class="operation-field">
+                <label>Rotating identifier contains</label>
+                <RadzenTextBox Value="@_browseRotatingIdentifierContains" Change="@((string? value) => _browseRotatingIdentifierContains = value ?? string.Empty)" Style="width: 100%;" />
+            </div>
+            <div class="operation-field">
+                <label>Limit</label>
+                <RadzenTextBox Value="@_browseLimit" Change="@((string? value) => _browseLimit = value ?? string.Empty)" Style="width: 100%;" />
+            </div>
+            <div class="operation-field">
+                <label>Include TXT records</label>
+                <div class="bool-field">
+                    <RadzenCheckBox TValue="bool" Value="@_browseIncludeTxtRecords" Change="@((bool value) => _browseIncludeTxtRecords = value)" />
+                    <span class="bool-field-state">@(_browseIncludeTxtRecords ? "Included" : "Skipped")</span>
+                </div>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_browseError))
+        {
+            <div class="operation-alert operation-alert-error">@_browseError</div>
+        }
+
+        @if (_browseResult is not null)
+        {
+            <div class="metric-grid">
+                <div class="metric-card"><span>window</span><strong>@_browseResult.BrowseWindowMs ms</strong></div>
+                <div class="metric-card"><span>discovered</span><strong>@_browseResult.TotalDiscovered</strong></div>
+                <div class="metric-card"><span>matched</span><strong>@_browseResult.MatchedCount</strong></div>
+                <div class="metric-card"><span>returned</span><strong>@_browseResult.ReturnedCount</strong></div>
+            </div>
+
+            <div class="discovery-grid">
+                @foreach (var device in _browseResult.Devices)
+                {
+                    <article class="discovery-card">
+                        <div class="discovery-card-head">
+                            <div>
+                                <div class="device-row-title">@device.DeviceName ?? device.InstanceName</div>
+                                <div class="device-row-meta">@GetBrowseMeta(device)</div>
+                            </div>
+                            <StatusBadge Text="@device.Transport" Kind="neutral" />
+                        </div>
+
+                        <div class="discovery-details">
+                            <div><span>Commissioning mode</span><strong>@(device.CommissioningMode?.ToString() ?? "n/a")</strong></div>
+                            <div><span>Long discriminator</span><strong>@device.LongDiscriminatorHex</strong></div>
+                            <div><span>Vendor ID</span><strong>@device.VendorIdHex</strong></div>
+                            <div><span>Product ID</span><strong>@device.ProductIdHex</strong></div>
+                            <div><span>Device type</span><strong>@device.DeviceTypeHex</strong></div>
+                            <div><span>RSSI</span><strong>@(device.Rssi?.ToString() ?? "n/a")</strong></div>
+                            <div><span>Advertisement version</span><strong>@(device.AdvertisementVersion?.ToString() ?? "n/a")</strong></div>
+                        </div>
+
+                        @if (_browseIncludeTxtRecords && (device.TxtRecords is not null || !string.IsNullOrWhiteSpace(device.ServiceDataHex)))
+                        {
+                            <JsonPanel Content="@GetAdvertisementPayload(device)"
+                                       EmptyMessage="No TXT records." />
+                        }
+                    </article>
+                }
+            </div>
+        }
+
+        <div class="payload-label payload-label-spaced">Last browse response</div>
+        <JsonPanel Content="@_browseRaw" EmptyMessage="No browse response yet." />
+    </section>
+
+    <section class="surface-panel">
+        <div class="section-heading">
+            <div>
+                <div class="page-kicker">Resolve</div>
+                <h2>Resolve by discriminator</h2>
+            </div>
+            <RadzenButton Text="Resolve"
+                          ButtonStyle="ButtonStyle.Primary"
+                          Shade="Shade.Lighter"
+                          Click="@ResolveAsync"
+                          Disabled="@_resolveBusy" />
+        </div>
+
+        <div class="operation-field-grid">
+            <div class="operation-field">
+                <label>Transport</label>
+                <select class="console-select" @bind="_resolveTransport">
+                    <option value="all">All</option>
+                    <option value="mdns">mDNS</option>
+                    <option value="ble">BLE</option>
+                </select>
+            </div>
+            <div class="operation-field">
+                <label>Discriminator</label>
+                <RadzenTextBox Value="@_resolveDiscriminator" Change="@((string? value) => _resolveDiscriminator = value ?? string.Empty)" Style="width: 100%;" />
+            </div>
+            <div class="operation-field">
+                <label>Timeout (ms)</label>
+                <RadzenTextBox Value="@_resolveTimeoutMs" Change="@((string? value) => _resolveTimeoutMs = value ?? "5000")" Style="width: 100%;" />
+            </div>
+            <div class="operation-field">
+                <label>Include TXT records</label>
+                <div class="bool-field">
+                    <RadzenCheckBox TValue="bool" Value="@_resolveIncludeTxtRecords" Change="@((bool value) => _resolveIncludeTxtRecords = value)" />
+                    <span class="bool-field-state">@(_resolveIncludeTxtRecords ? "Included" : "Skipped")</span>
+                </div>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_resolveError))
+        {
+            <div class="operation-alert operation-alert-error">@_resolveError</div>
+        }
+
+        @if (_resolveResult is not null)
+        {
+            <article class="discovery-card">
+                <div class="discovery-card-head">
+                    <div>
+                        <div class="device-row-title">@(_resolveResult.Device.DeviceName ?? _resolveResult.Device.InstanceName)</div>
+                        <div class="device-row-meta">@GetBrowseMeta(_resolveResult.Device)</div>
+                    </div>
+                    <StatusBadge Text="@_resolveResult.Device.Transport" Kind="neutral" />
+                </div>
+
+                <div class="discovery-details">
+                    <div><span>Discriminator</span><strong>@_resolveResult.Discriminator</strong></div>
+                    <div><span>Vendor ID</span><strong>@_resolveResult.Device.VendorIdHex</strong></div>
+                    <div><span>Product ID</span><strong>@_resolveResult.Device.ProductIdHex</strong></div>
+                    <div><span>Device type</span><strong>@_resolveResult.Device.DeviceTypeHex</strong></div>
+                    <div><span>Browse window</span><strong>@_resolveResult.BrowseWindowMs ms</strong></div>
+                    <div><span>RSSI</span><strong>@(_resolveResult.Device.Rssi?.ToString() ?? "n/a")</strong></div>
+                </div>
+            </article>
+        }
+
+        <div class="payload-label payload-label-spaced">Last resolve response</div>
+        <JsonPanel Content="@_resolveRaw" EmptyMessage="No resolve response yet." />
+    </section>
+</div>
+
+@code {
+    private string _browseTransport = "all";
+    private string _browseTimeoutMs = "3000";
+    private string _browseDiscriminator = string.Empty;
+    private string _browseVendorId = string.Empty;
+    private string _browseProductId = string.Empty;
+    private string _browseDeviceType = string.Empty;
+    private string _browseCommissioningMode = string.Empty;
+    private string _browseDeviceNameContains = string.Empty;
+    private string _browseInstanceNameContains = string.Empty;
+    private string _browseRotatingIdentifierContains = string.Empty;
+    private string _browseLimit = string.Empty;
+    private bool _browseIncludeTxtRecords;
+    private bool _browseBusy;
+    private DiscoveryBrowseModel? _browseResult;
+    private string? _browseRaw;
+    private string? _browseError;
+
+    private string _resolveTransport = "all";
+    private string _resolveDiscriminator = "0xF00";
+    private string _resolveTimeoutMs = "5000";
+    private bool _resolveIncludeTxtRecords;
+    private bool _resolveBusy;
+    private DiscoveryResolveModel? _resolveResult;
+    private string? _resolveRaw;
+    private string? _resolveError;
+
+    private async Task BrowseAsync()
+    {
+        _browseBusy = true;
+        _browseError = null;
+
+        try
+        {
+            var path = BuildBrowsePath();
+            var result = await Api.GetAsync<DiscoveryBrowseModel>(path);
+            _browseResult = result.Value;
+            _browseRaw = result.RawContent;
+            _browseError = result.Success ? null : result.ErrorMessage;
+        }
+        finally
+        {
+            _browseBusy = false;
+        }
+    }
+
+    private async Task ResolveAsync()
+    {
+        _resolveBusy = true;
+        _resolveError = null;
+
+        try
+        {
+            var result = await Api.GetAsync<DiscoveryResolveModel>(
+                $"/api/discovery/commissionable/resolve?transport={Uri.EscapeDataString(_resolveTransport)}&discriminator={Uri.EscapeDataString(_resolveDiscriminator)}&timeoutMs={Uri.EscapeDataString(_resolveTimeoutMs)}&includeTxtRecords={(_resolveIncludeTxtRecords ? "true" : "false")}");
+            _resolveResult = result.Value;
+            _resolveRaw = result.RawContent;
+            _resolveError = result.Success ? null : result.ErrorMessage;
+        }
+        finally
+        {
+            _resolveBusy = false;
+        }
+    }
+
+    private string BuildBrowsePath()
+    {
+        var query = new List<string>
+        {
+            $"transport={Uri.EscapeDataString(_browseTransport)}",
+            $"timeoutMs={Uri.EscapeDataString(_browseTimeoutMs)}",
+            $"includeTxtRecords={(_browseIncludeTxtRecords ? "true" : "false")}"
+        };
+
+        AppendQuery(query, "discriminator", _browseDiscriminator);
+        AppendQuery(query, "vendorId", _browseVendorId);
+        AppendQuery(query, "productId", _browseProductId);
+        AppendQuery(query, "deviceType", _browseDeviceType);
+        AppendQuery(query, "commissioningMode", _browseCommissioningMode);
+        AppendQuery(query, "deviceNameContains", _browseDeviceNameContains);
+        AppendQuery(query, "instanceNameContains", _browseInstanceNameContains);
+        AppendQuery(query, "rotatingIdentifierContains", _browseRotatingIdentifierContains);
+        AppendQuery(query, "limit", _browseLimit);
+
+        return $"/api/discovery/commissionable?{string.Join("&", query)}";
+    }
+
+    private static void AppendQuery(List<string> query, string key, string value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            query.Add($"{Uri.EscapeDataString(key)}={Uri.EscapeDataString(value)}");
+        }
+    }
+
+    private static string GetBrowseMeta(DiscoveryDeviceModel device)
+        => string.Equals(device.Transport, "ble", StringComparison.OrdinalIgnoreCase)
+            ? $"{device.BluetoothAddress ?? device.PreferredAddress ?? "unknown"} · RSSI {device.Rssi?.ToString() ?? "n/a"}"
+            : $"{device.InstanceName} · {device.PreferredAddress}:{device.Port}";
+
+    private static string? GetAdvertisementPayload(DiscoveryDeviceModel device)
+    {
+        if (device.TxtRecords is not null)
+        {
+            return System.Text.Json.JsonSerializer.Serialize(
+                device.TxtRecords,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+
+        if (string.IsNullOrWhiteSpace(device.ServiceDataHex))
+        {
+            return null;
+        }
+
+        return System.Text.Json.JsonSerializer.Serialize(
+            new Dictionary<string, string?>
+            {
+                ["transport"] = device.Transport,
+                ["bluetoothAddress"] = device.BluetoothAddress,
+                ["serviceDataHex"] = device.ServiceDataHex
+            },
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+    }
+}

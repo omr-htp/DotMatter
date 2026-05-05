@@ -1,0 +1,138 @@
+@page "/"
+@rendermode InteractiveServer
+@using System.Text.Json.Nodes
+@inject ControllerApiClient Api
+
+<PageTitle>Dashboard</PageTitle>
+
+<section class="hero-panel">
+    <div>
+        <div class="page-kicker">Controller overview</div>
+        <h1>Dashboard</h1>
+        <p>
+            This is the fast operator view: controller health, device inventory, runtime snapshot,
+            and fabric-wide query tools in one place.
+        </p>
+    </div>
+
+    <RadzenButton Text="Refresh deck"
+                  ButtonStyle="ButtonStyle.Primary"
+                  Shade="Shade.Lighter"
+                  Click="@LoadAsync"
+                  Disabled="@_loading" />
+</section>
+
+<section class="metric-grid">
+    <div class="metric-card">
+        <span>health</span>
+        <strong>@GetStatusText(_health)</strong>
+    </div>
+    <div class="metric-card">
+        <span>readiness</span>
+        <strong>@GetStatusText(_readiness)</strong>
+    </div>
+    <div class="metric-card">
+        <span>devices</span>
+        <strong>@(_devices?.Count ?? 0)</strong>
+    </div>
+    <div class="metric-card">
+        <span>online</span>
+        <strong>@(_devices?.Count(device => device.IsOnline) ?? 0)</strong>
+    </div>
+</section>
+
+<div class="page-grid page-grid-two">
+    <section class="surface-panel">
+        <div class="section-heading">
+            <div>
+                <div class="page-kicker">Inventory</div>
+                <h2>Known devices</h2>
+            </div>
+        </div>
+
+        @if (_devicesError is not null)
+        {
+            <div class="operation-alert operation-alert-error">@_devicesError</div>
+        }
+        else if (_devices is null || _devices.Count == 0)
+        {
+            <div class="console-empty">No commissioned devices are currently in the registry.</div>
+        }
+        else
+        {
+            <div class="list-stack">
+                @foreach (var device in _devices.OrderByDescending(device => device.IsOnline).ThenBy(device => device.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    <a class="device-row-link" href="devices">
+                        <div>
+                            <div class="device-row-title">@device.Name</div>
+                            <div class="device-row-meta">@device.Id · @device.Ip:@device.Port</div>
+                        </div>
+                        <StatusBadge Text="@(device.IsOnline ? "online" : "offline")" Kind="@(device.IsOnline ? "online" : "offline")" />
+                    </a>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="surface-panel">
+        <div class="section-heading">
+            <div>
+                <div class="page-kicker">Runtime</div>
+                <h2>Snapshot JSON</h2>
+            </div>
+        </div>
+
+        <JsonPanel Content="@(_runtime?.RawContent ?? _runtime?.ErrorMessage)" EmptyMessage="Runtime snapshot not loaded yet." />
+    </section>
+</div>
+
+<section class="surface-panel section-spaced">
+    <div class="section-heading">
+        <div>
+            <div class="page-kicker">Global query tools</div>
+            <h2>Fabric-wide operations</h2>
+        </div>
+    </div>
+
+    <OperationConsole Operations="@OperationCatalog.GlobalOperations" />
+</section>
+
+@code {
+    private bool _loading;
+    private ApiCallResult<JsonNode>? _health;
+    private ApiCallResult<JsonNode>? _readiness;
+    private ApiCallResult<JsonNode>? _runtime;
+    private List<DeviceSummaryModel>? _devices;
+    private string? _devicesError;
+
+    protected override Task OnInitializedAsync()
+        => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _devicesError = null;
+
+        try
+        {
+            _health = await Api.GetJsonAsync("/health");
+            _readiness = await Api.GetJsonAsync("/health/ready");
+            _runtime = await Api.GetJsonAsync("/api/system/runtime");
+
+            var devicesResult = await Api.GetAsync<List<DeviceSummaryModel>>("/api/devices");
+            _devices = devicesResult.Value;
+            _devicesError = devicesResult.Success ? null : devicesResult.ErrorMessage;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string GetStatusText(ApiCallResult<JsonNode>? result)
+        => result?.Json?["status"]?.GetValue<string>()
+           ?? result?.Json?["message"]?.GetValue<string>()
+           ?? result?.ErrorMessage
+           ?? "unavailable";
+}

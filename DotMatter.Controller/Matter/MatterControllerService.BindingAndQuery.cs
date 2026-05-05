@@ -1,0 +1,1133 @@
+using System.Globalization;
+using System.Text.Json;
+using DotMatter.Core.Clusters;
+using DotMatter.Core.Fabrics;
+using DotMatter.Core.InteractionModel;
+using DotMatter.Hosting.Devices;
+using ISession = DotMatter.Core.Sessions.ISession;
+
+namespace DotMatter.Controller;
+
+public sealed partial class MatterControllerService
+{
+    internal sealed record DeviceBindingQueryResult(
+        bool Success,
+        DeviceOperationFailure Failure,
+        DeviceBindingListResponse? Response,
+        string? Error = null);
+
+    internal sealed record DeviceAclQueryResult(
+        bool Success,
+        DeviceOperationFailure Failure,
+        DeviceAclListResponse? Response,
+        string? Error = null);
+
+    internal sealed record DeviceBindingRemovalResult(
+        bool Success,
+        DeviceOperationFailure Failure,
+        DeviceBindingRemovalResponse? Response,
+        string? Error = null);
+
+    internal sealed record DeviceAclRemovalResult(
+        bool Success,
+        DeviceOperationFailure Failure,
+        DeviceAclRemovalResponse? Response,
+        string? Error = null);
+
+    internal sealed record SwitchBindingRemovalResult(
+        bool Success,
+        DeviceOperationFailure Failure,
+        SwitchBindingRemovalResponse? Response,
+        string? Error = null);
+
+    internal sealed record FabricBindingQueryResult(
+        bool Success,
+        DeviceOperationFailure Failure,
+        FabricBindingListResponse? Response,
+        string? Error = null);
+
+    internal sealed record FabricAclQueryResult(
+        bool Success,
+        DeviceOperationFailure Failure,
+        FabricAclListResponse? Response,
+        string? Error = null);
+
+    internal sealed record DeviceMatterEventQueryResult(
+        bool Success,
+        DeviceOperationFailure Failure,
+        DeviceMatterEventReadResponse? Response,
+        string? Error = null);
+
+    private sealed record BindingRemovalPlan(
+        BindingCluster.TargetStruct[] UpdatedEntries,
+        BindingCluster.TargetStruct[] RemovedEntries,
+        RemovalStatus Status)
+    {
+        public bool RequiresWrite => RemovedEntries.Length > 0;
+    }
+
+    private sealed record AclRemovalPlan(
+        AccessControlCluster.AccessControlEntryStruct[] UpdatedEntries,
+        AccessControlCluster.AccessControlEntryStruct[] RemovedEntries,
+        RemovalStatus Status)
+    {
+        public bool RequiresWrite => RemovedEntries.Length > 0;
+    }
+
+    /// <summary>Configures a switch Binding entry and grants the switch OnOff operate ACL on the target.</summary>
+    public async Task<DeviceOperationResult> BindSwitchOnOffAsync(
+        string switchId,
+        string targetId,
+        ushort sourceEndpoint = 1,
+        ushort targetEndpoint = 1)
+    {
+        if (!TryGetConnectedSession(switchId, out var switchSession))
+        {
+            return new DeviceOperationResult(false, DeviceOperationFailure.NotConnected, $"Switch {switchId} is not connected");
+        }
+
+        if (!TryGetConnectedSession(targetId, out var targetSession))
+        {
+            return new DeviceOperationResult(false, DeviceOperationFailure.NotConnected, $"Target {targetId} is not connected");
+        }
+
+        var switchDevice = Registry.Get(switchId);
+        var targetDevice = Registry.Get(targetId);
+        if (switchDevice is null || targetDevice is null)
+        {
+            return new DeviceOperationResult(false, DeviceOperationFailure.NotFound, "Switch or target device was not found");
+        }
+
+        var switchNodeId = ToOperationalNodeId(switchDevice.NodeId);
+        var targetNodeId = ToOperationalNodeId(targetDevice.NodeId);
+        var targetFabric = await new FabricDiskStorage(Registry.BasePath).LoadFabricAsync(targetDevice.FabricName);
+        var controllerNodeId = BitConverter.ToUInt64(targetFabric.RootNodeId.ToByteArrayUnsigned());
+
+        try
+        {
+            using var cts = new CancellationTokenSource(_apiOptions.CommandTimeout);
+            var aclResult = await EnsureOnOffOperateAclAsync(
+                targetSession.Session!,
+                controllerNodeId,
+                switchNodeId,
+                targetEndpoint,
+                cts.Token);
+            if (!aclResult.Success)
+            {
+                return new DeviceOperationResult(false, DeviceOperationFailure.TransportError, $"ACL write failed: {FormatWriteResponse(aclResult)}");
+            }
+
+            var bindingResult = await EnsureOnOffBindingAsync(switchSession.Session!, targetNodeId, sourceEndpoint, targetEndpoint, cts.Token);
+            if (!bindingResult.Success)
+            {
+                return new DeviceOperationResult(false, DeviceOperationFailure.TransportError, $"Binding write failed: {FormatWriteResponse(bindingResult)}");
+            }
+
+            Registry.Update(switchId, device => device.LastSeen = DateTime.UtcNow);
+            Registry.Update(targetId, device => device.LastSeen = DateTime.UtcNow);
+            PublishEvent(switchId, "binding", $"onoff:{targetId}");
+            Log.LogInformation("Switch {SwitchId}: bound endpoint {SourceEndpoint} OnOff to {TargetId} endpoint {TargetEndpoint}",
+                switchId, sourceEndpoint, targetId, targetEndpoint);
+            return DeviceOperationResult.Succeeded;
+        }
+        catch (OperationCanceledException)
+        {
+            return new DeviceOperationResult(false, DeviceOperationFailure.Timeout, "Switch binding timed out");
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Switch {SwitchId}: binding to target {TargetId} failed", switchId, targetId);
+            return new DeviceOperationResult(false, DeviceOperationFailure.TransportError, ex.Message);
+        }
+    }
+
+    /// <summary>Removes a switch Binding entry and conservatively reconciles the matching target ACL grant.</summary>
+    internal async Task<SwitchBindingRemovalResult> UnbindSwitchOnOffAsync(
+        string switchId,
+        string targetId,
+        ushort sourceEndpoint = 1,
+        ushort targetEndpoint = 1)
+    {
+        if (!TryGetConnectedSession(switchId, out var switchSession))
+        {
+            return new SwitchBindingRemovalResult(false, DeviceOperationFailure.NotConnected, null, $"Switch {switchId} is not connected");
+        }
+
+        if (!TryGetConnectedSession(targetId, out var targetSession))
+        {
+            return new SwitchBindingRemovalResult(false, DeviceOperationFailure.NotConnected, null, $"Target {targetId} is not connected");
+        }
+
+        var switchDevice = Registry.Get(switchId);
+        var targetDevice = Registry.Get(targetId);
+        if (switchDevice is null || targetDevice is null)
+        {
+            return new SwitchBindingRemovalResult(false, DeviceOperationFailure.NotFound, null, "Switch or target device was not found");
+        }
+
+        var switchNodeId = ToOperationalNodeId(switchDevice.NodeId);
+        var targetNodeId = ToOperationalNodeId(targetDevice.NodeId);
+
+        try
+        {
+            using var cts = new CancellationTokenSource(_apiOptions.CommandTimeout);
+
+            var bindingCluster = new BindingCluster(switchSession.Session!, sourceEndpoint);
+            var existingBinding = await bindingCluster.ReadBindingAsync(cts.Token) ?? [];
+            var bindingPlan = RemoveBindingEntries(existingBinding, entry =>
+                entry.Node == targetNodeId
+                && entry.Endpoint == targetEndpoint
+                && entry.Cluster == OnOffCluster.ClusterId);
+
+            if (bindingPlan.RequiresWrite)
+            {
+                var bindingWrite = await bindingCluster.WriteBindingAsync(bindingPlan.UpdatedEntries, ct: cts.Token);
+                if (!bindingWrite.Success)
+                {
+                    var error = $"Binding write failed: {FormatWriteResponse(bindingWrite)}";
+                    return new SwitchBindingRemovalResult(
+                        false,
+                        DeviceOperationFailure.TransportError,
+                        new SwitchBindingRemovalResponse(
+                            switchId,
+                            switchDevice.Name,
+                            targetId,
+                            targetDevice.Name,
+                            sourceEndpoint,
+                            targetEndpoint,
+                            CreateWriteFailedStatus(existingBinding.Length, FormatWriteResponse(bindingWrite)),
+                            CreateNotAttemptedStatus(0, "ACL cleanup was not attempted because Binding removal failed"),
+                            error),
+                        error);
+                }
+            }
+
+            var accessControl = new AccessControlCluster(targetSession.Session!, endpointId: 0);
+            var existingAcl = await accessControl.ReadACLAsync(cts.Token) ?? [];
+            var aclPlan = RemoveOnOffAclEntries(existingAcl, switchNodeId, targetEndpoint);
+
+            if (aclPlan.RequiresWrite)
+            {
+                var aclWrite = await accessControl.WriteACLAsync(aclPlan.UpdatedEntries, ct: cts.Token);
+                if (!aclWrite.Success)
+                {
+                    var error = $"ACL write failed: {FormatWriteResponse(aclWrite)}";
+                    return new SwitchBindingRemovalResult(
+                        false,
+                        DeviceOperationFailure.TransportError,
+                        new SwitchBindingRemovalResponse(
+                            switchId,
+                            switchDevice.Name,
+                            targetId,
+                            targetDevice.Name,
+                            sourceEndpoint,
+                            targetEndpoint,
+                            bindingPlan.Status,
+                            CreateWriteFailedStatus(existingAcl.Length, FormatWriteResponse(aclWrite)),
+                            error),
+                        error);
+                }
+            }
+
+            Registry.Update(switchId, device => device.LastSeen = DateTime.UtcNow);
+            Registry.Update(targetId, device => device.LastSeen = DateTime.UtcNow);
+
+            if (bindingPlan.Status.RemovedCount > 0 || aclPlan.Status.RemovedCount > 0)
+            {
+                PublishEvent(switchId, "binding", $"onoff-removed:{targetId}");
+            }
+
+            return new SwitchBindingRemovalResult(
+                true,
+                DeviceOperationFailure.None,
+                new SwitchBindingRemovalResponse(
+                    switchId,
+                    switchDevice.Name,
+                    targetId,
+                    targetDevice.Name,
+                    sourceEndpoint,
+                    targetEndpoint,
+                    bindingPlan.Status,
+                    aclPlan.Status));
+        }
+        catch (OperationCanceledException)
+        {
+            return new SwitchBindingRemovalResult(false, DeviceOperationFailure.Timeout, null, "Switch unbind timed out");
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Switch {SwitchId}: unbinding from target {TargetId} failed", switchId, targetId);
+            return new SwitchBindingRemovalResult(false, DeviceOperationFailure.TransportError, null, ex.Message);
+        }
+    }
+
+    /// <summary>Removes matching Binding entries from one source device endpoint.</summary>
+    internal async Task<DeviceBindingRemovalResult> RemoveBindingEntriesAsync(string id, DeviceBindingRemovalRequest request)
+    {
+        var device = Registry.Get(id);
+        if (device is null)
+        {
+            return new DeviceBindingRemovalResult(false, DeviceOperationFailure.NotFound, null, $"Device {id} not found");
+        }
+
+        if (!TryGetConnectedSession(id, out var session))
+        {
+            return new DeviceBindingRemovalResult(false, DeviceOperationFailure.NotConnected, null, $"Device {id} is not connected");
+        }
+
+        if (!TryParseBindingNodeId(request.NodeId, out var nodeId, out var parseError))
+        {
+            return new DeviceBindingRemovalResult(false, DeviceOperationFailure.TransportError, null, parseError);
+        }
+
+        try
+        {
+            using var cts = new CancellationTokenSource(_apiOptions.CommandTimeout);
+            var binding = new BindingCluster(session.Session!, request.Endpoint);
+            var existingBinding = await binding.ReadBindingAsync(cts.Token) ?? [];
+            var targetIndex = BuildOperationalNodeIndex();
+            var plan = RemoveBindingEntries(existingBinding, entry => MatchesBindingRemovalRequest(entry, nodeId, request));
+
+            if (plan.RequiresWrite)
+            {
+                var write = await binding.WriteBindingAsync(plan.UpdatedEntries, ct: cts.Token);
+                if (!write.Success)
+                {
+                    var error = $"Binding write failed: {FormatWriteResponse(write)}";
+                    return new DeviceBindingRemovalResult(
+                        false,
+                        DeviceOperationFailure.TransportError,
+                        new DeviceBindingRemovalResponse(
+                            device.Id,
+                            device.Name,
+                            device.FabricName,
+                            request.Endpoint,
+                            CreateWriteFailedStatus(existingBinding.Length, FormatWriteResponse(write)),
+                            [],
+                            error),
+                        error);
+                }
+            }
+
+            Registry.Update(id, current => current.LastSeen = DateTime.UtcNow);
+            if (plan.Status.RemovedCount > 0)
+            {
+                PublishEvent(id, "binding", $"removed:{plan.Status.RemovedCount}");
+            }
+
+            return new DeviceBindingRemovalResult(
+                true,
+                DeviceOperationFailure.None,
+                new DeviceBindingRemovalResponse(
+                    device.Id,
+                    device.Name,
+                    device.FabricName,
+                    request.Endpoint,
+                    plan.Status,
+                    plan.RemovedEntries.Select(entry => MapBindingEntry(entry, targetIndex)).ToArray()));
+        }
+        catch (OperationCanceledException)
+        {
+            return new DeviceBindingRemovalResult(false, DeviceOperationFailure.Timeout, null, "Binding removal timed out");
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Device {Id}: Binding removal failed on endpoint {Endpoint}", id, request.Endpoint);
+            return new DeviceBindingRemovalResult(false, DeviceOperationFailure.TransportError, null, ex.Message);
+        }
+    }
+
+    /// <summary>Removes matching ACL entries from endpoint 0 of one target device.</summary>
+    internal async Task<DeviceAclRemovalResult> RemoveAclEntriesAsync(string id, DeviceAclRemovalRequest request)
+    {
+        var device = Registry.Get(id);
+        if (device is null)
+        {
+            return new DeviceAclRemovalResult(false, DeviceOperationFailure.NotFound, null, $"Device {id} not found");
+        }
+
+        if (!TryGetConnectedSession(id, out var session))
+        {
+            return new DeviceAclRemovalResult(false, DeviceOperationFailure.NotConnected, null, $"Device {id} is not connected");
+        }
+
+        try
+        {
+            var privilege = ParseAclPrivilege(request.Privilege);
+            var authMode = ParseAclAuthMode(request.AuthMode);
+            var auxiliaryType = ParseAclAuxiliaryType(request.AuxiliaryType);
+            var subjects = ParseAclSubjects(request.Subjects);
+            var targets = ParseAclTargets(request.Targets);
+            var targetIndex = BuildOperationalNodeIndex();
+
+            using var cts = new CancellationTokenSource(_apiOptions.CommandTimeout);
+            var accessControl = new AccessControlCluster(session.Session!, endpointId: 0);
+            var existingAcl = await accessControl.ReadACLAsync(cts.Token) ?? [];
+            var plan = RemoveAclEntries(existingAcl, entry => MatchesAclRemovalRequest(entry, privilege, authMode, subjects, targets, auxiliaryType));
+
+            if (plan.RequiresWrite)
+            {
+                var write = await accessControl.WriteACLAsync(plan.UpdatedEntries, ct: cts.Token);
+                if (!write.Success)
+                {
+                    var error = $"ACL write failed: {FormatWriteResponse(write)}";
+                    return new DeviceAclRemovalResult(
+                        false,
+                        DeviceOperationFailure.TransportError,
+                        new DeviceAclRemovalResponse(
+                            device.Id,
+                            device.Name,
+                            device.FabricName,
+                            0,
+                            CreateWriteFailedStatus(existingAcl.Length, FormatWriteResponse(write)),
+                            [],
+                            error),
+                        error);
+                }
+            }
+
+            Registry.Update(id, current => current.LastSeen = DateTime.UtcNow);
+            if (plan.Status.RemovedCount > 0)
+            {
+                PublishEvent(id, "acl", $"removed:{plan.Status.RemovedCount}");
+            }
+
+            return new DeviceAclRemovalResult(
+                true,
+                DeviceOperationFailure.None,
+                new DeviceAclRemovalResponse(
+                    device.Id,
+                    device.Name,
+                    device.FabricName,
+                    0,
+                    plan.Status,
+                    plan.RemovedEntries.Select(entry => MapAclEntry(entry, targetIndex)).ToArray()));
+        }
+        catch (OperationCanceledException)
+        {
+            return new DeviceAclRemovalResult(false, DeviceOperationFailure.Timeout, null, "ACL removal timed out");
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Device {Id}: ACL removal failed", id);
+            return new DeviceAclRemovalResult(false, DeviceOperationFailure.TransportError, null, ex.Message);
+        }
+    }
+
+    /// <summary>Reads Binding entries from one source device endpoint.</summary>
+    internal async Task<DeviceBindingQueryResult> ReadBindingsAsync(string id, ushort endpoint = 1)
+    {
+        var device = Registry.Get(id);
+        if (device is null)
+        {
+            return new DeviceBindingQueryResult(false, DeviceOperationFailure.NotFound, null, $"Device {id} not found");
+        }
+
+        if (!TryGetConnectedSession(id, out var session))
+        {
+            return new DeviceBindingQueryResult(false, DeviceOperationFailure.NotConnected, null, $"Device {id} is not connected");
+        }
+
+        try
+        {
+            using var cts = new CancellationTokenSource(_apiOptions.CommandTimeout);
+            var response = await ReadBindingsForEndpointAsync(
+                device,
+                session.Session!,
+                endpoint,
+                BuildOperationalNodeIndex(),
+                cts.Token);
+
+            return new DeviceBindingQueryResult(true, DeviceOperationFailure.None, response);
+        }
+        catch (OperationCanceledException)
+        {
+            return new DeviceBindingQueryResult(false, DeviceOperationFailure.Timeout, null, "Binding read timed out");
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Device {Id}: Binding read failed on endpoint {Endpoint}", id, endpoint);
+            return new DeviceBindingQueryResult(false, DeviceOperationFailure.TransportError, null, ex.Message);
+        }
+    }
+
+    /// <summary>Reads AccessControl ACL entries from one target device.</summary>
+    internal async Task<DeviceAclQueryResult> ReadAclAsync(string id)
+    {
+        var device = Registry.Get(id);
+        if (device is null)
+        {
+            return new DeviceAclQueryResult(false, DeviceOperationFailure.NotFound, null, $"Device {id} not found");
+        }
+
+        if (!TryGetConnectedSession(id, out var session))
+        {
+            return new DeviceAclQueryResult(false, DeviceOperationFailure.NotConnected, null, $"Device {id} is not connected");
+        }
+
+        try
+        {
+            using var cts = new CancellationTokenSource(_apiOptions.CommandTimeout);
+            var response = await ReadAclForEndpointAsync(
+                device,
+                session.Session!,
+                BuildOperationalNodeIndex(),
+                cts.Token);
+
+            return new DeviceAclQueryResult(true, DeviceOperationFailure.None, response);
+        }
+        catch (OperationCanceledException)
+        {
+            return new DeviceAclQueryResult(false, DeviceOperationFailure.Timeout, null, "ACL read timed out");
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Device {Id}: ACL read failed", id);
+            return new DeviceAclQueryResult(false, DeviceOperationFailure.TransportError, null, ex.Message);
+        }
+    }
+
+    /// <summary>Reads Binding entries from all known devices on a controller fabric.</summary>
+    internal async Task<FabricBindingQueryResult> ReadFabricBindingsAsync(string? fabricName = null, ushort? endpoint = null)
+    {
+        var requestedFabricName = string.IsNullOrWhiteSpace(fabricName)
+            ? _commissioningOptions.SharedFabricName
+            : fabricName;
+
+        string requestedCompressedFabricId;
+        try
+        {
+            var requestedFabric = await new FabricDiskStorage(Registry.BasePath).LoadFabricAsync(requestedFabricName);
+            requestedCompressedFabricId = requestedFabric.CompressedFabricId;
+        }
+        catch (Exception ex)
+        {
+            return new FabricBindingQueryResult(false, DeviceOperationFailure.NotFound, null, $"Fabric {requestedFabricName} not found or unreadable: {ex.Message}");
+        }
+
+        var targetIndex = BuildOperationalNodeIndex();
+        var sourceDevices = new List<DeviceInfo>();
+        foreach (var device in Registry.GetAll().OrderBy(static device => device.Id, StringComparer.OrdinalIgnoreCase))
+        {
+            if (await DeviceBelongsToCompressedFabricAsync(device, requestedCompressedFabricId))
+            {
+                sourceDevices.Add(device);
+            }
+        }
+
+        var sourceResults = new List<DeviceBindingListResponse>();
+        foreach (var device in sourceDevices)
+        {
+            var endpoints = endpoint.HasValue
+                ? [endpoint.Value]
+                : GetBindingEndpoints(device);
+
+            foreach (var bindingEndpoint in endpoints)
+            {
+                sourceResults.Add(await ReadFabricDeviceBindingsAsync(device, bindingEndpoint, targetIndex));
+            }
+        }
+
+        var successfulSources = sourceResults.Count(static result => result.Error is null);
+        return new FabricBindingQueryResult(
+            true,
+            DeviceOperationFailure.None,
+            new FabricBindingListResponse(
+                requestedFabricName,
+                sourceResults.Count,
+                successfulSources,
+                sourceResults.Count - successfulSources,
+                [.. sourceResults]));
+    }
+
+    /// <summary>Reads AccessControl ACL entries from all known devices on a controller fabric.</summary>
+    internal async Task<FabricAclQueryResult> ReadFabricAclsAsync(string? fabricName = null)
+    {
+        var requestedFabricName = string.IsNullOrWhiteSpace(fabricName)
+            ? _commissioningOptions.SharedFabricName
+            : fabricName;
+
+        string requestedCompressedFabricId;
+        try
+        {
+            var requestedFabric = await new FabricDiskStorage(Registry.BasePath).LoadFabricAsync(requestedFabricName);
+            requestedCompressedFabricId = requestedFabric.CompressedFabricId;
+        }
+        catch (Exception ex)
+        {
+            return new FabricAclQueryResult(false, DeviceOperationFailure.NotFound, null, $"Fabric {requestedFabricName} not found or unreadable: {ex.Message}");
+        }
+
+        var targetIndex = BuildOperationalNodeIndex();
+        var sourceResults = new List<DeviceAclListResponse>();
+        foreach (var device in Registry.GetAll().OrderBy(static device => device.Id, StringComparer.OrdinalIgnoreCase))
+        {
+            if (await DeviceBelongsToCompressedFabricAsync(device, requestedCompressedFabricId))
+            {
+                sourceResults.Add(await ReadFabricDeviceAclAsync(device, targetIndex));
+            }
+        }
+
+        var successfulSources = sourceResults.Count(static result => result.Error is null);
+        return new FabricAclQueryResult(
+            true,
+            DeviceOperationFailure.None,
+            new FabricAclListResponse(
+                requestedFabricName,
+                sourceResults.Count,
+                successfulSources,
+                sourceResults.Count - successfulSources,
+                [.. sourceResults]));
+    }
+
+    /// <summary>Reads raw Matter event envelopes from one device for a selected cluster and optional event.</summary>
+    internal async Task<DeviceMatterEventQueryResult> ReadMatterEventsAsync(
+        string id,
+        ushort? endpoint,
+        uint clusterId,
+        uint? eventId = null,
+        bool fabricFiltered = false)
+    {
+        var device = Registry.Get(id);
+        if (device is null)
+        {
+            return new DeviceMatterEventQueryResult(false, DeviceOperationFailure.NotFound, null, $"Device {id} not found");
+        }
+
+        if (!TryGetConnectedSession(id, out var session))
+        {
+            return new DeviceMatterEventQueryResult(false, DeviceOperationFailure.NotConnected, null, $"Device {id} is not connected");
+        }
+
+        try
+        {
+            using var cts = new CancellationTokenSource(_apiOptions.CommandTimeout);
+            var resolvedEndpoint = ResolveMatterEventEndpoint(device, clusterId, endpoint);
+            var reports = await MatterEvents.ReadAsync(
+                session.Session!,
+                [new MatterEventPath(resolvedEndpoint, clusterId, eventId)],
+                fabricFiltered,
+                cts.Token);
+
+            Registry.Update(id, current => current.LastSeen = DateTime.UtcNow);
+
+            return new DeviceMatterEventQueryResult(
+                true,
+                DeviceOperationFailure.None,
+                new DeviceMatterEventReadResponse(
+                    device.Id,
+                    device.Name,
+                    resolvedEndpoint,
+                    clusterId,
+                    $"0x{clusterId:X4}",
+                    eventId,
+                    eventId.HasValue ? $"0x{eventId.Value:X4}" : null,
+                    reports.Select(report => MapMatterEventResponse(device.Id, device.Name, report)).ToArray()));
+        }
+        catch (OperationCanceledException)
+        {
+            return new DeviceMatterEventQueryResult(false, DeviceOperationFailure.Timeout, null, "Matter event read timed out");
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Device {Id}: Matter event read failed on cluster 0x{ClusterId:X4}", id, clusterId);
+            return new DeviceMatterEventQueryResult(false, DeviceOperationFailure.TransportError, null, ex.Message);
+        }
+    }
+
+    private static ushort[] GetBindingEndpoints(DeviceInfo device)
+    {
+        if (device.Endpoints is null)
+        {
+            return [1];
+        }
+
+        var endpoints = device.Endpoints
+            .Where(static endpoint => endpoint.Key != 0 && endpoint.Value.Contains(BindingCluster.ClusterId))
+            .Select(static endpoint => endpoint.Key)
+            .Order()
+            .ToArray();
+
+        return endpoints.Length == 0 ? [1] : endpoints;
+    }
+
+    private static ushort ResolveMatterEventEndpoint(DeviceInfo device, uint clusterId, ushort? requestedEndpoint)
+    {
+        if (requestedEndpoint.HasValue)
+        {
+            return requestedEndpoint.Value;
+        }
+
+        if (device.Endpoints is not null)
+        {
+            foreach (var (endpoint, clusters) in device.Endpoints)
+            {
+                if (clusters.Contains(clusterId))
+                {
+                    return endpoint;
+                }
+            }
+        }
+
+        return clusterId is AccessControlCluster.ClusterId or GeneralDiagnosticsCluster.ClusterId
+            ? (ushort)0
+            : (ushort)1;
+    }
+
+    private async Task<DeviceBindingListResponse> ReadFabricDeviceBindingsAsync(
+        DeviceInfo device,
+        ushort endpoint,
+        IReadOnlyDictionary<ulong, DeviceInfo> targetIndex)
+    {
+        if (!TryGetConnectedSession(device.Id, out var session))
+        {
+            return CreateBindingErrorResponse(device, endpoint, $"Device {device.Id} is not connected");
+        }
+
+        try
+        {
+            using var cts = new CancellationTokenSource(_apiOptions.CommandTimeout);
+            return await ReadBindingsForEndpointAsync(device, session.Session!, endpoint, targetIndex, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return CreateBindingErrorResponse(device, endpoint, "Binding read timed out");
+        }
+        catch (Exception ex)
+        {
+            Log.LogWarning(ex, "Device {Id}: Binding read failed on endpoint {Endpoint}", device.Id, endpoint);
+            return CreateBindingErrorResponse(device, endpoint, ex.Message);
+        }
+    }
+
+    private static async Task<DeviceBindingListResponse> ReadBindingsForEndpointAsync(
+        DeviceInfo sourceDevice,
+        ISession session,
+        ushort endpoint,
+        IReadOnlyDictionary<ulong, DeviceInfo> targetIndex,
+        CancellationToken ct)
+    {
+        var binding = new BindingCluster(session, endpoint);
+        var entries = await binding.ReadBindingAsync(ct) ?? [];
+        return new DeviceBindingListResponse(
+            sourceDevice.Id,
+            sourceDevice.Name,
+            sourceDevice.FabricName,
+            endpoint,
+            entries.Select(entry => MapBindingEntry(entry, targetIndex)).ToArray());
+    }
+
+    private async Task<DeviceAclListResponse> ReadFabricDeviceAclAsync(
+        DeviceInfo device,
+        IReadOnlyDictionary<ulong, DeviceInfo> targetIndex)
+    {
+        if (!TryGetConnectedSession(device.Id, out var session))
+        {
+            return CreateAclErrorResponse(device, $"Device {device.Id} is not connected");
+        }
+
+        try
+        {
+            using var cts = new CancellationTokenSource(_apiOptions.CommandTimeout);
+            return await ReadAclForEndpointAsync(device, session.Session!, targetIndex, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return CreateAclErrorResponse(device, "ACL read timed out");
+        }
+        catch (Exception ex)
+        {
+            Log.LogWarning(ex, "Device {Id}: ACL read failed", device.Id);
+            return CreateAclErrorResponse(device, ex.Message);
+        }
+    }
+
+    private static DeviceAclListResponse CreateAclErrorResponse(DeviceInfo sourceDevice, string error)
+        => new(sourceDevice.Id, sourceDevice.Name, sourceDevice.FabricName, 0, [], error);
+
+    private static async Task<DeviceAclListResponse> ReadAclForEndpointAsync(
+        DeviceInfo sourceDevice,
+        ISession session,
+        IReadOnlyDictionary<ulong, DeviceInfo> targetIndex,
+        CancellationToken ct)
+    {
+        var accessControl = new AccessControlCluster(session, endpointId: 0);
+        var entries = await accessControl.ReadACLAsync(ct) ?? [];
+        return new DeviceAclListResponse(
+            sourceDevice.Id,
+            sourceDevice.Name,
+            sourceDevice.FabricName,
+            0,
+            entries.Select(entry => MapAclEntry(entry, targetIndex)).ToArray());
+    }
+
+    private static DeviceBindingListResponse CreateBindingErrorResponse(DeviceInfo sourceDevice, ushort endpoint, string error)
+        => new(sourceDevice.Id, sourceDevice.Name, sourceDevice.FabricName, endpoint, [], error);
+
+    private IReadOnlyDictionary<ulong, DeviceInfo> BuildOperationalNodeIndex()
+        => MatterBindingOperations.BuildOperationalNodeIndex(Registry.GetAll());
+
+    private async Task<bool> DeviceBelongsToCompressedFabricAsync(DeviceInfo device, string compressedFabricId)
+    {
+        try
+        {
+            var fabric = await new FabricDiskStorage(Registry.BasePath).LoadFabricAsync(device.FabricName);
+            return string.Equals(fabric.CompressedFabricId, compressedFabricId, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            Log.LogWarning(ex, "Device {Id}: failed to read fabric {FabricName}", device.Id, device.FabricName);
+            return false;
+        }
+    }
+
+    private static DeviceBindingEntry MapBindingEntry(BindingCluster.TargetStruct entry, IReadOnlyDictionary<ulong, DeviceInfo> targetIndex)
+    {
+        DeviceInfo? targetDevice = null;
+        if (entry.Node.HasValue)
+        {
+            targetIndex.TryGetValue(entry.Node.Value, out targetDevice);
+        }
+
+        return new DeviceBindingEntry(
+            entry.Node?.ToString(CultureInfo.InvariantCulture),
+            entry.Group,
+            entry.Endpoint,
+            entry.Cluster,
+            entry.Cluster.HasValue ? $"0x{entry.Cluster.Value:X4}" : null,
+            entry.FabricIndex,
+            targetDevice?.Id,
+            targetDevice?.Name);
+    }
+
+    private static DeviceAclEntry MapAclEntry(
+        AccessControlCluster.AccessControlEntryStruct entry,
+        IReadOnlyDictionary<ulong, DeviceInfo> targetIndex)
+        => new(
+            entry.Privilege.ToString(),
+            entry.AuthMode.ToString(),
+            entry.Subjects?.Select(subject => MapAclSubject(subject, targetIndex)).ToArray(),
+            entry.Targets?.Select(MapAclTarget).ToArray(),
+            entry.AuxiliaryType?.ToString(),
+            entry.FabricIndex);
+
+    private static DeviceAclSubject MapAclSubject(ulong subject, IReadOnlyDictionary<ulong, DeviceInfo> targetIndex)
+    {
+        targetIndex.TryGetValue(subject, out var device);
+        return new DeviceAclSubject(
+            subject.ToString(CultureInfo.InvariantCulture),
+            device?.Id,
+            device?.Name);
+    }
+
+    private static DeviceAclTarget MapAclTarget(AccessControlCluster.AccessControlTargetStruct target)
+        => new(
+            target.Cluster,
+            target.Cluster.HasValue ? $"0x{target.Cluster.Value:X4}" : null,
+            target.Endpoint,
+            target.DeviceType,
+            target.DeviceType.HasValue ? $"0x{target.DeviceType.Value:X4}" : null);
+
+    private static MatterEventResponse MapMatterEventResponse(string deviceId, string? deviceName, MatterEventReport report)
+    {
+        var mappedEvent = ClusterEventRegistry.MapEventReport(report);
+        return new MatterEventResponse(
+            deviceId,
+            deviceName,
+            report.EndpointId,
+            report.ClusterId,
+            $"0x{report.ClusterId:X4}",
+            mappedEvent?.ClusterName ?? ClusterEventRegistry.GetClusterName(report.ClusterId),
+            report.EventId,
+            $"0x{report.EventId:X4}",
+            mappedEvent?.EventName ?? "Unknown",
+            report.EventNumber,
+            report.Priority,
+            report.EpochTimestamp,
+            report.SystemTimestamp,
+            report.DeltaEpochTimestamp,
+            report.DeltaSystemTimestamp,
+            MapMatterEventPayload(mappedEvent, report),
+            report.RawData is { } rawData ? Convert.ToHexString(rawData.GetBytes()) : null,
+            report.StatusCode,
+            DateTime.UtcNow);
+    }
+
+    private static MatterEventPayloadResponse MapMatterEventPayload(MatterClusterEvent? mappedEvent, MatterEventReport report)
+    {
+        if (mappedEvent?.TypedPayload is not null)
+        {
+            var payloadJson = ClusterEventRegistry.BuildPayloadJson(mappedEvent);
+            if (payloadJson != null)
+            {
+                return new MatterEventPayloadResponse(
+                    "typed",
+                    ToJsonElement(payloadJson),
+                    mappedEvent.Reason);
+            }
+
+            return new MatterEventPayloadResponse(
+                "unknown",
+                null,
+                "Generated JSON projection for the typed payload is not available.");
+        }
+
+        if (mappedEvent != null)
+        {
+            return new MatterEventPayloadResponse("unknown", null, mappedEvent.Reason);
+        }
+
+        if (report.StatusCode.HasValue)
+        {
+            return new MatterEventPayloadResponse(
+                "unknown",
+                null,
+                $"Event report carried status code 0x{report.StatusCode.Value:X2}.");
+        }
+
+        return new MatterEventPayloadResponse(
+            "unknown",
+            null,
+            "Cluster does not have generated event support.");
+    }
+
+    private static JsonElement ToJsonElement(System.Text.Json.Nodes.JsonNode node)
+    {
+        using var document = JsonDocument.Parse(node.ToJsonString());
+        return document.RootElement.Clone();
+    }
+
+    private static bool TryParseBindingNodeId(string? nodeId, out ulong? parsedNodeId, out string? error)
+    {
+        parsedNodeId = null;
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(nodeId))
+        {
+            return true;
+        }
+
+        if (!ulong.TryParse(nodeId, out var parsed))
+        {
+            error = "Binding removal request nodeId must be an unsigned integer";
+            return false;
+        }
+
+        parsedNodeId = parsed;
+        return true;
+    }
+
+    private static ulong[]? ParseAclSubjects(string[]? subjects)
+        => subjects?.Select(ulong.Parse).ToArray();
+
+    private static AccessControlCluster.AccessControlTargetStruct[]? ParseAclTargets(DeviceAclRemovalTarget[]? targets)
+        => targets?.Select(static target => new AccessControlCluster.AccessControlTargetStruct
+        {
+            Cluster = target.Cluster,
+            Endpoint = target.Endpoint,
+            DeviceType = target.DeviceType,
+        }).ToArray();
+
+    private static AccessControlCluster.AccessControlEntryPrivilegeEnum ParseAclPrivilege(string privilege)
+        => Enum.Parse<AccessControlCluster.AccessControlEntryPrivilegeEnum>(privilege, ignoreCase: true);
+
+    private static AccessControlCluster.AccessControlEntryAuthModeEnum ParseAclAuthMode(string authMode)
+        => Enum.Parse<AccessControlCluster.AccessControlEntryAuthModeEnum>(authMode, ignoreCase: true);
+
+    private static AccessControlCluster.AccessControlAuxiliaryTypeEnum? ParseAclAuxiliaryType(string? auxiliaryType)
+        => string.IsNullOrWhiteSpace(auxiliaryType)
+            ? null
+            : Enum.Parse<AccessControlCluster.AccessControlAuxiliaryTypeEnum>(auxiliaryType, ignoreCase: true);
+
+    private static ulong ToOperationalNodeId(string nodeId)
+        => MatterBindingOperations.ToOperationalNodeId(nodeId);
+
+    private static bool TryToOperationalNodeId(string nodeId, out ulong operationalNodeId)
+        => MatterBindingOperations.TryToOperationalNodeId(nodeId, out operationalNodeId);
+
+    private static async Task<WriteResponse> EnsureOnOffOperateAclAsync(
+        ISession targetSession,
+        ulong controllerNodeId,
+        ulong switchNodeId,
+        ushort targetEndpoint,
+        CancellationToken ct)
+        => await MatterBindingOperations.EnsureOnOffOperateAclAsync(targetSession, controllerNodeId, switchNodeId, targetEndpoint, ct);
+
+    private static async Task<WriteResponse> EnsureOnOffBindingAsync(
+        ISession switchSession,
+        ulong targetNodeId,
+        ushort sourceEndpoint,
+        ushort targetEndpoint,
+        CancellationToken ct)
+        => await MatterBindingOperations.EnsureOnOffBindingAsync(switchSession, targetNodeId, sourceEndpoint, targetEndpoint, ct);
+
+    private static BindingRemovalPlan RemoveBindingEntries(
+        BindingCluster.TargetStruct[] existingEntries,
+        Func<BindingCluster.TargetStruct, bool> predicate)
+    {
+        var removedEntries = existingEntries.Where(predicate).ToArray();
+        if (removedEntries.Length == 0)
+        {
+            return new BindingRemovalPlan(existingEntries, [], CreateAlreadyAbsentStatus(existingEntries.Length));
+        }
+
+        var updatedEntries = existingEntries.Where(entry => !predicate(entry)).ToArray();
+        return new BindingRemovalPlan(updatedEntries, removedEntries, CreateRemovedStatus(removedEntries.Length, updatedEntries.Length));
+    }
+
+    private static AclRemovalPlan RemoveAclEntries(
+        AccessControlCluster.AccessControlEntryStruct[] existingEntries,
+        Func<AccessControlCluster.AccessControlEntryStruct, bool> predicate)
+    {
+        var removedEntries = existingEntries.Where(predicate).ToArray();
+        if (removedEntries.Length == 0)
+        {
+            return new AclRemovalPlan(existingEntries, [], CreateAlreadyAbsentStatus(existingEntries.Length));
+        }
+
+        var updatedEntries = existingEntries.Where(entry => !predicate(entry)).ToArray();
+        return new AclRemovalPlan(updatedEntries, removedEntries, CreateRemovedStatus(removedEntries.Length, updatedEntries.Length));
+    }
+
+    private static AclRemovalPlan RemoveOnOffAclEntries(
+        AccessControlCluster.AccessControlEntryStruct[] existingEntries,
+        ulong switchNodeId,
+        ushort targetEndpoint)
+    {
+        var removedEntries = existingEntries.Where(entry => IsExactOnOffRouteAclEntry(entry, switchNodeId, targetEndpoint)).ToArray();
+        if (removedEntries.Length > 0)
+        {
+            var updatedEntries = existingEntries.Where(entry => !IsExactOnOffRouteAclEntry(entry, switchNodeId, targetEndpoint)).ToArray();
+            return new AclRemovalPlan(updatedEntries, removedEntries, CreateRemovedStatus(removedEntries.Length, updatedEntries.Length));
+        }
+
+        if (existingEntries.Any(entry => EntryMayAuthorizeOnOffRoute(entry, switchNodeId, targetEndpoint)))
+        {
+            return new AclRemovalPlan(
+                existingEntries,
+                [],
+                CreatePreservedStatus(existingEntries.Length, "Broader or manual ACL state still covers this route"));
+        }
+
+        return new AclRemovalPlan(existingEntries, [], CreateAlreadyAbsentStatus(existingEntries.Length));
+    }
+
+    private static bool MatchesBindingRemovalRequest(
+        BindingCluster.TargetStruct entry,
+        ulong? nodeId,
+        DeviceBindingRemovalRequest request)
+    {
+        if (nodeId.HasValue && entry.Node != nodeId.Value)
+        {
+            return false;
+        }
+
+        if (request.Group.HasValue && entry.Group != request.Group.Value)
+        {
+            return false;
+        }
+
+        if (request.TargetEndpoint.HasValue && entry.Endpoint != request.TargetEndpoint.Value)
+        {
+            return false;
+        }
+
+        if (request.Cluster.HasValue && entry.Cluster != request.Cluster.Value)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool MatchesAclRemovalRequest(
+        AccessControlCluster.AccessControlEntryStruct entry,
+        AccessControlCluster.AccessControlEntryPrivilegeEnum privilege,
+        AccessControlCluster.AccessControlEntryAuthModeEnum authMode,
+        ulong[]? subjects,
+        AccessControlCluster.AccessControlTargetStruct[]? targets,
+        AccessControlCluster.AccessControlAuxiliaryTypeEnum? auxiliaryType)
+    {
+        if (entry.Privilege != privilege || entry.AuthMode != authMode)
+        {
+            return false;
+        }
+
+        if (auxiliaryType.HasValue && entry.AuxiliaryType != auxiliaryType)
+        {
+            return false;
+        }
+
+        if (subjects is not null && !AclSubjectsExactlyMatch(entry.Subjects, subjects))
+        {
+            return false;
+        }
+
+        if (targets is not null && !AclTargetsExactlyMatch(entry.Targets, targets))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsExactOnOffRouteAclEntry(
+        AccessControlCluster.AccessControlEntryStruct entry,
+        ulong switchNodeId,
+        ushort targetEndpoint)
+        => MatterBindingOperations.IsExactOnOffRouteAclEntry(entry, switchNodeId, targetEndpoint);
+
+    private static bool EntryMayAuthorizeOnOffRoute(
+        AccessControlCluster.AccessControlEntryStruct entry,
+        ulong switchNodeId,
+        ushort targetEndpoint)
+        => MatterBindingOperations.EntryMayAuthorizeOnOffRoute(entry, switchNodeId, targetEndpoint);
+
+    private static bool AclSubjectsExactlyMatch(ulong[]? existingSubjects, ulong[] requestedSubjects)
+    {
+        if (requestedSubjects.Length == 0)
+        {
+            return existingSubjects is null || existingSubjects.Length == 0;
+        }
+
+        return existingSubjects is not null
+            && existingSubjects.Order().SequenceEqual(requestedSubjects.Order());
+    }
+
+    private static bool AclTargetsExactlyMatch(
+        AccessControlCluster.AccessControlTargetStruct[]? existingTargets,
+        AccessControlCluster.AccessControlTargetStruct[] requestedTargets)
+    {
+        if (requestedTargets.Length == 0)
+        {
+            return existingTargets is null || existingTargets.Length == 0;
+        }
+
+        return existingTargets is not null
+            && existingTargets
+                .Select(NormalizeAclTarget)
+                .Order(StringComparer.Ordinal)
+                .SequenceEqual(requestedTargets.Select(NormalizeAclTarget).Order(StringComparer.Ordinal));
+    }
+
+    private static string NormalizeAclTarget(AccessControlCluster.AccessControlTargetStruct target)
+        => $"{target.Cluster?.ToString(CultureInfo.InvariantCulture) ?? "null"}:{target.Endpoint?.ToString(CultureInfo.InvariantCulture) ?? "null"}:{target.DeviceType?.ToString(CultureInfo.InvariantCulture) ?? "null"}";
+
+    private static RemovalStatus CreateRemovedStatus(int removedCount, int remainingCount)
+        => new("removed", removedCount, remainingCount);
+
+    private static RemovalStatus CreateAlreadyAbsentStatus(int remainingCount)
+        => new("alreadyAbsent", 0, remainingCount);
+
+    private static RemovalStatus CreatePreservedStatus(int remainingCount, string reason)
+        => new("preserved", 0, remainingCount, reason);
+
+    private static RemovalStatus CreateNotAttemptedStatus(int remainingCount, string reason)
+        => new("notAttempted", 0, remainingCount, reason);
+
+    private static RemovalStatus CreateWriteFailedStatus(int remainingCount, string reason)
+        => new("writeFailed", 0, remainingCount, reason);
+
+    private static string FormatWriteResponse(WriteResponse response)
+        => MatterBindingOperations.FormatWriteResponse(response);
+}

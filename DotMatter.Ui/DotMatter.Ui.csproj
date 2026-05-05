@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Radzen.Blazor" Version="10.3.2" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <DeployType Condition="'$(DeployType)' == ''">Fast</DeployType>
+  </PropertyGroup>
+
+  <Import Project="DotMatter.Ui.Deploy.local.props" Condition="Exists('DotMatter.Ui.Deploy.local.props')" />
+  <Import Project="..\DotMatter.Controller\DotMatter.Controller.Deploy.local.props" Condition="'$(PiHost)' == '' and Exists('..\DotMatter.Controller\DotMatter.Controller.Deploy.local.props')" />
+
+  <PropertyGroup Condition="!Exists('DotMatter.Ui.Deploy.local.props')">
+    <PiService>dot-matter-ui</PiService>
+    <PiAppDir>/opt/dot-matter-ui</PiAppDir>
+    <PiEnvFile>/etc/dotmatter/dot-matter-ui.env</PiEnvFile>
+  </PropertyGroup>
+
+  <Target Name="ValidateDeploySettings">
+    <Error Condition="'$(DeployType)' != 'Fast'" Text="DeployType must be 'Fast' for DotMatter.Ui." />
+    <Error Condition="'$(PiHost)' == ''" Text="Deploy requires PiHost. Set it in DotMatter.Ui.Deploy.local.props or pass /p:PiHost=..." />
+  </Target>
+
+  <Target Name="Deploy" DependsOnTargets="ValidateDeploySettings;Publish">
+    <Exec Command="ssh &quot;$(PiHost)&quot; &quot;if ! id -u dotmatter &gt;/dev/null 2&gt;&amp;1; then sudo useradd --system --home /var/lib/.dot-matter --shell /usr/sbin/nologin dotmatter; fi &amp;&amp; sudo mkdir -p '$(PiAppDir)' /etc/dotmatter /var/lib/.dot-matter &amp;&amp; sudo chown -R dotmatter:dotmatter /var/lib/.dot-matter&quot;" />
+    <Exec Command="ssh &quot;$(PiHost)&quot; &quot;sudo systemctl stop '$(PiService)' || true&quot;" IgnoreExitCode="true" />
+    <Exec Command="ssh &quot;$(PiHost)&quot; &quot;rm -rf /tmp/dot-matter-ui-publish &amp;&amp; mkdir -p /tmp/dot-matter-ui-publish&quot;" />
+    <Exec Command="scp -r $(PublishDir)* &quot;$(PiHost):/tmp/dot-matter-ui-publish/&quot;" />
+    <Exec Command="scp &quot;$(MSBuildProjectDirectory)\..\dot-matter-ui.service&quot; &quot;$(PiHost):/tmp/dot-matter-ui.service&quot;" />
+    <Exec Command="ssh &quot;$(PiHost)&quot; &quot;sudo cp -r /tmp/dot-matter-ui-publish/. '$(PiAppDir)' &amp;&amp; sudo rm -rf /tmp/dot-matter-ui-publish &amp;&amp; sudo install -m 644 /tmp/dot-matter-ui.service /etc/systemd/system/$(PiService).service &amp;&amp; sudo rm -f /tmp/dot-matter-ui.service &amp;&amp; if [ ! -f '$(PiEnvFile)' ]; then sudo install -m 640 -o dotmatter -g dotmatter /dev/null '$(PiEnvFile)'; fi &amp;&amp; sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable '$(PiService)' &amp;&amp; sudo systemctl restart '$(PiService)'&quot;" />
+  </Target>
+
+</Project>

@@ -1,0 +1,135 @@
+@page "/live-feed"
+@rendermode InteractiveServer
+@implements IDisposable
+@inject ControllerApiClient Api
+@inject NotificationService Notifications
+
+<PageTitle>Live Feed</PageTitle>
+
+<section class="hero-panel">
+    <div>
+        <div class="page-kicker">SSE relay</div>
+        <h1>Live feed</h1>
+        <p>
+            Relay the live Matter event stream through the server-side UI client so the controller API key stays on the
+            server while you still get a browser listener.
+        </p>
+    </div>
+</section>
+
+<section class="surface-panel">
+    <div class="section-heading">
+        <div>
+            <div class="page-kicker">Matter stream</div>
+            <h2>Matter event listener</h2>
+        </div>
+
+        <div class="inline-actions">
+            <StatusBadge Text="@(_connected ? "connected" : "idle")" Kind="@(_connected ? "online" : "neutral")" />
+            <RadzenButton Text="Connect"
+                          ButtonStyle="ButtonStyle.Primary"
+                          Shade="Shade.Lighter"
+                          Click="@ConnectAsync"
+                          Disabled="@_connected" />
+            <RadzenButton Text="Disconnect"
+                          ButtonStyle="ButtonStyle.Secondary"
+                          Shade="Shade.Lighter"
+                          Click="@Disconnect"
+                          Disabled="@(!_connected)" />
+        </div>
+    </div>
+
+    <div class="operation-field-grid">
+        <div class="operation-field">
+            <label>buffered messages</label>
+            <div class="metric-card"><span>buffer</span><strong>@_messages.Count</strong></div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_streamError))
+    {
+        <div class="operation-alert operation-alert-error">@_streamError</div>
+    }
+
+    @if (_messages.Count == 0)
+    {
+        <div class="console-empty">No stream data yet.</div>
+    }
+    else
+    {
+        <div class="stream-stack">
+            @foreach (var message in _messages)
+            {
+                <JsonPanel Content="@message" EmptyMessage="No message." />
+            }
+        </div>
+    }
+</section>
+
+@code {
+    private const string MatterEventStreamPath = "/api/matter/events";
+    private readonly List<string> _messages = [];
+    private CancellationTokenSource? _streamCts;
+    private string? _streamError;
+    private bool _connected;
+
+    private async Task ConnectAsync()
+    {
+        Disconnect();
+        _streamError = null;
+        _connected = true;
+        _streamCts = new CancellationTokenSource();
+        var ct = _streamCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Api.StreamAsync(MatterEventStreamPath, message =>
+                {
+                    _ = InvokeAsync(() =>
+                    {
+                        _messages.Insert(0, ControllerApiClient.PrettyPrint(message));
+                        while (_messages.Count > 160)
+                        {
+                            _messages.RemoveAt(_messages.Count - 1);
+                        }
+
+                        StateHasChanged();
+                    });
+                }, ct);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                await InvokeAsync(() =>
+                {
+                    _streamError = ex.Message;
+                    Notifications.Notify(NotificationSeverity.Warning, "Matter live feed", ex.Message, 4000);
+                    StateHasChanged();
+                });
+            }
+            finally
+            {
+                await InvokeAsync(() =>
+                {
+                    _connected = false;
+                    StateHasChanged();
+                });
+            }
+        }, ct);
+    }
+
+    private void Disconnect()
+    {
+        _streamCts?.Cancel();
+        _streamCts?.Dispose();
+        _streamCts = null;
+        _connected = false;
+    }
+
+    public void Dispose()
+        => Disconnect();
+}

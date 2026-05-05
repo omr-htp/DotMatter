@@ -1,0 +1,514 @@
+@page "/devices"
+@rendermode InteractiveServer
+@inject ControllerApiClient Api
+
+<PageTitle>Devices</PageTitle>
+
+<section class="hero-panel">
+    <div>
+        <div class="page-kicker">Per-device workbench</div>
+        <h1>Devices</h1>
+        <p>
+            Select a commissioned device, inspect its live identity, then run reads and commands across control, admin,
+            network commissioning, groups/scenes, bindings, ACL, and Matter event endpoints.
+        </p>
+    </div>
+
+    <RadzenButton Text="Refresh inventory"
+                  ButtonStyle="ButtonStyle.Primary"
+                  Shade="Shade.Lighter"
+                  Click="@LoadDevicesAsync"
+                  Disabled="@_loadingDevices" />
+</section>
+
+<div class="device-workbench">
+    <aside class="surface-panel device-browser">
+        <div class="section-heading">
+            <div>
+                <div class="page-kicker">Registry</div>
+                <h2>Known devices</h2>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_devicesError))
+        {
+            <div class="operation-alert operation-alert-error">@_devicesError</div>
+        }
+        else if (_devices.Count == 0)
+        {
+            <div class="console-empty">No devices found.</div>
+        }
+        else
+        {
+            <div class="device-browser-list">
+                @foreach (var device in _devices.OrderByDescending(device => device.IsOnline).ThenBy(device => device.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    <button class="device-picker @(device.Id == _selectedDeviceId ? "device-picker-active" : string.Empty)"
+                            @onclick="@(() => SelectDeviceAsync(device.Id))">
+                        <div>
+                            <div class="device-row-title">@device.Name</div>
+                            <div class="device-row-meta">@device.Id</div>
+                            <div class="device-row-type">type: @(device.DeviceType ?? "unknown")</div>
+                        </div>
+                        <StatusBadge Text="@(device.IsOnline ? "online" : "offline")" Kind="@(device.IsOnline ? "online" : "offline")" />
+                    </button>
+                }
+            </div>
+        }
+    </aside>
+
+    <section class="surface-panel device-stage">
+        @if (_selectedDevice is null)
+        {
+            <div class="console-empty">Select a device from the registry to open the workbench.</div>
+        }
+        else
+        {
+            <div class="section-heading">
+                <div>
+                    <div class="page-kicker">Selected device</div>
+                    <h2>@_selectedDevice.Name</h2>
+                    <div class="device-row-meta">@_selectedDevice.Id · @_selectedDevice.Ip:@_selectedDevice.Port</div>
+                </div>
+
+                <div class="inline-actions">
+                    <StatusBadge Text="@(_selectedDevice.IsOnline ? "online" : "offline")" Kind="@(_selectedDevice.IsOnline ? "online" : "offline")" />
+                    <RadzenButton Text="Refresh selected"
+                                  ButtonStyle="ButtonStyle.Secondary"
+                                  Shade="Shade.Lighter"
+                                  Click="@(() => RefreshSelectedAsync(refreshCapabilities: true))"
+                                  Disabled="@_loadingSelected" />
+                </div>
+            </div>
+
+            <div class="device-summary-grid">
+                <div class="metric-card"><span>node</span><strong>@_selectedDevice.NodeId</strong></div>
+                <div class="metric-card"><span>vendor</span><strong>@(_selectedDevice.VendorName ?? "unknown")</strong></div>
+                <div class="metric-card"><span>product</span><strong>@(_selectedDevice.ProductName ?? "unknown")</strong></div>
+                <div class="metric-card"><span>last seen</span><strong>@(_selectedDevice.LastSeen?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "never")</strong></div>
+            </div>
+
+            <div class="tab-strip">
+                <button class="tab-button @(_selectedWorkbenchView == "operations" ? "tab-button-active" : string.Empty)"
+                        @onclick="@(() => _selectedWorkbenchView = "operations")">
+                    Operations
+                </button>
+                <button class="tab-button @(_selectedWorkbenchView == "capabilities" ? "tab-button-active" : string.Empty)"
+                        @onclick="@(() => _selectedWorkbenchView = "capabilities")">
+                    Endpoint capabilities
+                </button>
+            </div>
+
+            @if (_selectedWorkbenchView == "capabilities")
+            {
+                @if (!string.IsNullOrWhiteSpace(_capabilitiesError))
+                {
+                    <div class="operation-alert operation-alert-error">@_capabilitiesError</div>
+                }
+                else if (_capabilities is not null)
+                {
+                    <div class="device-summary-grid capability-summary-grid">
+                        <div class="metric-card"><span>topology</span><strong>@_capabilities.TopologySource</strong></div>
+                        <div class="metric-card"><span>controller type</span><strong>@(_capabilities.ControllerDeviceType ?? "unknown")</strong></div>
+                        <div class="metric-card"><span>data model</span><strong>@(_capabilities.DataModelRevision?.ToString() ?? "unknown")</strong></div>
+                        <div class="metric-card"><span>endpoints</span><strong>@_capabilities.Endpoints.Count</strong></div>
+                    </div>
+
+                    @if (_capabilities.Endpoints.Count > 0)
+                    {
+                        <div class="section-heading section-heading-spaced">
+                            <div>
+                                <div class="page-kicker">Observed topology</div>
+                                <h2>Endpoint capabilities</h2>
+                            </div>
+                        </div>
+
+                        <div class="capability-table-stack">
+                            @foreach (var endpoint in _capabilities.Endpoints.OrderBy(endpoint => endpoint.Endpoint))
+                            {
+                                <section class="surface-panel capability-table-card">
+                                    <div class="capability-card-header">
+                                        <div>
+                                            <div class="page-kicker">Endpoint @endpoint.Endpoint</div>
+                                            <h3>@GetEndpointDeviceTypeSummary(endpoint)</h3>
+                                            @if (!string.IsNullOrWhiteSpace(endpoint.UniqueId))
+                                            {
+                                                <div class="device-row-meta">unique id: @endpoint.UniqueId</div>
+                                            }
+                                        </div>
+                                    </div>
+
+                                    <div class="capability-table-wrap">
+                                        <table class="capability-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Kind</th>
+                                                    <th>Description</th>
+                                                    <th>Raw</th>
+                                                    <th>Notes</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var row in GetCapabilityRows(endpoint))
+                                                {
+                                                    <tr>
+                                                        <td>@row.Kind</td>
+                                                        <td>@row.Description</td>
+                                                        <td><code>@row.Raw</code></td>
+                                                        <td>@row.Notes</td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+                            }
+                        </div>
+                    }
+                }
+            }
+            else
+            {
+                <div class="tab-strip operations-tab-strip">
+                @foreach (var tab in VisibleTabs)
+                {
+                    <button class="tab-button @(_selectedTab == tab.Key ? "tab-button-active" : string.Empty)"
+                            @onclick="@(() => _selectedTab = tab.Key)">
+                        @tab.Title
+                    </button>
+                }
+                </div>
+
+                @switch (_selectedTab)
+                {
+                    case "summary":
+                        <OperationConsole Operations="@VisibleDeviceReadOperations" RouteTokens="@DeviceRouteTokens" />
+                        break;
+                    case "control":
+                        <OperationConsole Operations="@VisibleControlOperations" RouteTokens="@DeviceRouteTokens" />
+                        break;
+                    case "admin":
+                        <OperationConsole Operations="@VisibleAdminOperations" RouteTokens="@DeviceRouteTokens" />
+                        break;
+                    case "network":
+                        <OperationConsole Operations="@VisibleNetworkOperations" RouteTokens="@DeviceRouteTokens" />
+                        break;
+                    case "groups":
+                        <OperationConsole Operations="@VisibleGroupSceneOperations" RouteTokens="@DeviceRouteTokens" />
+                        break;
+                    case "bindings":
+                        <OperationConsole Operations="@VisibleBindingAndEventOperations" RouteTokens="@DeviceRouteTokens" />
+                        break;
+                }
+            }
+        }
+    </section>
+</div>
+
+@code {
+    private readonly List<DeviceSummaryModel> _devices = [];
+    private string? _selectedDeviceId;
+    private DeviceDetailModel? _selectedDevice;
+    private DeviceCapabilitySnapshotModel? _capabilities;
+    private string _selectedWorkbenchView = "operations";
+    private string _selectedTab = "summary";
+    private bool _loadingDevices;
+    private bool _loadingSelected;
+    private string? _devicesError;
+    private string? _capabilitiesError;
+
+    private IReadOnlyDictionary<string, string?> DeviceRouteTokens =>
+        new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["deviceId"] = _selectedDeviceId
+        };
+
+    private IReadOnlyList<(string Key, string Title)> VisibleTabs
+    {
+        get
+        {
+            var tabs = new List<(string Key, string Title)>
+            {
+                ("summary", "Summary")
+            };
+
+            if (VisibleControlOperations.Count > 0)
+            {
+                tabs.Add(("control", "Control"));
+            }
+
+            tabs.Add(("admin", "Admin"));
+
+            if (VisibleNetworkOperations.Count > 0)
+            {
+                tabs.Add(("network", "Network"));
+            }
+
+            if (VisibleGroupSceneOperations.Count > 0)
+            {
+                tabs.Add(("groups", "Groups & Scenes"));
+            }
+
+            if (VisibleBindingAndEventOperations.Count > 0)
+            {
+                tabs.Add(("bindings", "Bindings & Events"));
+            }
+
+            return tabs;
+        }
+    }
+
+    private IReadOnlyList<ApiOperationDefinition> VisibleDeviceReadOperations => BuildVisibleOperations(OperationCatalog.DeviceReadOperations);
+
+    private IReadOnlyList<ApiOperationDefinition> VisibleControlOperations => BuildVisibleOperations(OperationCatalog.ControlOperations);
+
+    private IReadOnlyList<ApiOperationDefinition> VisibleAdminOperations => BuildVisibleOperations(OperationCatalog.AdminOperations);
+
+    private IReadOnlyList<ApiOperationDefinition> VisibleNetworkOperations => BuildVisibleOperations(OperationCatalog.NetworkOperations);
+
+    private IReadOnlyList<ApiOperationDefinition> VisibleGroupSceneOperations => BuildVisibleOperations(OperationCatalog.GroupSceneOperations);
+
+    private IReadOnlyList<ApiOperationDefinition> VisibleBindingAndEventOperations => BuildVisibleOperations(OperationCatalog.BindingAndEventOperations);
+
+    protected override Task OnInitializedAsync()
+        => LoadDevicesAsync();
+
+    private async Task LoadDevicesAsync()
+    {
+        _loadingDevices = true;
+        _devicesError = null;
+
+        try
+        {
+            var result = await Api.GetAsync<List<DeviceSummaryModel>>("/api/devices");
+            _devices.Clear();
+            if (result.Value is not null)
+            {
+                _devices.AddRange(result.Value);
+            }
+
+            _devicesError = result.Success ? null : result.ErrorMessage;
+
+            if (_selectedDeviceId is null && _devices.Count > 0)
+            {
+                await SelectDeviceAsync(_devices[0].Id);
+            }
+            else if (_selectedDeviceId is not null && _devices.Any(device => device.Id == _selectedDeviceId))
+            {
+                await RefreshSelectedAsync();
+            }
+            else
+            {
+                _selectedDeviceId = null;
+                _selectedDevice = null;
+                _capabilities = null;
+                _capabilitiesError = null;
+            }
+        }
+        finally
+        {
+            _loadingDevices = false;
+        }
+    }
+
+    private async Task SelectDeviceAsync(string deviceId)
+    {
+        if (!string.Equals(_selectedDeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedDeviceId = deviceId;
+            _selectedDevice = null;
+            _capabilities = null;
+            _capabilitiesError = null;
+        }
+
+        await RefreshSelectedAsync();
+    }
+
+    private async Task RefreshSelectedAsync(bool refreshCapabilities = false)
+    {
+        if (string.IsNullOrWhiteSpace(_selectedDeviceId))
+        {
+            return;
+        }
+
+        _loadingSelected = true;
+
+        try
+        {
+            var detailTask = Api.GetAsync<DeviceDetailModel>($"/api/devices/{Uri.EscapeDataString(_selectedDeviceId)}");
+            var capabilitiesPath = $"/api/devices/{Uri.EscapeDataString(_selectedDeviceId)}/capabilities";
+            if (refreshCapabilities)
+            {
+                capabilitiesPath += "?refresh=true";
+            }
+
+            var capabilityTask = Api.GetAsync<DeviceCapabilitySnapshotModel>(capabilitiesPath);
+
+            await Task.WhenAll(detailTask, capabilityTask);
+
+            _selectedDevice = detailTask.Result.Value;
+            _capabilities = capabilityTask.Result.Value;
+            _capabilitiesError = capabilityTask.Result.Success ? null : capabilityTask.Result.ErrorMessage;
+            EnsureSelectedTabIsVisible();
+        }
+        finally
+        {
+            _loadingSelected = false;
+        }
+    }
+
+    private IReadOnlyList<ApiOperationDefinition> BuildVisibleOperations(IReadOnlyList<ApiOperationDefinition> operations)
+        => [.. operations
+            .Where(IsOperationVisible)
+            .Select(ApplyOperationDefaults)];
+
+    private bool IsOperationVisible(ApiOperationDefinition operation)
+        => operation.RequiredCapability switch
+        {
+            DeviceOperationCapability.Always => true,
+            DeviceOperationCapability.OnOff => _capabilities?.SupportedOperations.OnOff == true,
+            DeviceOperationCapability.Level => _capabilities?.SupportedOperations.Level == true,
+            DeviceOperationCapability.ColorHueSaturation => _capabilities?.SupportedOperations.ColorHueSaturation == true,
+            DeviceOperationCapability.ColorXy => _capabilities?.SupportedOperations.ColorXy == true,
+            DeviceOperationCapability.NetworkCommissioning => _capabilities?.SupportedOperations.NetworkCommissioning == true,
+            DeviceOperationCapability.Groups => _capabilities?.SupportedOperations.Groups == true,
+            DeviceOperationCapability.Scenes => _capabilities?.SupportedOperations.Scenes == true,
+            DeviceOperationCapability.GroupKeys => _capabilities?.SupportedOperations.GroupKeys == true,
+            DeviceOperationCapability.AccessControl => _capabilities?.SupportedOperations.AccessControl == true,
+            DeviceOperationCapability.Binding => _capabilities?.SupportedOperations.Binding == true,
+            DeviceOperationCapability.SwitchBinding => _capabilities?.SupportedOperations.SwitchBinding == true,
+            DeviceOperationCapability.MatterEvents => _capabilities?.SupportedOperations.MatterEvents == true,
+            _ => true
+        };
+
+    private ApiOperationDefinition ApplyOperationDefaults(ApiOperationDefinition operation)
+    {
+        if (_capabilities is null || operation.Fields is null || operation.Fields.Count == 0)
+        {
+            return operation;
+        }
+
+        return operation.Key switch
+        {
+            "device-groups" => operation with { Fields = ReplaceFieldDefault(operation.Fields, "endpoint", GetPreferredEndpoint("Groups")) },
+            "groups-add" or "groups-view" or "groups-membership" or "groups-remove" or "groups-remove-all" or "groups-add-if-identifying"
+                => operation with { Fields = ReplaceFieldDefault(operation.Fields, "Endpoint", GetPreferredEndpoint("Groups")) },
+            "device-scenes" => operation with { Fields = ReplaceFieldDefault(operation.Fields, "endpoint", GetPreferredEndpoint("Scenes Management")) },
+            "scenes-add" or "scenes-view" or "scenes-remove" or "scenes-remove-all" or "scenes-store" or "scenes-recall" or "scenes-membership" or "scenes-copy"
+                => operation with { Fields = ReplaceFieldDefault(operation.Fields, "Endpoint", GetPreferredEndpoint("Scenes Management")) },
+            "device-bindings" => operation with { Fields = ReplaceFieldDefault(operation.Fields, "endpoint", GetPreferredEndpoint("Binding")) },
+            "binding-remove" => operation with { Fields = ReplaceFieldDefault(operation.Fields, "Endpoint", GetPreferredEndpoint("Binding")) },
+            "bind-onoff" or "unbind-onoff" => operation with { Fields = ReplaceFieldDefault(operation.Fields, "SourceEndpoint", GetPreferredEndpoint("Switch")) },
+            "matter-events" => operation with
+            {
+                Fields = ReplaceFieldDefault(
+                    ReplaceFieldDefault(operation.Fields, "cluster", GetPreferredEventCluster()),
+                    "endpoint",
+                    GetPreferredEventEndpoint())
+            },
+            _ => operation
+        };
+    }
+
+    private static IReadOnlyList<ApiFieldDefinition> ReplaceFieldDefault(
+        IReadOnlyList<ApiFieldDefinition> fields,
+        string fieldName,
+        string? defaultValue)
+        => [.. fields.Select(field => string.Equals(field.Name, fieldName, StringComparison.OrdinalIgnoreCase)
+            ? field with { DefaultValue = defaultValue ?? string.Empty }
+            : field)];
+
+    private string GetPreferredEndpoint(string clusterName)
+        => _capabilities?.Endpoints
+            .OrderBy(endpoint => endpoint.Endpoint)
+            .FirstOrDefault(endpoint => endpoint.ServerClusters.Any(cluster => string.Equals(cluster.ClusterName, clusterName, StringComparison.OrdinalIgnoreCase)))
+            ?.Endpoint.ToString()
+           ?? "1";
+
+    private string GetPreferredEventCluster()
+        => _capabilities?.Endpoints
+            .OrderBy(endpoint => endpoint.Endpoint)
+            .SelectMany(endpoint => endpoint.ServerClusters)
+            .FirstOrDefault(cluster => cluster.SupportsEvents)
+            ?.ClusterHex
+           ?? "0x0006";
+
+    private string GetPreferredEventEndpoint()
+        => _capabilities?.Endpoints
+            .OrderBy(endpoint => endpoint.Endpoint)
+            .FirstOrDefault(endpoint => endpoint.ServerClusters.Any(cluster => cluster.SupportsEvents))
+            ?.Endpoint.ToString()
+           ?? string.Empty;
+
+    private void EnsureSelectedTabIsVisible()
+    {
+        if (VisibleTabs.All(tab => !string.Equals(tab.Key, _selectedTab, StringComparison.OrdinalIgnoreCase)))
+        {
+            _selectedTab = VisibleTabs[0].Key;
+        }
+    }
+
+    private static string GetEndpointDeviceTypeSummary(DeviceCapabilityEndpointModel endpoint)
+        => endpoint.DeviceTypes.Count == 0
+            ? "cluster snapshot"
+            : string.Join(", ", endpoint.DeviceTypes.Select(GetDeviceTypeDisplay));
+
+    private static IReadOnlyList<CapabilityTableRow> GetCapabilityRows(DeviceCapabilityEndpointModel endpoint)
+    {
+        var rows = new List<CapabilityTableRow>();
+
+        rows.AddRange(endpoint.DeviceTypes.Select(deviceType => new CapabilityTableRow(
+            "Device type",
+            GetDeviceTypeDisplay(deviceType),
+            deviceType.DeviceTypeHex,
+            $"Revision {deviceType.Revision}")));
+
+        rows.AddRange(endpoint.ServerClusters.Select(cluster => new CapabilityTableRow(
+            "Server cluster",
+            cluster.ClusterName ?? "Unknown cluster",
+            cluster.ClusterHex,
+            cluster.SupportsEvents ? "Emits events" : string.Empty)));
+
+        rows.AddRange(endpoint.ClientClusters.Select(cluster => new CapabilityTableRow(
+            "Client cluster",
+            cluster.ClusterName ?? "Unknown cluster",
+            cluster.ClusterHex,
+            cluster.SupportsEvents ? "Observes events" : string.Empty)));
+
+        if (endpoint.PartsList.Count > 0)
+        {
+            rows.Add(new CapabilityTableRow(
+                "Parts list",
+                string.Join(", ", endpoint.PartsList),
+                string.Join(", ", endpoint.PartsList.Select(part => $"0x{part:X4}")),
+                "Child endpoints"));
+        }
+
+        return rows;
+    }
+
+    private static string GetDeviceTypeDisplay(DeviceCapabilityDeviceTypeModel deviceType)
+        => GetDeviceTypeName(deviceType.DeviceType) is { Length: > 0 } name
+            ? $"{name} ({deviceType.DeviceTypeHex})"
+            : deviceType.DeviceTypeHex;
+
+    private static string? GetDeviceTypeName(uint deviceType)
+        => deviceType switch
+        {
+            0x0000000F => "Switch",
+            0x00000012 => "Bridged Node",
+            0x00000016 => "Root Node",
+            0x00000100 => "On/Off Light",
+            0x00000101 => "Dimmable Light",
+            0x0000010C => "Color Temperature Light",
+            0x0000010D => "Extended Color Light",
+            _ => null
+        };
+
+    private sealed record CapabilityTableRow(
+        string Kind,
+        string Description,
+        string Raw,
+        string Notes);
+
+}

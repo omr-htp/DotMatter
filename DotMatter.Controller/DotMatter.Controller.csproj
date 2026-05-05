@@ -1,0 +1,75 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>
+    <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(DeployType)' == 'Aot'">
+    <RuntimeIdentifier>linux-arm64</RuntimeIdentifier>
+    <PublishAot>true</PublishAot>
+    <ObjCopyName>aarch64-linux-gnu-objcopy</ObjCopyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>DotMatter.Tests</_Parameter1>
+    </AssemblyAttribute>
+
+    <ProjectReference Include="..\DotMatter.Core\DotMatter.Core.csproj" />
+    <ProjectReference Include="..\DotMatter.Hosting\DotMatter.Hosting.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.7" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.7" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.14.8" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <DeployType Condition="'$(DeployType)' == ''">Fast</DeployType>
+    <WslDistro Condition="'$(WslDistro)' == ''">Debian</WslDistro>
+  </PropertyGroup>
+
+  <Import Project="DotMatter.Controller.Deploy.local.props" Condition="Exists('DotMatter.Controller.Deploy.local.props')" />
+
+  <PropertyGroup>
+    <PiHost Condition="'$(PiHost)' == ''"></PiHost>
+    <PiShare Condition="'$(PiShare)' == ''"></PiShare>
+    <PiShareUser Condition="'$(PiShareUser)' == ''"></PiShareUser>
+    <PiSharePassword Condition="'$(PiSharePassword)' == ''"></PiSharePassword>
+    <PiService Condition="'$(PiService)' == '' and '$(DeployType)' == 'Fast'">dot-matter</PiService>
+    <PiService Condition="'$(PiService)' == '' and '$(DeployType)' == 'Aot'">dot-matter-aot</PiService>
+  </PropertyGroup>
+
+  <Target Name="ValidateDeploySettings">
+    <Error Condition="'$(DeployType)' != 'Fast' and '$(DeployType)' != 'Aot'" Text="DeployType must be 'Fast' or 'Aot'." />
+    <Error Condition="'$(PiHost)' == ''" Text="Deploy requires PiHost. Set it in DotMatter.Controller.Deploy.local.props or pass /p:PiHost=..." />
+    <Error Condition="'$(PiShare)' == ''" Text="Deploy requires PiShare. Set it in DotMatter.Controller.Deploy.local.props or pass /p:PiShare=..." />
+    <Error Condition="'$(PiShareUser)' == ''" Text="Deploy requires PiShareUser. Set it in DotMatter.Controller.Deploy.local.props or pass /p:PiShareUser=..." />
+    <Error Condition="'$(PiSharePassword)' == ''" Text="Deploy requires PiSharePassword. Set it in DotMatter.Controller.Deploy.local.props or pass /p:PiSharePassword=..." />
+    <Error Condition="'$(PiService)' == ''" Text="Deploy requires PiService. Set it in DotMatter.Controller.Deploy.local.props or pass /p:PiService=..." />
+  </Target>
+
+  <Target Name="Deploy" DependsOnTargets="ValidateDeploySettings;Build">
+    <Exec Condition="'$(DeployType)' == 'Aot'" Command="wsl -d $(WslDistro) dotnet publish -c Release -r $(RuntimeIdentifier)" />
+
+    <Exec Command="ssh &quot;$(PiHost)&quot; sudo systemctl stop &quot;$(PiService)&quot;" IgnoreExitCode="true" />
+    <Exec Command="net use &quot;$(PiShare)&quot; /user:$(PiShareUser) &quot;$(PiSharePassword)&quot;" IgnoreExitCode="true" />
+
+    <Exec Condition="'$(DeployType)' == 'Fast'" Command="robocopy &quot;$(TargetDir).&quot; &quot;$(PiShare)&quot; /MIR /NJH /NJS /NDL /NP /NS /NC" IgnoreExitCode="true" />
+    <Exec Condition="'$(DeployType)' == 'Aot'" Command="robocopy &quot;bin\Release\$(TargetFramework)\$(RuntimeIdentifier)\publish\.&quot; &quot;$(PiShare)&quot; /MIR /NJH /NJS /NDL /NP /NS /NC" IgnoreExitCode="true" />
+
+    <Exec Command="ssh &quot;$(PiHost)&quot; sudo systemctl start &quot;$(PiService)&quot;" />
+  </Target>
+
+</Project>

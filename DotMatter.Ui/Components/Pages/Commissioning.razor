@@ -1,0 +1,27 @@
+@page "/commissioning"
+@rendermode InteractiveServer
+
+<PageTitle>Commissioning</PageTitle>
+
+<section class="hero-panel">
+    <div>
+        <div class="page-kicker">Bring-up workflows</div>
+        <h1>Commissioning</h1>
+        <p>
+            Start BLE onboarding for Thread or Wi-Fi devices, using raw discriminator/passcode inputs or QR/manual code payloads.
+            The request preview shows the exact REST payload before it goes out, and the mission lane keeps long
+            commissioning requests visually anchored while the controller works.
+        </p>
+    </div>
+</section>
+
+<section class="page-section">
+    <div class="section-heading">
+        <div>
+            <div class="page-kicker">Controller API</div>
+            <h2>Commission new devices</h2>
+        </div>
+    </div>
+
+    <OperationConsole Operations="@OperationCatalog.CommissioningOperations" />
+</section>

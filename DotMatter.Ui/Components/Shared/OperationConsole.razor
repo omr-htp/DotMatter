@@ -1,0 +1,687 @@
+@using System.Globalization
+@using System.Text
+@using System.Text.Encodings.Web
+@using System.Text.Json
+@using System.Text.Json.Nodes
+@inject ControllerApiClient Api
+@inject NotificationService Notifications
+
+@if (Operations.Count == 0)
+{
+    <div class="console-empty">No operations configured.</div>
+}
+else
+{
+    <div class="operation-console">
+        @foreach (var operation in Operations)
+        {
+            var state = EnsureState(operation);
+
+            <section class="operation-card">
+                <header class="operation-card-header">
+                    <div>
+                        <div class="operation-kicker">@operation.Method</div>
+                        <h3>@operation.Title</h3>
+                        <p>@operation.Description</p>
+                    </div>
+                    <RadzenButton Text="@(state.IsBusy ? "Running..." : operation.ButtonText ?? "Run")"
+                                  Disabled="@state.IsBusy"
+                                  ButtonStyle="ButtonStyle.Primary"
+                                  Shade="Shade.Lighter"
+                                  Click="@(() => ExecuteAsync(operation))" />
+                </header>
+
+                @if (ShouldShowLongRunningProgress(operation, state))
+                {
+                    var timelineSteps = GetLongRunningTimeline(operation, state);
+
+                    <section class="commission-progress-shell">
+                        <div class="commission-progress-head">
+                            <div>
+                                <div class="page-kicker">Mission lane</div>
+                                <h4>@GetLongRunningTitle(operation)</h4>
+                                <p>@GetLongRunningSummary(operation, state)</p>
+                            </div>
+
+                            <div class="commission-progress-meta">
+                                <span class="status-badge @GetLongRunningBadgeClass(state)">@GetLongRunningBadgeText(state)</span>
+                                <strong>@GetLongRunningPercentText(state)</strong>
+                            </div>
+                        </div>
+
+                        <div class="commission-progress-track">
+                            <div class="commission-progress-meter">
+                                <div class="@GetLongRunningMeterClass(state)"
+                                     style="width:@GetLongRunningMeterWidth(state)"></div>
+                            </div>
+                        </div>
+
+                        <div class="commission-progress-steps">
+                            @foreach (var step in timelineSteps)
+                            {
+                                <article class="commission-progress-step @GetLongRunningStepClass(step.State)">
+                                    <div class="commission-progress-step-index">@step.Index</div>
+                                    <div>
+                                        <h5>@step.Title</h5>
+                                        <p>@step.Description</p>
+                                    </div>
+                                </article>
+                            }
+                        </div>
+                    </section>
+                }
+
+                @if (operation.Fields is { Count: > 0 })
+                {
+                    <div class="operation-field-grid">
+                        @foreach (var field in operation.Fields)
+                        {
+                            <div class="operation-field">
+                                <label>@field.Label</label>
+
+                                @if (field.Kind == ApiFieldInputKind.Boolean)
+                                {
+                                    <div class="bool-field">
+                                        <RadzenCheckBox TValue="bool"
+                                                        Value="@GetBoolValue(operation.Key, field.Name)"
+                                                        Change="@((bool value) => SetBoolValue(operation.Key, field.Name, value))" />
+                                        <span class="bool-field-state">@GetBooleanStateLabel(field.Label, GetBoolValue(operation.Key, field.Name))</span>
+                                    </div>
+                                }
+                                else if (field.Kind == ApiFieldInputKind.Json)
+                                {
+                                    <RadzenTextArea Value="@GetTextValue(operation.Key, field.Name)"
+                                                    Change="@((string? value) => SetTextValue(operation.Key, field.Name, value))"
+                                                    Rows="6"
+                                                    Placeholder="@(field.Placeholder ?? "[]")"
+                                                    Style="width: 100%;" />
+                                }
+                                else
+                                {
+                                    <RadzenTextBox Value="@GetTextValue(operation.Key, field.Name)"
+                                                   Change="@((string? value) => SetTextValue(operation.Key, field.Name, value))"
+                                                   Placeholder="@field.Placeholder"
+                                                   Style="width: 100%;" />
+                                }
+
+                                @if (!string.IsNullOrWhiteSpace(field.HelpText))
+                                {
+                                    <small>@field.HelpText</small>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(state.LocalError))
+                {
+                    <div class="operation-alert operation-alert-error">@state.LocalError</div>
+                }
+
+                @if (state.Result is not null)
+                {
+                    <div class="operation-result-meta">
+                        <StatusBadge Text="@($"HTTP {state.Result.StatusCodeValue}")" Kind="@(state.Result.Success ? "online" : "error")" />
+                        @if (!string.IsNullOrWhiteSpace(state.Result.ErrorMessage))
+                        {
+                            <span class="operation-error-text">@state.Result.ErrorMessage</span>
+                        }
+                    </div>
+
+                    <div class="operation-payload-grid">
+                        <div>
+                            <div class="payload-label">Request</div>
+                            <JsonPanel Content="@FormatRequest(state)" EmptyMessage="No request captured yet." />
+                        </div>
+                        <div>
+                            <div class="payload-label">Response</div>
+                            <JsonPanel Content="@state.Result.RawContent" EmptyMessage="No response body." />
+                        </div>
+                    </div>
+                }
+            </section>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public required IReadOnlyList<ApiOperationDefinition> Operations { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, string?> RouteTokens { get; set; } = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+
+    private readonly Dictionary<string, OperationExecutionState> _states = new(StringComparer.OrdinalIgnoreCase);
+    private string _operationContextSignature = string.Empty;
+
+    protected override void OnParametersSet()
+    {
+        var signature = BuildOperationContextSignature();
+        if (!string.Equals(_operationContextSignature, signature, StringComparison.Ordinal))
+        {
+            _states.Clear();
+            _operationContextSignature = signature;
+        }
+
+        foreach (var operation in Operations)
+        {
+            EnsureState(operation);
+        }
+    }
+
+    private string BuildOperationContextSignature()
+    {
+        var builder = new StringBuilder();
+
+        foreach (var routeToken in RouteTokens.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            builder
+                .Append("route:")
+                .Append(routeToken.Key)
+                .Append('=')
+                .Append(routeToken.Value ?? string.Empty)
+                .Append('|');
+        }
+
+        foreach (var operation in Operations)
+        {
+            builder
+                .Append("op:")
+                .Append(operation.Key)
+                .Append('|')
+                .Append(operation.PathTemplate)
+                .Append('|')
+                .Append(operation.RequiredCapability)
+                .Append('|');
+
+            foreach (var field in operation.Fields ?? [])
+            {
+                builder
+                    .Append(field.Name)
+                    .Append('~')
+                    .Append(field.Location)
+                    .Append('~')
+                    .Append(field.Kind)
+                    .Append('~')
+                    .Append(field.DefaultValue ?? string.Empty)
+                    .Append('~')
+                    .Append(field.DefaultBool)
+                    .Append(';');
+            }
+
+            builder.Append('#');
+        }
+
+        return builder.ToString();
+    }
+
+    private OperationExecutionState EnsureState(ApiOperationDefinition operation)
+    {
+        if (!_states.TryGetValue(operation.Key, out var state))
+        {
+            state = new OperationExecutionState();
+            _states[operation.Key] = state;
+        }
+
+        foreach (var field in operation.Fields ?? [])
+        {
+            if (field.Kind == ApiFieldInputKind.Boolean)
+            {
+                if (!state.BoolValues.ContainsKey(field.Name))
+                {
+                    state.BoolValues[field.Name] = field.DefaultBool;
+                }
+            }
+            else if (!state.TextValues.ContainsKey(field.Name))
+            {
+                state.TextValues[field.Name] = field.DefaultValue ?? string.Empty;
+            }
+        }
+
+        return state;
+    }
+
+    private string GetTextValue(string operationKey, string fieldName)
+        => _states[operationKey].TextValues.TryGetValue(fieldName, out var value) ? value : string.Empty;
+
+    private void SetTextValue(string operationKey, string fieldName, string? value)
+        => _states[operationKey].TextValues[fieldName] = value ?? string.Empty;
+
+    private bool GetBoolValue(string operationKey, string fieldName)
+        => _states[operationKey].BoolValues.TryGetValue(fieldName, out var value) && value;
+
+    private void SetBoolValue(string operationKey, string fieldName, bool value)
+        => _states[operationKey].BoolValues[fieldName] = value;
+
+    private static string GetBooleanStateLabel(string label, bool value)
+    {
+        if (label.Contains("enabled", StringComparison.OrdinalIgnoreCase))
+        {
+            return value ? "Enabled" : "Disabled";
+        }
+
+        if (label.Contains("include", StringComparison.OrdinalIgnoreCase))
+        {
+            return value ? "Included" : "Skipped";
+        }
+
+        if (label.Contains("filtered", StringComparison.OrdinalIgnoreCase))
+        {
+            return value ? "Filtered" : "Unfiltered";
+        }
+
+        if (label.Contains("local", StringComparison.OrdinalIgnoreCase))
+        {
+            return value ? "Local only" : "All targets";
+        }
+
+        if (label.Contains("copy", StringComparison.OrdinalIgnoreCase))
+        {
+            return value ? "Copy enabled" : "Copy skipped";
+        }
+
+        return value ? "Yes" : "No";
+    }
+
+    private async Task ExecuteAsync(ApiOperationDefinition operation)
+    {
+        var state = EnsureState(operation);
+        state.LocalError = null;
+        state.IsBusy = true;
+        state.RequestBody = null;
+        state.ResolvedPath = null;
+        ResetLongRunningProgress(state);
+        if (operation.LongRunning)
+        {
+            await UpdateLongRunningProgressAsync(state, LongRunningStage.Validating, 8, GetValidationMessage(operation));
+        }
+
+        StateHasChanged();
+
+        try
+        {
+            if (!TryBuildPath(operation, state, out var path, out var pathError))
+            {
+                state.LocalError = pathError;
+                state.Result = null;
+                if (operation.LongRunning)
+                {
+                    await UpdateLongRunningProgressAsync(state, LongRunningStage.Failed, 100, pathError ?? "Required route input is missing.");
+                }
+
+                return;
+            }
+
+            if (!TryBuildBody(operation, state, out var body, out var bodyError))
+            {
+                state.LocalError = bodyError;
+                state.Result = null;
+                if (operation.LongRunning)
+                {
+                    await UpdateLongRunningProgressAsync(state, LongRunningStage.Failed, 100, bodyError ?? "Required commissioning input is missing.");
+                }
+
+                return;
+            }
+
+            state.ResolvedPath = path;
+            state.RequestBody = body?.ToJsonString(new JsonSerializerOptions { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
+            if (operation.LongRunning)
+            {
+                await UpdateLongRunningProgressAsync(state, LongRunningStage.PayloadReady, 18, GetPayloadMessage(operation));
+                await UpdateLongRunningProgressAsync(state, LongRunningStage.AwaitingController, 28, GetAwaitingControllerMessage(operation));
+            }
+
+            state.Result = await Api.SendAsync(
+                operation.Method,
+                path,
+                body,
+                timeout: operation.LongRunning ? TimeSpan.FromSeconds(120) : null);
+
+            if (operation.LongRunning)
+            {
+                await UpdateLongRunningProgressAsync(
+                    state,
+                    state.Result.Success ? LongRunningStage.Completed : LongRunningStage.Failed,
+                    100,
+                    state.Result.Success
+                        ? GetCompletedMessage(operation)
+                        : state.Result.ErrorMessage ?? "The controller returned an error while processing the commissioning flow.");
+            }
+
+            Notifications.Notify(
+                state.Result.Success ? NotificationSeverity.Success : NotificationSeverity.Warning,
+                operation.Title,
+                state.Result.Success ? $"Completed with HTTP {state.Result.StatusCodeValue}" : state.Result.ErrorMessage ?? $"HTTP {state.Result.StatusCodeValue}",
+                3500);
+        }
+        finally
+        {
+            state.IsBusy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static bool ShouldShowLongRunningProgress(ApiOperationDefinition operation, OperationExecutionState state)
+        => operation.LongRunning
+           && (state.IsBusy
+               || state.Result is not null
+               || !string.IsNullOrWhiteSpace(state.LocalError)
+               || state.ProgressStage != LongRunningStage.Idle);
+
+    private static string GetLongRunningTitle(ApiOperationDefinition operation)
+        => operation.Key.Contains("wifi", StringComparison.OrdinalIgnoreCase)
+            ? "Wi-Fi commissioning lane"
+            : "Thread commissioning lane";
+
+    private static string GetLongRunningSummary(ApiOperationDefinition operation, OperationExecutionState state)
+        => !string.IsNullOrWhiteSpace(state.ProgressMessage)
+            ? state.ProgressMessage
+            : operation.Key.Contains("wifi", StringComparison.OrdinalIgnoreCase)
+                ? "Pairing code, fabric data, and Wi-Fi credentials will be staged before the controller takes over."
+                : "Pairing code and fabric data will be staged before the controller takes over.";
+
+    private static string GetLongRunningBadgeText(OperationExecutionState state)
+        => state.ProgressStage switch
+        {
+            LongRunningStage.Completed => "complete",
+            LongRunningStage.Failed => "attention",
+            LongRunningStage.AwaitingController => "running",
+            LongRunningStage.PayloadReady => "staged",
+            LongRunningStage.Validating => "preflight",
+            _ => "idle"
+        };
+
+    private static string GetLongRunningBadgeClass(OperationExecutionState state)
+        => state.ProgressStage switch
+        {
+            LongRunningStage.Completed => "status-badge-online",
+            LongRunningStage.Failed => "status-badge-error",
+            LongRunningStage.AwaitingController or LongRunningStage.PayloadReady or LongRunningStage.Validating => "status-badge-neutral",
+            _ => "status-badge-neutral"
+        };
+
+    private static string GetLongRunningPercentText(OperationExecutionState state)
+        => $"{Math.Clamp(state.ProgressPercent, 0, 100)}%";
+
+    private static string GetLongRunningMeterWidth(OperationExecutionState state)
+        => $"{Math.Clamp(state.ProgressPercent, 0, 100)}%";
+
+    private static string GetLongRunningMeterClass(OperationExecutionState state)
+        => state.ProgressStage switch
+        {
+            LongRunningStage.Completed => "commission-progress-fill commission-progress-fill-complete",
+            LongRunningStage.Failed => "commission-progress-fill commission-progress-fill-failed",
+            LongRunningStage.AwaitingController => "commission-progress-fill commission-progress-fill-running",
+            _ => "commission-progress-fill"
+        };
+
+    private static IReadOnlyList<LongRunningTimelineStep> GetLongRunningTimeline(ApiOperationDefinition operation, OperationExecutionState state)
+    {
+        var isWifi = operation.Key.Contains("wifi", StringComparison.OrdinalIgnoreCase);
+
+        return
+        [
+            new(1, "Inputs verified", isWifi ? "Pairing payload and Wi-Fi fields are checked." : "Pairing payload and fabric fields are checked.", GetLongRunningStepState(state, 1)),
+            new(2, "Payload staged", "The exact commissioning request is shaped for the controller API.", GetLongRunningStepState(state, 2)),
+            new(3, "Controller run", "The controller performs BLE onboarding and waits for the device flow to settle.", GetLongRunningStepState(state, 3)),
+            new(4, "Result sealed", "Success or failure is captured and the response is ready below.", GetLongRunningStepState(state, 4))
+        ];
+    }
+
+    private static LongRunningStepState GetLongRunningStepState(OperationExecutionState state, int index)
+        => state.ProgressStage switch
+        {
+            LongRunningStage.Failed when index <= 3 => LongRunningStepState.Complete,
+            LongRunningStage.Failed when index == 4 => LongRunningStepState.Error,
+            LongRunningStage.Completed when index <= 4 => LongRunningStepState.Complete,
+            LongRunningStage.AwaitingController when index <= 2 => LongRunningStepState.Complete,
+            LongRunningStage.AwaitingController when index == 3 => LongRunningStepState.Active,
+            LongRunningStage.PayloadReady when index == 1 => LongRunningStepState.Complete,
+            LongRunningStage.PayloadReady when index == 2 => LongRunningStepState.Active,
+            LongRunningStage.Validating when index == 1 => LongRunningStepState.Active,
+            _ => LongRunningStepState.Upcoming
+        };
+
+    private static string GetLongRunningStepClass(LongRunningStepState state)
+        => state switch
+        {
+            LongRunningStepState.Complete => "is-complete",
+            LongRunningStepState.Active => "is-active",
+            LongRunningStepState.Error => "is-error",
+            _ => string.Empty
+        };
+
+    private async Task UpdateLongRunningProgressAsync(
+        OperationExecutionState state,
+        LongRunningStage stage,
+        int percent,
+        string message)
+    {
+        state.ProgressStage = stage;
+        state.ProgressPercent = percent;
+        state.ProgressMessage = message;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static void ResetLongRunningProgress(OperationExecutionState state)
+    {
+        state.ProgressStage = LongRunningStage.Idle;
+        state.ProgressPercent = 0;
+        state.ProgressMessage = null;
+    }
+
+    private static string GetValidationMessage(ApiOperationDefinition operation)
+        => operation.Key.Contains("wifi", StringComparison.OrdinalIgnoreCase)
+            ? "Checking pairing code, fabric metadata, and Wi-Fi credentials before launch."
+            : "Checking pairing code and fabric metadata before launch.";
+
+    private static string GetPayloadMessage(ApiOperationDefinition operation)
+        => operation.Key.Contains("wifi", StringComparison.OrdinalIgnoreCase)
+            ? "Wi-Fi commissioning payload is staged and ready for the controller handoff."
+            : "Thread commissioning payload is staged and ready for the controller handoff.";
+
+    private static string GetAwaitingControllerMessage(ApiOperationDefinition operation)
+        => operation.Key.Contains("wifi", StringComparison.OrdinalIgnoreCase)
+            ? "Controller is driving the Wi-Fi commissioning flow. Keep the device in pairing mode and leave this lane open."
+            : "Controller is driving the Thread commissioning flow. Keep the device in pairing mode and leave this lane open.";
+
+    private static string GetCompletedMessage(ApiOperationDefinition operation)
+        => operation.Key.Contains("wifi", StringComparison.OrdinalIgnoreCase)
+            ? "Wi-Fi commissioning request finished. Review the response payload for device identity and final controller status."
+            : "Thread commissioning request finished. Review the response payload for device identity and final controller status.";
+
+    private bool TryBuildPath(ApiOperationDefinition operation, OperationExecutionState state, out string path, out string? error)
+    {
+        error = null;
+        path = operation.PathTemplate;
+
+        foreach (var routeToken in RouteTokens)
+        {
+            path = path.Replace($"{{{routeToken.Key}}}", Uri.EscapeDataString(routeToken.Value ?? string.Empty), StringComparison.OrdinalIgnoreCase);
+        }
+
+        var query = new List<string>();
+        foreach (var field in operation.Fields ?? [])
+        {
+            if (field.Location == ApiFieldLocation.Path)
+            {
+                var value = GetFieldStringValue(state, field);
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    if (field.Required)
+                    {
+                        error = $"{field.Label} is required.";
+                        return false;
+                    }
+
+                    continue;
+                }
+
+                path = path.Replace($"{{{field.Name}}}", Uri.EscapeDataString(value), StringComparison.OrdinalIgnoreCase);
+            }
+            else if (field.Location == ApiFieldLocation.Query)
+            {
+                if (field.Kind == ApiFieldInputKind.Boolean)
+                {
+                    query.Add($"{Uri.EscapeDataString(field.Name)}={(GetBoolValue(operation.Key, field.Name) ? "true" : "false")}");
+                    continue;
+                }
+
+                var value = GetFieldStringValue(state, field);
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    if (field.Required)
+                    {
+                        error = $"{field.Label} is required.";
+                        return false;
+                    }
+
+                    continue;
+                }
+
+                query.Add($"{Uri.EscapeDataString(field.Name)}={Uri.EscapeDataString(value)}");
+            }
+        }
+
+        if (path.Contains('{'))
+        {
+            error = "One or more route parameters are missing.";
+            return false;
+        }
+
+        if (query.Count > 0)
+        {
+            path = $"{path}?{string.Join("&", query)}";
+        }
+
+        return true;
+    }
+
+    private bool TryBuildBody(ApiOperationDefinition operation, OperationExecutionState state, out JsonNode? body, out string? error)
+    {
+        error = null;
+        body = null;
+
+        var bodyFields = (operation.Fields ?? []).Where(field => field.Location == ApiFieldLocation.Body).ToArray();
+        if (bodyFields.Length == 0)
+        {
+            return true;
+        }
+
+        var json = new JsonObject();
+        foreach (var field in bodyFields)
+        {
+            if (field.Kind == ApiFieldInputKind.Boolean)
+            {
+                json[field.Name] = GetBoolValue(operation.Key, field.Name);
+                continue;
+            }
+
+            var textValue = GetFieldStringValue(state, field);
+            if (string.IsNullOrWhiteSpace(textValue))
+            {
+                if (field.Required)
+                {
+                    error = $"{field.Label} is required.";
+                    return false;
+                }
+
+                continue;
+            }
+
+            switch (field.Kind)
+            {
+                case ApiFieldInputKind.Text:
+                    json[field.Name] = textValue;
+                    break;
+                case ApiFieldInputKind.Integer:
+                    if (!long.TryParse(textValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var signedValue))
+                    {
+                        error = $"{field.Label} must be a valid integer.";
+                        return false;
+                    }
+
+                    json[field.Name] = signedValue;
+                    break;
+                case ApiFieldInputKind.UnsignedInteger:
+                    if (!ulong.TryParse(textValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var unsignedValue))
+                    {
+                        error = $"{field.Label} must be a valid unsigned integer.";
+                        return false;
+                    }
+
+                    json[field.Name] = unsignedValue;
+                    break;
+                case ApiFieldInputKind.Json:
+                    try
+                    {
+                        json[field.Name] = JsonNode.Parse(textValue);
+                    }
+                    catch (JsonException ex)
+                    {
+                        error = $"{field.Label} must be valid JSON. {ex.Message}";
+                        return false;
+                    }
+
+                    break;
+            }
+        }
+
+        body = json;
+        return true;
+    }
+
+    private static string GetFieldStringValue(OperationExecutionState state, ApiFieldDefinition field)
+        => state.TextValues.TryGetValue(field.Name, out var value) ? value : string.Empty;
+
+    private static string FormatRequest(OperationExecutionState state)
+    {
+        var payload = new JsonObject
+        {
+            ["path"] = state.ResolvedPath ?? string.Empty,
+        };
+
+        if (!string.IsNullOrWhiteSpace(state.RequestBody))
+        {
+            payload["body"] = JsonNode.Parse(state.RequestBody);
+        }
+
+        return payload.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private sealed class OperationExecutionState
+    {
+        public Dictionary<string, string> TextValues { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, bool> BoolValues { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public ApiCallResult? Result { get; set; }
+        public string? ResolvedPath { get; set; }
+        public string? RequestBody { get; set; }
+        public string? LocalError { get; set; }
+        public bool IsBusy { get; set; }
+        public LongRunningStage ProgressStage { get; set; }
+        public int ProgressPercent { get; set; }
+        public string? ProgressMessage { get; set; }
+    }
+
+    private enum LongRunningStage
+    {
+        Idle,
+        Validating,
+        PayloadReady,
+        AwaitingController,
+        Completed,
+        Failed
+    }
+
+    private enum LongRunningStepState
+    {
+        Upcoming,
+        Active,
+        Complete,
+        Error
+    }
+
+    private sealed record LongRunningTimelineStep(
+        int Index,
+        string Title,
+        string Description,
+        LongRunningStepState State);
+}

@@ -1,0 +1,8 @@
+<span class="status-badge @CssClass">@Text</span>
+
+@code {
+    [Parameter] public required string Text { get; set; }
+    [Parameter] public string Kind { get; set; } = "neutral";
+
+    private string CssClass => $"status-badge-{Kind.ToLowerInvariant()}";
+}

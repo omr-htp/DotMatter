@@ -1,0 +1,113 @@
+[
+  {
+    "name": "ReadRequestMessage",
+    "doc": "Request to read attributes and/or events (opcode 0x02).",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "AttributeRequests", "type": "array:struct:AttributePathIB", "optional": true },
+      { "tag": 1, "name": "EventRequests", "type": "array:struct:EventPathIB", "optional": true },
+      { "tag": 2, "name": "EventFilters", "type": "array:struct:EventFilterIB", "optional": true },
+      { "tag": 3, "name": "IsFabricFiltered", "type": "bool", "optional": false },
+      { "tag": 255, "name": "InteractionModelRevision", "type": "uint8", "optional": false }
+    ]
+  },
+  {
+    "name": "ReportDataMessage",
+    "doc": "Report containing attribute/event data (opcode 0x05).",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "SubscriptionId", "type": "uint32", "optional": true },
+      { "tag": 1, "name": "AttributeReports", "type": "array:struct:AttributeReportIB", "optional": true },
+      { "tag": 2, "name": "EventReports", "type": "array:struct:EventReportIB", "optional": true },
+      { "tag": 3, "name": "MoreChunkedMessages", "type": "bool", "optional": true },
+      { "tag": 4, "name": "SuppressResponse", "type": "bool", "optional": true },
+      { "tag": 255, "name": "InteractionModelRevision", "type": "uint8", "optional": false }
+    ]
+  },
+  {
+    "name": "SubscribeRequestMessage",
+    "doc": "Request to subscribe to attribute/event changes (opcode 0x03).",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "KeepSubscriptions", "type": "bool", "optional": false },
+      { "tag": 1, "name": "MinIntervalFloor", "type": "uint16", "optional": false },
+      { "tag": 2, "name": "MaxIntervalCeiling", "type": "uint16", "optional": false },
+      { "tag": 3, "name": "AttributeRequests", "type": "array:struct:AttributePathIB", "optional": true },
+      { "tag": 4, "name": "EventRequests", "type": "array:struct:EventPathIB", "optional": true },
+      { "tag": 5, "name": "EventFilters", "type": "array:struct:EventFilterIB", "optional": true },
+      { "tag": 7, "name": "IsFabricFiltered", "type": "bool", "optional": false },
+      { "tag": 8, "name": "DataVersionFilters", "type": "array:struct:DataVersionFilterIB", "optional": true },
+      { "tag": 255, "name": "InteractionModelRevision", "type": "uint8", "optional": false }
+    ]
+  },
+  {
+    "name": "SubscribeResponseMessage",
+    "doc": "Acknowledgement of a subscription (opcode 0x04).",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "SubscriptionId", "type": "uint32", "optional": false },
+      { "tag": 2, "name": "MaxInterval", "type": "uint16", "optional": false },
+      { "tag": 255, "name": "InteractionModelRevision", "type": "uint8", "optional": false }
+    ]
+  },
+  {
+    "name": "InvokeRequestMessage",
+    "doc": "Request to invoke commands (opcode 0x08).",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "SuppressResponse", "type": "bool", "optional": false },
+      { "tag": 1, "name": "TimedRequest", "type": "bool", "optional": false },
+      { "tag": 2, "name": "InvokeRequests", "type": "array:struct:CommandDataIB", "optional": false },
+      { "tag": 255, "name": "InteractionModelRevision", "type": "uint8", "optional": false }
+    ]
+  },
+  {
+    "name": "InvokeResponseMessage",
+    "doc": "Response to a command invocation (opcode 0x09).",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "SuppressResponse", "type": "bool", "optional": false },
+      { "tag": 1, "name": "InvokeResponses", "type": "array:struct:InvokeResponseIB", "optional": false },
+      { "tag": 255, "name": "InteractionModelRevision", "type": "uint8", "optional": false }
+    ]
+  },
+  {
+    "name": "WriteRequestMessage",
+    "doc": "Request to write attributes (opcode 0x06).",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "SuppressResponse", "type": "bool", "optional": true },
+      { "tag": 1, "name": "TimedRequest", "type": "bool", "optional": false },
+      { "tag": 2, "name": "WriteRequests", "type": "array:struct:WriteAttributeIB", "optional": false },
+      { "tag": 3, "name": "MoreChunkedMessages", "type": "bool", "optional": true },
+      { "tag": 255, "name": "InteractionModelRevision", "type": "uint8", "optional": false }
+    ]
+  },
+  {
+    "name": "WriteResponseMessage",
+    "doc": "Response to an attribute write (opcode 0x07).",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "WriteResponses", "type": "array:struct:WriteAttributeStatusIB", "optional": false },
+      { "tag": 255, "name": "InteractionModelRevision", "type": "uint8", "optional": false }
+    ]
+  },
+  {
+    "name": "StatusResponseMessage",
+    "doc": "Generic status response (opcode 0x01).",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "Status", "type": "uint8", "optional": false },
+      { "tag": 255, "name": "InteractionModelRevision", "type": "uint8", "optional": false }
+    ]
+  },
+  {
+    "name": "TimedRequestMessage",
+    "doc": "Timed request for timed interactions (opcode 0x0A).",
+    "container": "structure",
+    "fields": [
+      { "tag": 0, "name": "Timeout", "type": "uint16", "optional": false },
+      { "tag": 255, "name": "InteractionModelRevision", "type": "uint8", "optional": false }
+    ]
+  }
+]
