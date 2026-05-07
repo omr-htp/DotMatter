@@ -5,11 +5,13 @@ namespace DotMatter.Core.Commissioning;
 /// <param name="NodeId">The assigned node identifier.</param>
 /// <param name="ThreadIp">The Thread network IP address.</param>
 /// <param name="Error">Error message if commissioning failed.</param>
+/// <param name="OperationalPort">The discovered operational Matter port.</param>
 public record CommissioningResult(
     bool Success,
     string? NodeId,
     string? ThreadIp,
-    string? Error
+    string? Error,
+    ushort? OperationalPort = null
 );
 
 /// <summary>Progress update during Matter commissioning.</summary>

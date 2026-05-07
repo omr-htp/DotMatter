@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using DotMatter.Core.Mdns;
 
 namespace DotMatter.Core.Discovery;
@@ -47,22 +48,46 @@ public sealed class OperationalNode
 public sealed class OperationalDiscovery : IDisposable
 {
     private const string OperationalService = "_matter._tcp.local.";
-    private const string CommissionableService = "_matterc._udp.local.";
 
-    private readonly MulticastService _mdns;
+    private readonly IMulticastService _mdns;
     private readonly ServiceDiscovery _sd;
-    private readonly Dictionary<string, OperationalNode> _resolved = [];
+    private readonly bool _ownsMulticastService;
+    private readonly Dictionary<string, OperationalNode> _resolved = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, PendingOperationalNode> _pendingByInstance = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<IPAddress>> _addressesByTarget = new(StringComparer.OrdinalIgnoreCase);
     private bool _started;
 
     private sealed record OperationalInstanceName(ulong CompressedFabricId, ulong NodeId);
+
+    private sealed class PendingOperationalNode
+    {
+        public required string InstanceName { get; init; }
+        public required ulong CompressedFabricId { get; init; }
+        public required ulong NodeId { get; init; }
+        public string? TargetName { get; set; }
+        public int? Port { get; set; }
+        public List<IPAddress> Addresses { get; } = [];
+    }
 
     /// <summary>Raised when a new Matter operational node is discovered.</summary>
     public event Action<OperationalNode>? NodeDiscovered;
 
     /// <summary>OperationalDiscovery.</summary>
     public OperationalDiscovery()
+        : this(new MulticastService(), ownsMulticastService: true)
     {
-        _mdns = new MulticastService();
+    }
+
+    /// <summary>OperationalDiscovery.</summary>
+    public OperationalDiscovery(IMulticastService mdns)
+        : this(mdns, ownsMulticastService: false)
+    {
+    }
+
+    private OperationalDiscovery(IMulticastService mdns, bool ownsMulticastService)
+    {
+        _mdns = mdns;
+        _ownsMulticastService = ownsMulticastService;
         _sd = new ServiceDiscovery(_mdns);
     }
 
@@ -76,13 +101,10 @@ public sealed class OperationalDiscovery : IDisposable
 
         _started = true;
 
-        _mdns.NetworkInterfaceDiscovered += (_, _) =>
-        {
-            _mdns.SendQuery(OperationalService, type: DnsType.PTR);
-        };
-
+        _mdns.NetworkInterfaceDiscovered += OnNetworkInterfaceDiscovered;
         _mdns.AnswerReceived += OnAnswerReceived;
         _mdns.Start();
+        _mdns.SendQuery(OperationalService, type: DnsType.PTR);
     }
 
     /// <summary>
@@ -97,7 +119,7 @@ public sealed class OperationalDiscovery : IDisposable
         ulong compressedFabricId, ulong nodeId, TimeSpan? timeout = null)
     {
         var effectiveTimeout = timeout ?? TimeSpan.FromSeconds(5);
-        var instanceName = $"{compressedFabricId:X16}-{nodeId:X16}.{OperationalService}";
+        var instanceName = NormalizeName($"{compressedFabricId:X16}-{nodeId:X16}.{OperationalService}");
 
         // Check if already resolved
         if (_resolved.TryGetValue(instanceName, out var cached))
@@ -140,85 +162,134 @@ public sealed class OperationalDiscovery : IDisposable
     /// <summary>Return all currently-known operational nodes.</summary>
     public IReadOnlyCollection<OperationalNode> GetKnownNodes() => _resolved.Values;
 
+    private void OnNetworkInterfaceDiscovered(object? sender, NetworkInterfaceEventArgs e)
+    {
+        _mdns.SendQuery(OperationalService, type: DnsType.PTR);
+    }
+
     private void OnAnswerReceived(object? sender, MessageEventArgs e)
     {
-        foreach (var record in e.Message.Answers.Concat(e.Message.AdditionalRecords))
+        var records = e.Message.Answers.Concat(e.Message.AdditionalRecords).ToArray();
+
+        foreach (var record in records)
         {
-            if (record is PTRRecord ptr && ptr.Name.ToString() == OperationalService)
+            if (record is PTRRecord ptr && NamesEqual(ptr.Name.ToString(), OperationalService))
             {
-                // Discovered an instance — query for SRV and address
                 _mdns.SendQuery(ptr.DomainName, type: DnsType.SRV);
                 _mdns.SendQuery(ptr.DomainName, type: DnsType.AAAA);
                 _mdns.SendQuery(ptr.DomainName, type: DnsType.A);
             }
         }
 
-        // Try to assemble from SRV + address records
-        foreach (var record in e.Message.Answers.Concat(e.Message.AdditionalRecords))
+        var addressTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var addressRecord in records.OfType<AddressRecord>())
         {
-            if (record is SRVRecord srv)
+            var targetName = NormalizeName(addressRecord.Name.ToString());
+            addressTargets.Add(targetName);
+            if (!_addressesByTarget.TryGetValue(targetName, out var addresses))
             {
-                var instanceName = srv.Name.ToString();
-                if (!instanceName.Contains("_matter._tcp"))
-                {
-                    continue;
-                }
+                addresses = [];
+                _addressesByTarget[targetName] = addresses;
+            }
 
-                var parsed = ParseInstanceName(instanceName);
-                if (parsed == null)
-                {
-                    continue;
-                }
+            if (!addresses.Contains(addressRecord.Address))
+            {
+                addresses.Add(addressRecord.Address);
+            }
 
-                // Find address record in the same message
-                // Collect all addresses, prefer non-link-local IPv6, then IPv4, then link-local
-                IPAddress? address;
-                IPAddress? ipv4Addr = null;
-                IPAddress? linkLocalAddr = null;
-                IPAddress? globalV6Addr = null;
-                foreach (var ar in e.Message.Answers.Concat(e.Message.AdditionalRecords))
+            foreach (var pending in _pendingByInstance.Values)
+            {
+                if (pending.TargetName is not null && NamesEqual(pending.TargetName, targetName)
+                    && !pending.Addresses.Contains(addressRecord.Address))
                 {
-                    if (ar is AAAARecord aaaa && aaaa.Name == srv.Target)
-                    {
-                        if (aaaa.Address.IsIPv6LinkLocal)
-                        {
-                            linkLocalAddr ??= aaaa.Address;
-                        }
-                        else
-                        {
-                            globalV6Addr ??= aaaa.Address;
-                        }
-                    }
-                    if (ar is ARecord a && a.Name == srv.Target)
-                    {
-                        ipv4Addr ??= a.Address;
-                    }
+                    pending.Addresses.Add(addressRecord.Address);
                 }
-                // Priority: global IPv6 > IPv4 > link-local IPv6
-                address = globalV6Addr ?? ipv4Addr ?? linkLocalAddr;
+            }
+        }
 
-                if (address == null)
-                {
-                    // Query for the address separately
-                    _mdns.SendQuery(srv.Target, type: DnsType.AAAA);
-                    _mdns.SendQuery(srv.Target, type: DnsType.A);
-                    continue;
-                }
+        foreach (var pending in _pendingByInstance.Values)
+        {
+            if (pending.TargetName is not null && addressTargets.Contains(pending.TargetName))
+            {
+                TryPublish(pending);
+            }
+        }
 
-                var node = new OperationalNode
+        foreach (var srv in records.OfType<SRVRecord>())
+        {
+            var instanceName = NormalizeName(srv.Name.ToString());
+            if (!instanceName.Contains("_matter._tcp", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var parsed = ParseInstanceName(instanceName);
+            if (parsed == null)
+            {
+                continue;
+            }
+
+            if (!_pendingByInstance.TryGetValue(instanceName, out var pending))
+            {
+                pending = new PendingOperationalNode
                 {
                     InstanceName = instanceName,
                     CompressedFabricId = parsed.CompressedFabricId,
                     NodeId = parsed.NodeId,
-                    Address = address,
-                    Port = srv.Port,
                 };
-
-                _resolved[instanceName] = node;
-                NodeDiscovered?.Invoke(node);
+                _pendingByInstance[instanceName] = pending;
             }
+
+            pending.TargetName = NormalizeName(srv.Target.ToString());
+            pending.Port = srv.Port;
+            if (_addressesByTarget.TryGetValue(pending.TargetName, out var cachedAddresses))
+            {
+                foreach (var address in cachedAddresses)
+                {
+                    if (!pending.Addresses.Contains(address))
+                    {
+                        pending.Addresses.Add(address);
+                    }
+                }
+            }
+
+            _mdns.SendQuery(srv.Target, type: DnsType.AAAA);
+            _mdns.SendQuery(srv.Target, type: DnsType.A);
+            TryPublish(pending);
         }
     }
+
+    private void TryPublish(PendingOperationalNode pending)
+    {
+        if (!pending.Port.HasValue)
+        {
+            return;
+        }
+
+        var address = SelectPreferredAddress(pending.Addresses);
+        if (address is null)
+        {
+            return;
+        }
+
+        var node = new OperationalNode
+        {
+            InstanceName = pending.InstanceName,
+            CompressedFabricId = pending.CompressedFabricId,
+            NodeId = pending.NodeId,
+            Address = address,
+            Port = pending.Port.Value,
+        };
+
+        _resolved[pending.InstanceName] = node;
+        NodeDiscovered?.Invoke(node);
+    }
+
+    private static IPAddress? SelectPreferredAddress(IEnumerable<IPAddress> addresses)
+        => addresses
+            .OrderBy(static address => address.AddressFamily == AddressFamily.InterNetworkV6 && !address.IsIPv6LinkLocal ? 0 : 1)
+            .ThenBy(static address => address.AddressFamily == AddressFamily.InterNetwork ? 0 : 1)
+            .FirstOrDefault();
 
     /// <summary>
     /// Parse the operational instance name: {compressedFabricId}-{nodeId}._matter._tcp.local.
@@ -249,10 +320,22 @@ public sealed class OperationalDiscovery : IDisposable
         return null;
     }
 
+    private static string NormalizeName(string name)
+        => name.TrimEnd('.');
+
+    private static bool NamesEqual(string left, string right)
+        => string.Equals(NormalizeName(left), NormalizeName(right), StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Dispose.</summary>
     public void Dispose()
     {
-        _mdns.Stop();
-        (_mdns as IDisposable)?.Dispose();
+        _mdns.NetworkInterfaceDiscovered -= OnNetworkInterfaceDiscovered;
+        _mdns.AnswerReceived -= OnAnswerReceived;
+        _sd.Dispose();
+        if (_ownsMulticastService)
+        {
+            _mdns.Stop();
+            _mdns.Dispose();
+        }
     }
 }

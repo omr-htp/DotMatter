@@ -720,14 +720,8 @@ public partial class LinuxBTPConnection : IConnection
         // Correct order: (1) register D-Bus watcher, (2) write handshake, (3) StartNotify (CCCD).
 
         // Step 1: Register D-Bus property watcher (local signal handler — no device interaction)
-        _notifyWatcher = await _indicateChar!.WatchPropertiesChangedAsync((ex, changes) =>
+        _notifyWatcher = await _indicateChar!.WatchPropertiesChangedAsync(changes =>
         {
-            if (ex != null)
-            {
-                MatterLog.Info("[BTP] Watcher error: {0}", ex.Message);
-                return;
-            }
-
             MatterLog.Info("[BTP] PropertiesChanged signal! HasValueChanged={0}", changes.HasValueChanged);
 
             if (changes.HasValueChanged)

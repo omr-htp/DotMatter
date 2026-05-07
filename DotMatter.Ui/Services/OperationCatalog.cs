@@ -25,13 +25,15 @@ internal static class OperationCatalog
         get;
     } =
     [
-        new("thread-commission", "Thread commissioning", "Commission a new Thread device over BLE using discriminator/passcode or QR/manual code inputs.", ApiOperationMethod.Post, "/api/commission",
+        new("thread-commission", "BLE commissioning", "Commission a BLE device onto the fabric. Leave network provisioning enabled for Thread devices, or skip it for devices that are already on the IP network.", ApiOperationMethod.Post, "/api/commission",
             [
                 new("Discriminator", "Discriminator", ApiFieldLocation.Body, ApiFieldInputKind.Integer, true, "3840"),
                 new("Passcode", "Passcode", ApiFieldLocation.Body, ApiFieldInputKind.UnsignedInteger, false, "20202021"),
                 new("FabricName", "Fabric name", ApiFieldLocation.Body, DefaultValue: ""),
                 new("ManualCode", "Manual pairing code", ApiFieldLocation.Body, DefaultValue: ""),
-                new("QrCode", "QR code payload", ApiFieldLocation.Body, DefaultValue: "")
+                new("QrCode", "QR code payload", ApiFieldLocation.Body, DefaultValue: ""),
+                new("SkipNetworkProvisioning", "Skip network provisioning", ApiFieldLocation.Body, ApiFieldInputKind.Boolean, DefaultBool: false,
+                    HelpText: "Enable this for devices that are already on the IP network and reject Thread/Wi-Fi Network Commissioning.")
             ],
             "Commission",
             LongRunning: true),

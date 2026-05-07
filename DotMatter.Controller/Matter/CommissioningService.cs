@@ -4,6 +4,7 @@ using DotMatter.Controller.Configuration;
 using DotMatter.Controller.Diagnostics;
 using DotMatter.Core.Clusters;
 using DotMatter.Core.Commissioning;
+using DotMatter.Core.Discovery;
 using DotMatter.Core.Fabrics;
 using DotMatter.Core.LinuxBle;
 using DotMatter.Hosting;
@@ -55,13 +56,16 @@ public class CommissioningService(
         string fabricName,
         CancellationToken ct,
         bool isShortDiscriminator = false,
+        bool provisionThreadNetwork = true,
         Action<CommissioningProgress>? onProgress = null)
     {
         return await RunWithCommissioningLockAsync(
             () => CommissionCoreAsync(
                 discriminator, passcode, fabricName,
-                fetchThreadDataset: true,
-                wifiSsid: null, wifiPassword: null, transport: null,
+                fetchThreadDataset: provisionThreadNetwork,
+                wifiSsid: null,
+                wifiPassword: null,
+                transport: provisionThreadNetwork ? "thread" : "on-network",
                 isShortDiscriminator, onProgress, ct),
             ct);
     }
@@ -160,6 +164,17 @@ public class CommissioningService(
             }
 
             string? operationalIp = result.ThreadIp;
+            ushort operationalPort = result.OperationalPort ?? 5540;
+            if (string.IsNullOrWhiteSpace(operationalIp))
+            {
+                var operationalNode = await ResolveCommissionedOperationalNodeAsync(fabric, result.NodeId, ct);
+                if (operationalNode != null)
+                {
+                    operationalIp = operationalNode.Address.ToString();
+                    operationalPort = (ushort)operationalNode.Port;
+                }
+            }
+
             if (fetchThreadDataset && string.IsNullOrWhiteSpace(operationalIp))
             {
                 operationalIp = await ResolveCommissionedThreadIpAsync(fabric, result.NodeId, ct)
@@ -172,14 +187,15 @@ public class CommissioningService(
                 operationalIp ?? "",
                 fabricName,
                 Commissioned: DateTime.UtcNow,
-                Transport: transport);
+                Transport: transport,
+                OperationalPort: operationalPort);
 
             await MatterCommissioningStorage.WriteNodeInfoAsync(_registry.BasePath, fabricName, nodeInfo, ct);
 
             if (_log.IsEnabled(LogLevel.Information))
             {
-                _log.LogInformation("Commissioning complete: DeviceId={DeviceId}, NodeId={NodeId}, IP={Ip}",
-                    deviceId, result.NodeId, operationalIp);
+                _log.LogInformation("Commissioning complete: DeviceId={DeviceId}, NodeId={NodeId}, Endpoint={Ip}:{Port}",
+                    deviceId, result.NodeId, operationalIp, operationalPort);
             }
 
             PublishEvent(deviceId, "commissioned", fabricName);
@@ -318,6 +334,42 @@ public class CommissioningService(
             _log.LogDebug(ex, "Specific SRP lookup failed for newly commissioned node.");
             return null;
         }
+    }
+
+    private async Task<OperationalNode?> ResolveCommissionedOperationalNodeAsync(Fabric fabric, string? nodeId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(nodeId))
+        {
+            return null;
+        }
+
+        try
+        {
+            var nodeIdBytes = new BigInteger(nodeId).ToByteArrayUnsigned();
+            var nodeIdPadded = new byte[8];
+            if (nodeIdBytes.Length <= 8)
+            {
+                Array.Copy(nodeIdBytes, 0, nodeIdPadded, 8 - nodeIdBytes.Length, nodeIdBytes.Length);
+            }
+
+            using var discovery = new OperationalDiscovery();
+            var node = await discovery.ResolveNodeAsync(
+                Convert.ToUInt64(fabric.CompressedFabricId, 16),
+                BitConverter.ToUInt64(nodeIdPadded),
+                TimeSpan.FromSeconds(15));
+
+            if (node != null)
+            {
+                _log.LogInformation("Resolved commissioned operational node via mDNS: {Ip}:{Port}", node.Address, node.Port);
+                return node;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log.LogDebug(ex, "Operational mDNS lookup failed for newly commissioned node.");
+        }
+
+        return null;
     }
 
     private static GeneralCommissioningCluster.RegulatoryLocationTypeEnum MapRegulatoryLocation(

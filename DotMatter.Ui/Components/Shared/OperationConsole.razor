@@ -367,16 +367,16 @@ else
                || state.ProgressStage != LongRunningStage.Idle);
 
     private static string GetLongRunningTitle(ApiOperationDefinition operation)
-        => operation.Key.Contains("wifi", StringComparison.OrdinalIgnoreCase)
+        => IsWifiCommissioning(operation)
             ? "Wi-Fi commissioning lane"
-            : "Thread commissioning lane";
+            : "BLE commissioning lane";
 
     private static string GetLongRunningSummary(ApiOperationDefinition operation, OperationExecutionState state)
         => !string.IsNullOrWhiteSpace(state.ProgressMessage)
             ? state.ProgressMessage
-            : operation.Key.Contains("wifi", StringComparison.OrdinalIgnoreCase)
+            : IsWifiCommissioning(operation)
                 ? "Pairing code, fabric data, and Wi-Fi credentials will be staged before the controller takes over."
-                : "Pairing code and fabric data will be staged before the controller takes over.";
+                : "Pairing code and fabric data will be staged before the controller takes over. Enable Skip network provisioning for devices that are already on the IP network.";
 
     private static string GetLongRunningBadgeText(OperationExecutionState state)
         => state.ProgressStage switch
@@ -415,7 +415,7 @@ else
 
     private static IReadOnlyList<LongRunningTimelineStep> GetLongRunningTimeline(ApiOperationDefinition operation, OperationExecutionState state)
     {
-        var isWifi = operation.Key.Contains("wifi", StringComparison.OrdinalIgnoreCase);
+        var isWifi = IsWifiCommissioning(operation);
 
         return
         [
@@ -439,6 +439,10 @@ else
             LongRunningStage.Validating when index == 1 => LongRunningStepState.Active,
             _ => LongRunningStepState.Upcoming
         };
+
+    private static bool IsWifiCommissioning(ApiOperationDefinition operation)
+        => operation.PathTemplate.Contains("/commission/wifi", StringComparison.OrdinalIgnoreCase)
+           || operation.Key.Contains("wifi", StringComparison.OrdinalIgnoreCase);
 
     private static string GetLongRunningStepClass(LongRunningStepState state)
         => state switch

@@ -76,6 +76,32 @@ public class CoreClientApiTests
         Assert.That(node?.InstanceName, Is.EqualTo("ABC123"));
     }
 
+    [Test]
+    public async Task OperationalDiscovery_ResolveNodeAsync_AssemblesSrvAndAddressAcrossResponses()
+    {
+        const ulong fabricId = 0xC6A4C11E27732C48;
+        const ulong nodeId = 0x45FDAABF3955252F;
+        var targetName = new DomainName("matter-node.local");
+
+        using var mdns = new FakeMulticastService();
+        using var discovery = new OperationalDiscovery(mdns);
+
+        var resolveTask = discovery.ResolveNodeAsync(fabricId, nodeId, TimeSpan.FromSeconds(1));
+        mdns.RaiseAnswer(CreateOperationalSrvAnswer(fabricId, nodeId, targetName, 5541));
+        mdns.RaiseAnswer(CreateOperationalAddressAnswer(targetName));
+
+        var node = await resolveTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node, Is.Not.Null);
+            Assert.That(node!.CompressedFabricId, Is.EqualTo(fabricId));
+            Assert.That(node.NodeId, Is.EqualTo(nodeId));
+            Assert.That(node.Address, Is.EqualTo(IPAddress.Parse("fd00::1234")));
+            Assert.That(node.Port, Is.EqualTo(5541));
+        }
+    }
+
 #pragma warning disable IDE0039
     [Test]
     public void GeneratedControllerApis_UseTypedStructAndBitmapSignatures()
@@ -339,6 +365,56 @@ public class CoreClientApiTests
         });
 
         message.AdditionalRecords.Add(new AAAARecord
+        {
+            Name = targetName,
+            Address = IPAddress.Parse("fd00::1234")
+        });
+
+        return message;
+    }
+
+    private static Message CreateOperationalSrvAnswer(ulong fabricId, ulong nodeId, DomainName targetName, ushort port)
+    {
+        var serviceName = new DomainName("_matter._tcp.local");
+        var instanceName = new DomainName($"{fabricId:X16}-{nodeId:X16}._matter._tcp.local");
+
+        var message = new Message
+        {
+            QR = true,
+            Opcode = MessageOperation.Query
+        };
+
+        message.Answers.Add(new PTRRecord
+        {
+            Name = serviceName,
+            DomainName = instanceName
+        });
+
+        message.AdditionalRecords.Add(new SRVRecord
+        {
+            Name = instanceName,
+            Target = targetName,
+            Port = port
+        });
+
+        return message;
+    }
+
+    private static Message CreateOperationalAddressAnswer(DomainName targetName)
+    {
+        var message = new Message
+        {
+            QR = true,
+            Opcode = MessageOperation.Query
+        };
+
+        message.Answers.Add(new AAAARecord
+        {
+            Name = targetName,
+            Address = IPAddress.Parse("fe80::1234")
+        });
+
+        message.Answers.Add(new AAAARecord
         {
             Name = targetName,
             Address = IPAddress.Parse("fd00::1234")

@@ -80,7 +80,7 @@ public class DeviceRegistry(ILogger logger, string? basePath = null)
                     Name = ni.DeviceName ?? fabricName,
                     NodeId = ni.NodeId,
                     Ip = ni.ThreadIPv6 ?? "",
-                    Port = 5540,
+                    Port = ni.OperationalPort ?? 5540,
                     FabricName = fabricName,
                     Transport = ni.Transport,
                     VendorName = ni.VendorName,
@@ -173,7 +173,7 @@ public class DeviceRegistry(ILogger logger, string? basePath = null)
     /// <summary>
     /// Persist updated IP address to node_info.json.
     /// </summary>
-    public void PersistIp(string id, string ip)
+    public void PersistIp(string id, string ip, ushort? port = null)
     {
         var device = Get(id);
         if (device is null)
@@ -198,7 +198,8 @@ public class DeviceRegistry(ILogger logger, string? basePath = null)
 
             ni = ni with
             {
-                ThreadIPv6 = ip
+                ThreadIPv6 = ip,
+                OperationalPort = port ?? ni.OperationalPort
             };
             AtomicFilePersistence.WriteText(
                 nodeInfoPath,
@@ -245,6 +246,7 @@ public class DeviceRegistry(ILogger logger, string? basePath = null)
                 FabricName = device.FabricName,
                 DeviceName = device.Name,
                 Transport = device.Transport,
+                OperationalPort = (ushort)device.Port,
                 VendorName = device.VendorName,
                 ProductName = device.ProductName,
                 DeviceType = string.IsNullOrWhiteSpace(device.DeviceType) ? null : device.DeviceType,

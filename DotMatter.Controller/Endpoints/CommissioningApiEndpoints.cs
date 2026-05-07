@@ -32,7 +32,8 @@ internal static class CommissioningApiEndpoints
                 passcode,
                 body.FabricName ?? string.Empty,
                 ct,
-                isShortDiscriminator);
+                isShortDiscriminator,
+                provisionThreadNetwork: !body.SkipNetworkProvisioning);
             if (!result.Success)
             {
                 return ApiEndpointResults.MapCommissionFailure(result);
