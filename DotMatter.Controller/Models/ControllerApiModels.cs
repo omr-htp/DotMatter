@@ -27,6 +27,9 @@ public class CommissionRequest
     {
         get; set;
     }
+
+    /// <summary>Skip Thread network provisioning for already-networked commissionable devices such as Ethernet bridges.</summary>
+    public bool SkipNetworkProvisioning { get; set; }
 }
 
 /// <summary>Commission a WiFi Matter device via BLE.</summary>

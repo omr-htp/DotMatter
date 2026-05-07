@@ -16,7 +16,8 @@ public sealed record NodeInfoRecord(
     string? ProductName = null,
     string? DeviceType = null,
     ushort? ColorCapabilities = null,
-    Dictionary<ushort, List<uint>>? Endpoints = null);
+    Dictionary<ushort, List<uint>>? Endpoints = null,
+    ushort? OperationalPort = null);
 
 /// <summary>AOT-safe JSON context for DotMatter.Hosting types.</summary>
 [JsonSerializable(typeof(NodeInfoRecord))]

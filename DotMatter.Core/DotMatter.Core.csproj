@@ -24,15 +24,15 @@
   <ItemGroup>
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.7" />
-    <PackageReference Include="Tmds.DBus.Protocol" Version="0.92.0" />
-    <PackageReference Include="Tmds.DBus.Generator" Version="0.92.0" PrivateAssets="all" />
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.93.0" />
+    <PackageReference Include="Tmds.DBus.Generator" Version="0.93.0" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
-    <AdditionalFiles Include="LinuxBle\DBusXml\org.freedesktop.DBus.ObjectManager.xml" Namespace="DotMatter.Core.LinuxBle" GenerateDBusTypes="true" />
-    <AdditionalFiles Include="LinuxBle\DBusXml\org.bluez.Adapter1.xml" Namespace="DotMatter.Core.LinuxBle" GenerateDBusTypes="true" />
-    <AdditionalFiles Include="LinuxBle\DBusXml\org.bluez.Device1.xml" Namespace="DotMatter.Core.LinuxBle" GenerateDBusTypes="true" />
-    <AdditionalFiles Include="LinuxBle\DBusXml\org.bluez.GattCharacteristic1.xml" Namespace="DotMatter.Core.LinuxBle" GenerateDBusTypes="true" />
+    <AdditionalFiles Include="LinuxBle\DBusXml\org.freedesktop.DBus.ObjectManager.xml" Namespace="DotMatter.Core.LinuxBle" DBusGeneratorMode="Proxy" />
+    <AdditionalFiles Include="LinuxBle\DBusXml\org.bluez.Adapter1.xml" Namespace="DotMatter.Core.LinuxBle" DBusGeneratorMode="Proxy" />
+    <AdditionalFiles Include="LinuxBle\DBusXml\org.bluez.Device1.xml" Namespace="DotMatter.Core.LinuxBle" DBusGeneratorMode="Proxy" />
+    <AdditionalFiles Include="LinuxBle\DBusXml\org.bluez.GattCharacteristic1.xml" Namespace="DotMatter.Core.LinuxBle" DBusGeneratorMode="Proxy" />
   </ItemGroup>
 
 </Project>

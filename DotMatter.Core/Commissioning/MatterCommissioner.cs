@@ -34,7 +34,7 @@ public sealed record GeneratedNoc(X509Certificate Noc, BigInteger Serial);
 public class MatterCommissioner
 {
     private const int OperationalCaseMaxAttempts = 3;
-    private static readonly TimeSpan OperationalCaseAttemptTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan _operationalCaseAttemptTimeout = TimeSpan.FromSeconds(10);
 
     private readonly ILogger _log;
 
@@ -321,24 +321,23 @@ public class MatterCommissioner
             }
 
             // ── Operational discovery via mDNS ──
-            if (threadDataset is { Length: > 0 } || !string.IsNullOrEmpty(wifiSsid))
+            Report(progress, "Discover", 78, "Discovering device on operational network...");
+
+            var compressedFabricIdUlong = Convert.ToUInt64(fabric.CompressedFabricId, 16);
+            var nodeIdBytes = node.NodeId.ToByteArrayUnsigned();
+            var nodeIdPadded = new byte[8];
+            if (nodeIdBytes.Length <= 8)
             {
-                Report(progress, "Discover", 78, "Discovering device on operational network...");
+                Array.Copy(nodeIdBytes, 0, nodeIdPadded, 8 - nodeIdBytes.Length, nodeIdBytes.Length);
+            }
 
-                var compressedFabricIdUlong = Convert.ToUInt64(fabric.CompressedFabricId, 16);
-                var nodeIdBytes = node.NodeId.ToByteArrayUnsigned();
-                var nodeIdPadded = new byte[8];
-                if (nodeIdBytes.Length <= 8)
-                {
-                    Array.Copy(nodeIdBytes, 0, nodeIdPadded, 8 - nodeIdBytes.Length, nodeIdBytes.Length);
-                }
+            var deviceNodeId = BitConverter.ToUInt64(nodeIdPadded);
 
-                var deviceNodeId = BitConverter.ToUInt64(nodeIdPadded);
+            _log.LogInformation("Looking for operational node: CompressedFabricId={CFId:X16}, NodeId={NId:X16}",
+                compressedFabricIdUlong, deviceNodeId);
 
-                _log.LogInformation("Looking for operational node: CompressedFabricId={CFId:X16}, NodeId={NId:X16}",
-                    compressedFabricIdUlong, deviceNodeId);
-
-                using var discovery = new OperationalDiscovery();
+            using (var discovery = new OperationalDiscovery())
+            {
                 var opNode = await discovery.ResolveNodeAsync(
                     compressedFabricIdUlong, deviceNodeId, TimeSpan.FromSeconds(15));
 
@@ -351,7 +350,7 @@ public class MatterCommissioner
                 }
                 else
                 {
-                    _log.LogWarning("mDNS discovery timed out — will try CASE over BLE as fallback");
+                    _log.LogWarning("Operational mDNS discovery timed out before commissioning CASE.");
                 }
             }
 
@@ -397,7 +396,7 @@ public class MatterCommissioner
                 operationalAddress ?? IPAddress.None, operationalPort);
 
             return new CommissioningResult(true, node.NodeId.ToString(),
-                operationalAddress?.ToString(), null);
+                operationalAddress?.ToString(), null, operationalPort);
         }
         catch (OperationCanceledException)
         {
@@ -594,7 +593,7 @@ public class MatterCommissioner
             try
             {
                 using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                attemptCts.CancelAfter(OperationalCaseAttemptTimeout);
+                attemptCts.CancelAfter(_operationalCaseAttemptTimeout);
 
                 _log.LogInformation(
                     "Establishing CASE over UDP to {Addr}:{Port} (attempt {Attempt}/{MaxAttempts})",

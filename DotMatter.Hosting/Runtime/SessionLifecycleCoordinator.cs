@@ -55,7 +55,7 @@ internal sealed class SessionLifecycleCoordinator(
         {
             var ipString = ip.ToString();
             registry.Update(id, d => { d.Ip = ipString; d.Port = port; });
-            registry.PersistIp(id, ipString);
+            registry.PersistIp(id, ipString, port);
         };
 
         resilientSession.Connected += async (session, _) =>

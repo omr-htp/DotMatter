@@ -49,7 +49,7 @@ public partial class SrpDeviceDiscovery
             return result;
         }
 
-        if (fallbackIp != null)
+        if (fallbackIp != null && IsUsableFallback(fallbackIp))
         {
             MatterLog.Warn("[Discovery] SRP/DNS failed, using stored IP {Ip}.", fallbackIp);
             return new SrpDiscoveryResult(fallbackIp, effectivePort);
@@ -230,4 +230,11 @@ public partial class SrpDeviceDiscovery
 
     private static Task<string> RunOtCtlAsync(string command)
         => OtbrHelper.RunOtCtlAsync(command);
+
+    private static bool IsUsableFallback(IPAddress address)
+        => !IPAddress.IsLoopback(address)
+           && !IPAddress.Any.Equals(address)
+           && !IPAddress.IPv6Any.Equals(address)
+           && !IPAddress.None.Equals(address)
+           && !IPAddress.IPv6None.Equals(address);
 }

@@ -101,8 +101,9 @@ public class ResilientSession(
 
                 CloseTransport();
 
-                // Re-discover on retry: try SRP first (Thread), then mDNS (WiFi)
-                if (attempt > 1)
+                var hasUsableEndpoint = IsUsableEndpoint(_deviceIp);
+                // Re-discover on retry, or immediately when commissioning did not persist an endpoint.
+                if (attempt > 1 || !hasUsableEndpoint)
                 {
                     MatterLog.Info("[ResilientSession] Attempt {0}/{1}, re-discovering...", attempt, _maxRetries);
                     try
@@ -110,7 +111,7 @@ public class ResilientSession(
                         var endpoint = await SrpDeviceDiscovery.DiscoverAsync(
                             _compressedFabricId,
                             _nodeOperationalId,
-                            _deviceIp,
+                            hasUsableEndpoint ? _deviceIp : null,
                             _devicePort,
                             new SrpDiscoveryOptions { DefaultPort = _options.DefaultPort });
                         _deviceIp = endpoint.Address;
@@ -132,10 +133,18 @@ public class ResilientSession(
                                 _devicePort = (ushort)node.Port;
                                 MatterLog.Info("[ResilientSession] mDNS resolved: {0}:{1}", _deviceIp, _devicePort);
                             }
+                            else if (!IsUsableEndpoint(_deviceIp))
+                            {
+                                throw;
+                            }
                         }
                         catch (Exception mdnsEx)
                         {
                             MatterLog.Warn("[ResilientSession] mDNS discovery also failed: {0}", mdnsEx.Message);
+                            if (!IsUsableEndpoint(_deviceIp))
+                            {
+                                throw;
+                            }
                         }
                     }
                 }
@@ -447,6 +456,13 @@ public class ResilientSession(
         Disconnect();
         GC.SuppressFinalize(this);
     }
+
+    private static bool IsUsableEndpoint(IPAddress address)
+        => !IPAddress.IsLoopback(address)
+           && !IPAddress.Any.Equals(address)
+           && !IPAddress.IPv6Any.Equals(address)
+           && !IPAddress.None.Equals(address)
+           && !IPAddress.IPv6None.Equals(address);
 
     internal static TimeSpan ComputeRetryDelay(int attempt, TimeSpan maxDelay, double jitterRatio, double? jitterSample = null)
     {
