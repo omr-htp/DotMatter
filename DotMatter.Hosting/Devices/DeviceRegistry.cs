@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using DotMatter.Core.Clusters;
+using DotMatter.Hosting.Commissioning;
 using DotMatter.Hosting.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -45,7 +46,7 @@ public class DeviceRegistry(ILogger logger, string? basePath = null)
 
     /// <summary>
     /// Load all devices from fabric directories on disk.
-    /// Reads node_info.json from each fabric subdirectory.
+    /// Reads shared-fabric device records first, then legacy per-device node_info.json files.
     /// </summary>
     public virtual void LoadFromDisk()
     {
@@ -56,58 +57,20 @@ public class DeviceRegistry(ILogger logger, string? basePath = null)
 
         foreach (var fabricDir in Directory.GetDirectories(_basePath))
         {
+            var fabricName = Path.GetFileName(fabricDir);
+            var devicesDir = Path.Combine(fabricDir, MatterCommissioningStorage.DeviceNodeInfoDirectoryName);
+            if (Directory.Exists(devicesDir))
+            {
+                foreach (var deviceInfoPath in Directory.GetFiles(devicesDir, "*.json"))
+                {
+                    TryLoadNodeInfo(fabricName, Path.GetFileNameWithoutExtension(deviceInfoPath), deviceInfoPath);
+                }
+            }
+
             var nodeInfoPath = Path.Combine(fabricDir, "node_info.json");
-            if (!File.Exists(nodeInfoPath))
+            if (File.Exists(nodeInfoPath))
             {
-                continue;
-            }
-
-            try
-            {
-                var json = ReadNodeInfoJson(nodeInfoPath);
-                var ni = JsonSerializer.Deserialize(json, HostingJsonContext.Default.NodeInfoRecord);
-                if (ni is null || string.IsNullOrEmpty(ni.NodeId))
-                {
-                    continue;
-                }
-
-                var fabricName = Path.GetFileName(fabricDir);
-                var id = MapFabricNameToDeviceId(fabricName);
-
-                var info = new DeviceInfo
-                {
-                    Id = id,
-                    Name = ni.DeviceName ?? fabricName,
-                    NodeId = ni.NodeId,
-                    Ip = ni.ThreadIPv6 ?? "",
-                    Port = ni.OperationalPort ?? 5540,
-                    FabricName = fabricName,
-                    Transport = ni.Transport,
-                    VendorName = ni.VendorName,
-                    ProductName = ni.ProductName,
-                    DeviceType = string.IsNullOrWhiteSpace(ni.DeviceType) ? "on_off_light" : ni.DeviceType,
-                    ColorCapabilities = ni.ColorCapabilities.HasValue
-                        ? (ColorControlCluster.ColorCapabilitiesBitmap)ni.ColorCapabilities.Value
-                        : default,
-                    Endpoints = ni.Endpoints?.ToDictionary(
-                        static entry => entry.Key,
-                        static entry => entry.Value.ToList())
-                };
-
-                // Only add new devices; don't overwrite existing runtime state on re-load
-                if (!_devices.TryAdd(id, info))
-                {
-                    continue;
-                }
-
-                if (_log.IsEnabled(LogLevel.Information))
-                {
-                    _log.LogInformation("Loaded device {Id}: NodeId={NodeId}, IP={Ip}", id, ni.NodeId, ni.ThreadIPv6 ?? "?");
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning(ex, "Failed to load node info from {Path}", nodeInfoPath);
+                TryLoadNodeInfo(fabricName, MapFabricNameToDeviceId(fabricName), nodeInfoPath);
             }
         }
 
@@ -137,7 +100,54 @@ public class DeviceRegistry(ILogger logger, string? basePath = null)
         }
     }
 
-    /// <summary>Removes a device from the registry and deletes its persisted fabric directory.</summary>
+    private void TryLoadNodeInfo(string fabricName, string id, string nodeInfoPath)
+    {
+        try
+        {
+            var json = ReadNodeInfoJson(nodeInfoPath);
+            var ni = JsonSerializer.Deserialize(json, HostingJsonContext.Default.NodeInfoRecord);
+            if (ni is null || string.IsNullOrEmpty(ni.NodeId))
+            {
+                return;
+            }
+
+            var info = new DeviceInfo
+            {
+                Id = id,
+                Name = ni.DeviceName ?? id,
+                NodeId = ni.NodeId,
+                Ip = ni.ThreadIPv6 ?? "",
+                Port = ni.OperationalPort ?? 5540,
+                FabricName = fabricName,
+                Transport = ni.Transport,
+                VendorName = ni.VendorName,
+                ProductName = ni.ProductName,
+                DeviceType = string.IsNullOrWhiteSpace(ni.DeviceType) ? "on_off_light" : ni.DeviceType,
+                ColorCapabilities = ni.ColorCapabilities.HasValue
+                    ? (ColorControlCluster.ColorCapabilitiesBitmap)ni.ColorCapabilities.Value
+                    : default,
+                Endpoints = ni.Endpoints?.ToDictionary(
+                    static entry => entry.Key,
+                    static entry => entry.Value.ToList())
+            };
+
+            if (!_devices.TryAdd(id, info))
+            {
+                return;
+            }
+
+            if (_log.IsEnabled(LogLevel.Information))
+            {
+                _log.LogInformation("Loaded device {Id}: NodeId={NodeId}, IP={Ip}", id, ni.NodeId, ni.ThreadIPv6 ?? "?");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to load node info from {Path}", nodeInfoPath);
+        }
+    }
+
+    /// <summary>Removes a device from the registry and deletes its persisted metadata.</summary>
     public bool Remove(string id)
     {
         if (!_devices.TryRemove(id, out var device))
@@ -147,13 +157,37 @@ public class DeviceRegistry(ILogger logger, string? basePath = null)
 
         try
         {
-            var fabricDir = GetFabricPath(device.FabricName);
-            if (Directory.Exists(fabricDir))
+            if (!string.Equals(device.Id, device.FabricName, StringComparison.Ordinal))
             {
-                Directory.Delete(fabricDir, recursive: true);
+                var nodeInfoPath = GetNodeInfoPath(device);
+                if (File.Exists(nodeInfoPath))
+                {
+                    File.Delete(nodeInfoPath);
+                }
+
+                var devicesDir = Path.GetDirectoryName(nodeInfoPath);
+                if (devicesDir is not null
+                    && Directory.Exists(devicesDir)
+                    && !Directory.EnumerateFileSystemEntries(devicesDir).Any())
+                {
+                    Directory.Delete(devicesDir);
+                }
+
                 if (_log.IsEnabled(LogLevel.Information))
                 {
-                    _log.LogInformation("Deleted fabric directory {Dir}", fabricDir);
+                    _log.LogInformation("Deleted device metadata {Path}", nodeInfoPath);
+                }
+            }
+            else
+            {
+                var fabricDir = GetFabricPath(device.FabricName);
+                if (Directory.Exists(fabricDir))
+                {
+                    Directory.Delete(fabricDir, recursive: true);
+                    if (_log.IsEnabled(LogLevel.Information))
+                    {
+                        _log.LogInformation("Deleted fabric directory {Dir}", fabricDir);
+                    }
                 }
             }
         }
@@ -278,7 +312,12 @@ public class DeviceRegistry(ILogger logger, string? basePath = null)
     }
 
     private string GetNodeInfoPath(DeviceInfo device)
-        => Path.Combine(GetFabricPath(device.FabricName), "node_info.json");
+    {
+        var sharedDevicePath = MatterCommissioningStorage.GetDeviceNodeInfoPath(_basePath, device.FabricName, device.Id);
+        return !string.Equals(device.Id, device.FabricName, StringComparison.Ordinal) || File.Exists(sharedDevicePath)
+            ? sharedDevicePath
+            : Path.Combine(GetFabricPath(device.FabricName), "node_info.json");
+    }
 
     private string GetFabricPath(string fabricName)
         => MatterFabricNames.GetFabricPath(_basePath, fabricName);

@@ -61,6 +61,8 @@ internal static class ApiEndpointResults
                     new ErrorResponse(result.Error ?? "Device is not connected"),
                     ControllerJsonContext.Default.ErrorResponse,
                     statusCode: StatusCodes.Status503ServiceUnavailable),
+                DeviceOperationFailure.IncompatibleFabric => Results.Conflict(
+                    new ErrorResponse(result.Error ?? "Devices are not on the same Matter fabric")),
                 _ => Results.Json(
                     new ErrorResponse(result.Error ?? "Device command failed"),
                     ControllerJsonContext.Default.ErrorResponse,
@@ -436,11 +438,13 @@ internal static class ApiEndpointResults
 
     internal static IResult MapCommissionFailure(ControllerCommissioningResult result)
         => result.Error?.Contains("already in progress", StringComparison.OrdinalIgnoreCase) == true
+           || result.Error?.Contains("already exists", StringComparison.OrdinalIgnoreCase) == true
             ? Results.Conflict(result)
             : Results.UnprocessableEntity(result);
 
     internal static IResult MapWifiCommissionFailure(WifiCommissioningResult result)
         => result.Error?.Contains("already in progress", StringComparison.OrdinalIgnoreCase) == true
+           || result.Error?.Contains("already exists", StringComparison.OrdinalIgnoreCase) == true
             ? Results.Conflict(result)
             : Results.UnprocessableEntity(result);
 

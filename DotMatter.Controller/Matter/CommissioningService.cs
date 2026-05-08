@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Threading.Channels;
 using DotMatter.Controller.Configuration;
 using DotMatter.Controller.Diagnostics;
+using DotMatter.Core;
 using DotMatter.Core.Clusters;
 using DotMatter.Core.Commissioning;
 using DotMatter.Core.Discovery;
@@ -67,7 +68,9 @@ public class CommissioningService(
                 wifiPassword: null,
                 transport: provisionThreadNetwork ? "thread" : "on-network",
                 isShortDiscriminator, onProgress, ct),
-            ct);
+            () => new ControllerCommissioningResult(false, null, null, null, "Another commissioning is already in progress"),
+            ct,
+            recordAttempt: true);
     }
 
     /// <summary>Commissions a Wi-Fi Matter device over BLE and provisions Wi-Fi credentials.</summary>
@@ -87,7 +90,9 @@ public class CommissioningService(
                 fetchThreadDataset: false,
                 wifiSsid, wifiPassword, transport: "wifi",
                 isShortDiscriminator, onProgress, ct),
-            ct);
+            () => new ControllerCommissioningResult(false, null, null, null, "Another commissioning is already in progress"),
+            ct,
+            recordAttempt: true);
         return new WifiCommissioningResult(result.Success, result.DeviceId, result.NodeId, result.ThreadIp, result.Error);
     }
 
@@ -108,14 +113,41 @@ public class CommissioningService(
         try
         {
             var progress = onProgress ?? (_ => { });
-            fabricName = string.IsNullOrWhiteSpace(fabricName)
+            var deviceId = string.IsNullOrWhiteSpace(fabricName)
                 ? MatterFabricNames.Normalize($"{_options.DefaultFabricNamePrefix}-{DateTime.UtcNow:yyyyMMdd-HHmmss}")
                 : MatterFabricNames.Normalize(fabricName);
+            var sharedFabricName = MatterFabricNames.Normalize(_options.SharedFabricName);
 
-            EnsureSharedFabricMaterial(fabricName);
+            if (string.Equals(deviceId, sharedFabricName, StringComparison.Ordinal))
+            {
+                return new ControllerCommissioningResult(
+                    false,
+                    deviceId,
+                    null,
+                    null,
+                    $"Device id '{deviceId}' is reserved for the shared Matter fabric. Choose a unique device name before commissioning.");
+            }
+
+            if (_registry.Get(deviceId) is not null)
+            {
+                return new ControllerCommissioningResult(
+                    false,
+                    deviceId,
+                    null,
+                    null,
+                    $"Device id '{deviceId}' already exists. Delete the existing device first or choose a unique name before commissioning.");
+            }
+
+            var threadDatasetResult = await ReadThreadDatasetBeforeDeviceConnectionAsync(fetchThreadDataset, ct);
+            if (threadDatasetResult.Error is not null)
+            {
+                return new ControllerCommissioningResult(false, null, null, null, threadDatasetResult.Error);
+            }
+
+            await EnsureSharedFabricMaterialAsync(sharedFabricName);
             IFabricStorageProvider fabricStorage = new FabricDiskStorage(_registry.BasePath);
             var fabricManager = new FabricManager(fabricStorage);
-            var fabric = await fabricManager.GetAsync(fabricName);
+            var fabric = await fabricManager.GetAsync(sharedFabricName);
 
             bleConnection = CreateBleConnection();
             var connected = await bleConnection.ConnectAsync(discriminator, isShortDiscriminator, ct);
@@ -129,23 +161,11 @@ public class CommissioningService(
                 _log.LogInformation("BTP connected (discriminator={Disc})", discriminator);
             }
 
-            byte[]? threadDataset = null;
-            if (fetchThreadDataset)
-            {
-                var datasetHex = await _otbrService.GetActiveDatasetHexAsync(ct);
-                if (string.IsNullOrWhiteSpace(datasetHex))
-                {
-                    return new ControllerCommissioningResult(false, null, null, null, "Failed to parse Thread operational dataset from OTBR");
-                }
-
-                threadDataset = Convert.FromHexString(datasetHex);
-            }
-
             var result = await ExecuteCommissioningAsync(
                 bleConnection,
                 fabric,
                 passcode,
-                threadDataset,
+                threadDatasetResult.Dataset,
                 wifiSsid,
                 wifiPassword,
                 p =>
@@ -181,16 +201,31 @@ public class CommissioningService(
                     ?? await _otbrService.DiscoverThreadIpAsync(_log, ct);
             }
 
-            var deviceId = fabricName;
+            if (string.IsNullOrWhiteSpace(operationalIp))
+            {
+                var networkPath = fetchThreadDataset
+                    ? "Thread"
+                    : string.IsNullOrWhiteSpace(wifiSsid) ? "already-on-network" : "Wi-Fi";
+                var message = $"Commissioning completed fabric-add, but operational discovery failed for the {networkPath} path. The device was not added to the registry because no operational address was found.";
+                _log.LogWarning(
+                    "Commissioning incomplete: DeviceId={DeviceId}, NodeId={NodeId}, Transport={Transport}. {Message}",
+                    deviceId,
+                    result.NodeId,
+                    transport,
+                    message);
+                return new ControllerCommissioningResult(false, deviceId, result.NodeId, null, message);
+            }
+
             var nodeInfo = new NodeInfoRecord(
                 result.NodeId ?? "",
-                operationalIp ?? "",
-                fabricName,
+                operationalIp,
+                sharedFabricName,
+                DeviceName: deviceId,
                 Commissioned: DateTime.UtcNow,
                 Transport: transport,
                 OperationalPort: operationalPort);
 
-            await MatterCommissioningStorage.WriteNodeInfoAsync(_registry.BasePath, fabricName, nodeInfo, ct);
+            await MatterCommissioningStorage.WriteDeviceNodeInfoAsync(_registry.BasePath, sharedFabricName, deviceId, nodeInfo, ct);
 
             if (_log.IsEnabled(LogLevel.Information))
             {
@@ -198,7 +233,7 @@ public class CommissioningService(
                     deviceId, result.NodeId, operationalIp, operationalPort);
             }
 
-            PublishEvent(deviceId, "commissioned", fabricName);
+            PublishEvent(deviceId, "commissioned", deviceId);
 
             return new ControllerCommissioningResult(true, deviceId, result.NodeId, operationalIp, null);
         }
@@ -227,32 +262,45 @@ public class CommissioningService(
     /// <summary>Creates the BLE transport used for commissioning.</summary>
     protected virtual LinuxBTPConnection CreateBleConnection() => new();
 
-    private void EnsureSharedFabricMaterial(string fabricName)
+    private async Task<(byte[]? Dataset, string? Error)> ReadThreadDatasetBeforeDeviceConnectionAsync(
+        bool fetchThreadDataset,
+        CancellationToken ct)
     {
-        var sharedFabricName = MatterFabricNames.Normalize(_options.SharedFabricName);
-        if (string.Equals(fabricName, sharedFabricName, StringComparison.Ordinal))
+        if (!fetchThreadDataset)
         {
-            return;
+            return (null, null);
         }
 
-        var targetDir = Path.Combine(_registry.BasePath, fabricName);
-        if (File.Exists(Path.Combine(targetDir, "fabric.json")))
+        var datasetHex = await _otbrService.GetActiveDatasetHexAsync(ct);
+        if (string.IsNullOrWhiteSpace(datasetHex))
         {
-            return;
+            return (null, "OTBR has no active Thread operational dataset. Start OTBR Thread first (`sudo ot-ctl dataset init new`, `sudo ot-ctl dataset commit active`, `sudo ot-ctl ifconfig up`, `sudo ot-ctl thread start`) or choose Wi-Fi/already-on-network commissioning.");
         }
 
+        if (datasetHex.Length % 2 != 0)
+        {
+            return (null, "OTBR returned an invalid Thread operational dataset: hexadecimal payload length must be even.");
+        }
+
+        try
+        {
+            return (Convert.FromHexString(datasetHex), null);
+        }
+        catch (FormatException)
+        {
+            return (null, "OTBR returned an invalid Thread operational dataset: payload must be hexadecimal.");
+        }
+    }
+
+    private async Task EnsureSharedFabricMaterialAsync(string sharedFabricName)
+    {
         var sharedDir = Path.Combine(_registry.BasePath, sharedFabricName);
         if (!File.Exists(Path.Combine(sharedDir, "fabric.json")))
         {
-            return;
+            IFabricStorageProvider fabricStorage = new FabricDiskStorage(_registry.BasePath);
+            var fabricManager = new FabricManager(fabricStorage);
+            await fabricManager.GetAsync(sharedFabricName);
         }
-
-        MatterCommissioningStorage.CopyFabricIdentity(sharedDir, targetDir, applySensitiveFilePermissions: true);
-
-        _log.LogInformation(
-            "Copied shared fabric material from {SharedFabric} to {FabricName}",
-            sharedFabricName,
-            fabricName);
     }
 
     /// <summary>Executes the Matter commissioning protocol over an established BLE connection.</summary>
@@ -287,16 +335,25 @@ public class CommissioningService(
         _events.Writer.TryWrite(json);
     }
 
-    private async Task<ControllerCommissioningResult> RunWithCommissioningLockAsync(
-        Func<Task<ControllerCommissioningResult>> action,
-        CancellationToken ct)
+    private async Task<T> RunWithCommissioningLockAsync<T>(
+        Func<Task<T>> action,
+        Func<T> onRejected,
+        CancellationToken ct,
+        bool recordAttempt = false)
     {
-        DotMatterProductDiagnostics.RecordCommissioningAttempt();
+        if (recordAttempt)
+        {
+            DotMatterProductDiagnostics.RecordCommissioningAttempt();
+        }
 
         if (!await _commissioning.WaitAsync(TimeSpan.Zero, ct))
         {
-            DotMatterProductDiagnostics.RecordCommissioningRejection();
-            return new ControllerCommissioningResult(false, null, null, null, "Another commissioning is already in progress");
+            if (recordAttempt)
+            {
+                DotMatterProductDiagnostics.RecordCommissioningRejection();
+            }
+
+            return onRejected();
         }
 
         try

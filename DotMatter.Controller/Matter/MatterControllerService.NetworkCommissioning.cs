@@ -283,7 +283,7 @@ public sealed partial class MatterControllerService
         }
     }
 
-    private static DeviceNetworkCommissioningState MapNetworkCommissioningState(MatterNetworkCommissioningState state)
+    internal static DeviceNetworkCommissioningState MapNetworkCommissioningState(MatterNetworkCommissioningState state)
         => new(
             ExpandNetworkFeatures(state.Features),
             state.MaxNetworks,

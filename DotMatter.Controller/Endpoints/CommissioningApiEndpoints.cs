@@ -8,6 +8,13 @@ internal static class CommissioningApiEndpoints
     {
         var commissioning = api.MapGroup(string.Empty).WithTags("Commissioning");
 
+        commissioning.MapPost("/commission/preflight", () => Results.Problem(
+            title: "Commissioning preflight is disabled",
+            detail: "Preflight opens a BLE/PASE session before fabric add and can consume the device commissioning window. Use /api/commission or /api/commission/wifi so the controller performs exactly one PASE session during commissioning.",
+            statusCode: StatusCodes.Status410Gone))
+            .WithSummary("Disabled commissioning preflight")
+            .WithDescription("Disabled because a separate BLE/PASE inspection can consume the device commissioning window before fabric add.");
+
         commissioning.MapPost("/commission", async (
             CommissionRequest body,
             CommissioningService commissioningService,

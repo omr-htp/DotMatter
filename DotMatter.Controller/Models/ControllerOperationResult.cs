@@ -17,6 +17,8 @@ public enum DeviceOperationFailure
     Timeout,
     /// <summary>The underlying transport failed.</summary>
     TransportError,
+    /// <summary>The requested operation requires devices on the same Matter fabric.</summary>
+    IncompatibleFabric,
 }
 
 /// <summary>Result of a device operation.</summary>

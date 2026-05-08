@@ -9,6 +9,9 @@ namespace DotMatter.Hosting.Commissioning;
 /// </summary>
 public static class MatterCommissioningStorage
 {
+    /// <summary>Directory name that stores per-device node metadata inside a shared fabric directory.</summary>
+    public const string DeviceNodeInfoDirectoryName = "devices";
+
     private static readonly string[] _fabricIdentityFileNames =
     [
         "fabric.json",
@@ -66,4 +69,27 @@ public static class MatterCommissioningStorage
             JsonSerializer.Serialize(nodeInfo, HostingJsonIndentedContext.Default.NodeInfoRecord),
             ct);
     }
+
+    /// <summary>Persists a commissioned device record under a shared fabric directory.</summary>
+    public static async Task WriteDeviceNodeInfoAsync(
+        string basePath,
+        string fabricName,
+        string deviceId,
+        NodeInfoRecord nodeInfo,
+        CancellationToken ct)
+    {
+        var deviceInfoPath = GetDeviceNodeInfoPath(basePath, fabricName, deviceId);
+        Directory.CreateDirectory(Path.GetDirectoryName(deviceInfoPath)!);
+        await AtomicFilePersistence.WriteTextAsync(
+            deviceInfoPath,
+            JsonSerializer.Serialize(nodeInfo, HostingJsonIndentedContext.Default.NodeInfoRecord),
+            ct);
+    }
+
+    /// <summary>Returns the per-device metadata path inside a shared fabric directory.</summary>
+    public static string GetDeviceNodeInfoPath(string basePath, string fabricName, string deviceId)
+        => Path.Combine(
+            MatterFabricNames.GetFabricPath(basePath, fabricName),
+            DeviceNodeInfoDirectoryName,
+            $"{MatterFabricNames.Normalize(deviceId)}.json");
 }

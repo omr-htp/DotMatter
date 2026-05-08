@@ -135,7 +135,13 @@ public class FabricDiskStorage : IFabricStorageProvider
 
         foreach (var directory in allDirectories)
         {
-            var nodeId = new BigInteger(Path.GetFileName(directory));
+            var directoryName = Path.GetFileName(directory);
+            if (string.IsNullOrWhiteSpace(directoryName) || directoryName.Any(static c => !char.IsDigit(c)))
+            {
+                continue;
+            }
+
+            var nodeId = new BigInteger(directoryName);
 
             var nodeFiles = Directory.GetFiles(directory);
 

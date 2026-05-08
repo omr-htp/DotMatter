@@ -1,27 +1,436 @@
 @page "/commissioning"
 @rendermode InteractiveServer
+@using System.Text.Json.Nodes
+@using DotMatter.Ui.Models
+@inject ControllerApiClient Api
 
 <PageTitle>Commissioning</PageTitle>
 
 <section class="hero-panel">
     <div>
-        <div class="page-kicker">Bring-up workflows</div>
+        <div class="page-kicker">Matter bring-up</div>
         <h1>Commissioning</h1>
         <p>
-            Start BLE onboarding for Thread, Wi-Fi, or already-networked devices, using raw discriminator/passcode inputs or QR/manual code payloads.
-            The request preview shows the exact REST payload before it goes out, and the mission lane keeps long
-            commissioning requests visually anchored while the controller works.
+            Add a device with one clear form. Choose the pairing input, optionally provision Thread or Wi-Fi,
+            then start commissioning once.
         </p>
     </div>
-</section>
-
-<section class="page-section">
-    <div class="section-heading">
-        <div>
-            <div class="page-kicker">Controller API</div>
-            <h2>Commission new devices</h2>
-        </div>
+    <div class="commission-hero-status">
+        <StatusBadge Text="@GetStatusText()" Kind="@GetStatusKind()" />
+        <span>@GetStatusDetail()</span>
     </div>
-
-    <OperationConsole Operations="@OperationCatalog.CommissioningOperations" />
 </section>
+
+<section class="commission-simple-layout">
+    <article class="surface-panel commission-simple-card">
+        <div class="section-heading">
+            <div>
+                <div class="page-kicker">Pairing form</div>
+                <h2>Commission device</h2>
+            </div>
+        </div>
+
+        <div class="operation-field">
+            <label>Device / Fabric Name</label>
+            <RadzenTextBox Value="@_fabricName"
+                            Change="@((string? value) => _fabricName = value ?? string.Empty)"
+                            Disabled="@_commissionBusy"
+                            Style="width: 100%;" />
+            <small>Use a unique device name, or leave blank to auto-generate one. Controller credentials still come from the configured shared fabric.</small>
+        </div>
+
+        <div class="commission-tabs" role="tablist" aria-label="Pairing input type">
+            <button type="button"
+                    role="tab"
+                    aria-selected="@(_pairingMode == PairingModeManual)"
+                    class="commission-tab @GetTabClass(PairingModeManual)"
+                    disabled="@_commissionBusy"
+                    @onclick="@(() => SelectPairingMode(PairingModeManual))">
+                Manual Pairing Code
+            </button>
+            <button type="button"
+                    role="tab"
+                    aria-selected="@(_pairingMode == PairingModeQr)"
+                    class="commission-tab @GetTabClass(PairingModeQr)"
+                    disabled="@_commissionBusy"
+                    @onclick="@(() => SelectPairingMode(PairingModeQr))">
+                QR Code Payload
+            </button>
+            <button type="button"
+                    role="tab"
+                    aria-selected="@(_pairingMode == PairingModeAdvanced)"
+                    class="commission-tab @GetTabClass(PairingModeAdvanced)"
+                    disabled="@_commissionBusy"
+                    @onclick="@(() => SelectPairingMode(PairingModeAdvanced))">
+                Discriminator and Passcode
+            </button>
+        </div>
+
+        <div class="commission-tab-panel" role="tabpanel">
+            @if (_pairingMode == PairingModeManual)
+            {
+                <div class="operation-field">
+                    <label>Manual Pairing Code</label>
+                    <RadzenTextBox Value="@_manualCode"
+                                   Change="@((string? value) => _manualCode = value ?? string.Empty)"
+                                   Disabled="@_commissionBusy"
+                                   Style="width: 100%;" />
+                    <small>Use the numeric manual setup code printed by the device or shown in serial output.</small>
+                </div>
+            }
+            else if (_pairingMode == PairingModeQr)
+            {
+                <div class="operation-field">
+                    <label>QR Code Payload</label>
+                    <RadzenTextBox Value="@_qrCode"
+                                   Change="@((string? value) => _qrCode = value ?? string.Empty)"
+                                   Disabled="@_commissionBusy"
+                                   Style="width: 100%;" />
+                    <small>Paste the full Matter QR payload, for example MT:...</small>
+                </div>
+            }
+            else
+            {
+                <div class="operation-field-grid">
+                    <div class="operation-field">
+                        <label>Discriminator</label>
+                        <RadzenTextBox Value="@_discriminator"
+                                       Change="@((string? value) => _discriminator = value ?? string.Empty)"
+                                       Disabled="@_commissionBusy"
+                                       Style="width: 100%;" />
+                    </div>
+                    <div class="operation-field">
+                        <label>Passcode</label>
+                        <RadzenTextBox Value="@_passcode"
+                                       Change="@((string? value) => _passcode = value ?? string.Empty)"
+                                       Disabled="@_commissionBusy"
+                                       Style="width: 100%;" />
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="commission-network-box">
+            <label class="commission-checkbox-row">
+                <RadzenCheckBox TValue="bool"
+                                Value="@_addToNetwork"
+                                Change="@((bool value) => _addToNetwork = value)"
+                                Disabled="@_commissionBusy" />
+                <span>
+                    <strong>Add to network</strong>
+                    <small>Checked provisions Thread by default. Enter Wi-Fi credentials only for Wi-Fi devices. Leave unchecked only for devices already on the network.</small>
+                </span>
+            </label>
+
+            @if (_addToNetwork)
+            {
+                <div class="operation-field-grid section-heading-spaced">
+                    <div class="operation-field">
+                        <label>SSID</label>
+                        <RadzenTextBox Value="@_wifiSsid"
+                                       Change="@((string? value) => _wifiSsid = value ?? string.Empty)"
+                                       Disabled="@_commissionBusy"
+                                       Style="width: 100%;" />
+                    </div>
+                    <div class="operation-field">
+                        <label>Password</label>
+                        <RadzenPassword Value="@_wifiPassword"
+                                        Change="@((string? value) => _wifiPassword = value ?? string.Empty)"
+                                         Disabled="@_commissionBusy"
+                                         Style="width: 100%;" />
+                    </div>
+                </div>
+                <small class="commission-network-hint">
+                    Leave SSID and password empty for Thread devices connected through the OTBR.
+                </small>
+            }
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_commissionError))
+        {
+            <div class="operation-alert operation-alert-error">@_commissionError</div>
+        }
+
+        <div class="commission-form-actions">
+            <RadzenButton Text="@(_commissionBusy ? "Commissioning..." : "Commission")"
+                          ButtonStyle="ButtonStyle.Primary"
+                          Shade="Shade.Lighter"
+                          Click="@CommissionAsync"
+                          Disabled="@(!CanCommission())" />
+        </div>
+    </article>
+
+    <aside class="surface-panel commission-simple-progress">
+        <div class="section-heading">
+            <div>
+                <div class="page-kicker">Live progress</div>
+                <h2>@_progressTitle</h2>
+            </div>
+            <strong class="commission-progress-percent">@_progressPercent%</strong>
+        </div>
+
+        <div class="commission-progress-meter commission-progress-meter-large">
+            <div class="commission-progress-fill @GetProgressFillClass()"
+                 style="width: @_progressPercent%;"></div>
+        </div>
+
+        <p class="commission-progress-message">@_progressMessage</p>
+
+        @if (_commissionResult is not null)
+        {
+            <div class="discovery-details section-heading-spaced">
+                <div><span>Result</span><strong>@(_commissionResult.Success ? "success" : "failed")</strong></div>
+                <div><span>Device ID</span><strong>@(_commissionResult.DeviceId ?? "n/a")</strong></div>
+                <div><span>Node ID</span><strong>@(_commissionResult.NodeId ?? "n/a")</strong></div>
+                <div><span>Operational IP</span><strong>@(_commissionResult.ThreadIp ?? "n/a")</strong></div>
+            </div>
+        }
+
+        @if (_commissionedDevice is not null)
+        {
+            <div class="payload-label payload-label-spaced">Device summary</div>
+            <div class="discovery-details">
+                <div><span>Name</span><strong>@_commissionedDevice.Name</strong></div>
+                <div><span>Address</span><strong>@($"{_commissionedDevice.Ip}:{_commissionedDevice.Port}")</strong></div>
+                <div><span>Online</span><strong>@BoolState(_commissionedDevice.IsOnline)</strong></div>
+                <div><span>Last seen</span><strong>@(_commissionedDevice.LastSeen?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "unknown")</strong></div>
+            </div>
+        }
+
+        <div class="payload-label payload-label-spaced">Request preview</div>
+        <JsonPanel Content="@BuildCommissionPreview()" EmptyMessage="Complete the form to preview the request." />
+
+        <div class="payload-label payload-label-spaced">Last response</div>
+        <JsonPanel Content="@_commissionRaw" EmptyMessage="No commissioning response yet." />
+    </aside>
+</section>
+
+@code {
+    private const string PairingModeManual = "manual";
+    private const string PairingModeQr = "qr";
+    private const string PairingModeAdvanced = "advanced";
+    private static readonly TimeSpan CommissioningRequestTimeout = TimeSpan.FromMinutes(8);
+
+    private string _fabricName = string.Empty;
+    private string _pairingMode = PairingModeManual;
+    private string _manualCode = string.Empty;
+    private string _qrCode = string.Empty;
+    private string _discriminator = string.Empty;
+    private string _passcode = "20202021";
+    private bool _addToNetwork = true;
+    private string _wifiSsid = string.Empty;
+    private string _wifiPassword = string.Empty;
+    private bool _commissionBusy;
+    private string? _commissionError;
+    private string? _commissionRaw;
+    private int _progressPercent;
+    private string _progressTitle = "Ready";
+    private string _progressMessage = "Enter pairing details, then press Commission.";
+    private CommissioningResultModel? _commissionResult;
+    private DeviceDetailModel? _commissionedDevice;
+
+    private async Task CommissionAsync()
+    {
+        if (!CanCommission())
+        {
+            return;
+        }
+
+        _commissionBusy = true;
+        _commissionError = null;
+        _commissionRaw = null;
+        _commissionResult = null;
+        _commissionedDevice = null;
+
+        try
+        {
+            SetProgress(10, "Preparing request", "Validating pairing input and commissioning options.");
+            await InvokeAsync(StateHasChanged);
+
+            var (path, payload) = BuildCommissionRequest();
+
+            SetProgress(35, "Connecting", "Opening the first BLE/PASE session and starting commissioning.");
+            await InvokeAsync(StateHasChanged);
+
+            var result = await Api.PostAsync<CommissioningResultModel>(path, payload, timeout: CommissioningRequestTimeout);
+            _commissionResult = result.Value;
+            _commissionRaw = result.RawContent;
+
+            if (!result.Success || _commissionResult?.Success != true)
+            {
+                _commissionError = result.ErrorMessage ?? _commissionResult?.Error ?? "Commissioning failed.";
+                SetProgress(100, "Commissioning failed", _commissionError);
+                return;
+            }
+
+            SetProgress(85, "Discovering device", "Waiting for the operational device to come online.");
+            await InvokeAsync(StateHasChanged);
+
+            if (!string.IsNullOrWhiteSpace(_commissionResult.DeviceId))
+            {
+                _commissionedDevice = await WaitForCommissionedDeviceAsync(_commissionResult.DeviceId);
+            }
+
+            if (_commissionedDevice?.IsOnline != true)
+            {
+                _commissionError = "Commissioning reached fabric-add, but the device did not come online. Verify network provisioning before trying again.";
+                SetProgress(100, "Commissioning incomplete", _commissionError);
+                return;
+            }
+
+            SetProgress(100, "Commissioning complete", "Device was added to the fabric and is online.");
+        }
+        finally
+        {
+            _commissionBusy = false;
+        }
+    }
+
+    private void SelectPairingMode(string mode)
+    {
+        if (mode == PairingModeManual || mode == PairingModeQr || mode == PairingModeAdvanced)
+        {
+            _pairingMode = mode;
+        }
+    }
+
+    private bool CanCommission()
+        => !_commissionBusy
+           && HasPairingInput();
+
+    private bool HasPairingInput()
+        => _pairingMode switch
+        {
+            PairingModeManual => !string.IsNullOrWhiteSpace(_manualCode),
+            PairingModeQr => !string.IsNullOrWhiteSpace(_qrCode),
+            _ => int.TryParse(_discriminator, out _) && uint.TryParse(_passcode, out _)
+        };
+
+    private (string Path, JsonObject Payload) BuildCommissionRequest()
+    {
+        var payload = new JsonObject
+        {
+            ["fabricName"] = string.IsNullOrWhiteSpace(_fabricName) ? null : _fabricName
+        };
+
+        AppendPairingParameters(payload);
+
+        if (_addToNetwork)
+        {
+            if (!string.IsNullOrWhiteSpace(_wifiSsid))
+            {
+                payload["wifiSsid"] = _wifiSsid;
+                payload["wifiPassword"] = _wifiPassword;
+                return ("/api/commission/wifi", payload);
+            }
+
+            payload["skipNetworkProvisioning"] = false;
+            return ("/api/commission", payload);
+        }
+
+        payload["skipNetworkProvisioning"] = true;
+        return ("/api/commission", payload);
+    }
+
+    private async Task<DeviceDetailModel?> WaitForCommissionedDeviceAsync(string deviceId)
+    {
+        var path = $"/api/devices/{Uri.EscapeDataString(deviceId)}";
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(45);
+        DeviceDetailModel? lastDevice = null;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var deviceResult = await Api.GetAsync<DeviceDetailModel>(path);
+            if (deviceResult.Value is not null)
+            {
+                lastDevice = deviceResult.Value;
+                if (lastDevice.IsOnline)
+                {
+                    return lastDevice;
+                }
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(2));
+        }
+
+        return lastDevice;
+    }
+
+    private void AppendPairingParameters(JsonObject payload)
+    {
+        if (_pairingMode == PairingModeManual)
+        {
+            payload["manualCode"] = string.IsNullOrWhiteSpace(_manualCode) ? null : _manualCode;
+            return;
+        }
+
+        if (_pairingMode == PairingModeQr)
+        {
+            payload["qrCode"] = string.IsNullOrWhiteSpace(_qrCode) ? null : _qrCode;
+            return;
+        }
+
+        if (int.TryParse(_discriminator, out var discriminator))
+        {
+            payload["discriminator"] = discriminator;
+        }
+
+        if (uint.TryParse(_passcode, out var passcode))
+        {
+            payload["passcode"] = passcode;
+        }
+    }
+
+    private string? BuildCommissionPreview()
+    {
+        if (!HasPairingInput())
+        {
+            return null;
+        }
+
+        var (path, payload) = BuildCommissionRequest();
+        return new JsonObject
+        {
+            ["path"] = path,
+            ["body"] = payload
+        }.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private void SetProgress(int percent, string title, string message)
+    {
+        _progressPercent = Math.Clamp(percent, 0, 100);
+        _progressTitle = title;
+        _progressMessage = message;
+    }
+
+    private string GetTabClass(string mode)
+        => string.Equals(_pairingMode, mode, StringComparison.Ordinal) ? "is-active" : string.Empty;
+
+    private string GetProgressFillClass()
+        => !string.IsNullOrWhiteSpace(_commissionError)
+            ? "commission-progress-fill-failed"
+            : _commissionBusy
+                ? "commission-progress-fill-running"
+                : _commissionResult?.Success == true
+                    ? "commission-progress-fill-complete"
+                    : string.Empty;
+
+    private string GetStatusText()
+        => !string.IsNullOrWhiteSpace(_commissionError) ? "attention"
+            : _commissionResult?.Success == true ? "complete"
+            : _commissionBusy ? "running"
+            : "ready";
+
+    private string GetStatusKind()
+        => !string.IsNullOrWhiteSpace(_commissionError) ? "error"
+            : _commissionResult?.Success == true ? "online"
+            : "neutral";
+
+    private string GetStatusDetail()
+        => !string.IsNullOrWhiteSpace(_commissionError) ? "Commissioning needs attention"
+            : _commissionResult?.Success == true ? "Device added to fabric"
+            : _commissionBusy ? "Commissioning request is active"
+            : "No device connection is opened until Commission";
+
+    private static string BoolState(bool value) => value ? "yes" : "no";
+}

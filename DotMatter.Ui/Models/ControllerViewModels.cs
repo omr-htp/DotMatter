@@ -122,3 +122,10 @@ internal sealed record DiscoveryResolveModel(
     string Discriminator,
     int BrowseWindowMs,
     DiscoveryDeviceModel Device);
+
+internal sealed record CommissioningResultModel(
+    bool Success,
+    string? DeviceId,
+    string? NodeId,
+    string? ThreadIp,
+    string? Error);

@@ -1,8 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
 using DotMatter.Controller;
+using DotMatter.Controller.Matter;
 using DotMatter.Controller.Models;
 using DotMatter.Core.Commissioning;
+using DotMatter.Hosting;
+using DotMatter.Hosting.Commissioning;
 using DotMatter.Hosting.Thread;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
@@ -1000,6 +1003,56 @@ public class ControllerProductionReadinessTests
         {
             Assert.That(result.Success, Is.False);
             Assert.That(result.Error, Does.Contain("Fabric name"));
+        }
+    }
+
+    [Test]
+    public async Task CommissioningThreadPathRejectsMissingOtbrDatasetBeforeBleConnection()
+    {
+        using var tempDirectory = TestFileSystem.CreateTempDirectoryScope();
+
+        var registry = new DeviceRegistry(NullLogger<DeviceRegistry>.Instance, tempDirectory.Path);
+        var service = new BlockingCommissioningService(registry);
+
+        var result = await service.CommissionDeviceAsync(1234, 20202021, "thread-device", CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.Error, Does.Contain("OTBR has no active Thread operational dataset"));
+            Assert.That(result.Error, Does.Not.Contain("BTP"));
+        }
+    }
+
+    [Test]
+    public async Task CommissioningRejectsDuplicateDeviceIdBeforeThreadDatasetOrBleConnection()
+    {
+        using var tempDirectory = TestFileSystem.CreateTempDirectoryScope();
+        MatterCommissioningStorage.WriteDeviceNodeInfoAsync(
+            tempDirectory.Path,
+            "DotMatter",
+            "Light",
+            new NodeInfoRecord(
+                NodeId: "9583165658533311673",
+                ThreadIPv6: "fd70:683f:9dc0:1:f45d:4871:21a3:267d",
+                FabricName: "DotMatter",
+                DeviceName: "Light",
+                Transport: "thread",
+                Commissioned: DateTime.UtcNow),
+            CancellationToken.None).GetAwaiter().GetResult();
+
+        var registry = new DeviceRegistry(NullLogger<DeviceRegistry>.Instance, tempDirectory.Path);
+        registry.LoadFromDisk();
+        var service = new BlockingCommissioningService(registry);
+
+        var result = await service.CommissionDeviceAsync(1234, 20202021, "Light", CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.Error, Does.Contain("already exists"));
+            Assert.That(result.Error, Does.Not.Contain("OTBR"));
+            Assert.That(result.Error, Does.Not.Contain("BTP"));
         }
     }
 

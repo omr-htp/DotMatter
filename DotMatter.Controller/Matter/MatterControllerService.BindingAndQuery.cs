@@ -74,6 +74,11 @@ public sealed partial class MatterControllerService
         public bool RequiresWrite => RemovedEntries.Length > 0;
     }
 
+    private sealed record FabricCompatibilityResult(
+        bool Compatible,
+        DeviceOperationFailure Failure,
+        string? Error = null);
+
     /// <summary>Configures a switch Binding entry and grants the switch OnOff operate ACL on the target.</summary>
     public async Task<DeviceOperationResult> BindSwitchOnOffAsync(
         string switchId,
@@ -81,6 +86,19 @@ public sealed partial class MatterControllerService
         ushort sourceEndpoint = 1,
         ushort targetEndpoint = 1)
     {
+        var switchDevice = Registry.Get(switchId);
+        var targetDevice = Registry.Get(targetId);
+        if (switchDevice is null || targetDevice is null)
+        {
+            return new DeviceOperationResult(false, DeviceOperationFailure.NotFound, "Switch or target device was not found");
+        }
+
+        var compatibility = await CheckBindingFabricCompatibilityAsync(switchDevice, targetDevice);
+        if (!compatibility.Compatible)
+        {
+            return new DeviceOperationResult(false, compatibility.Failure, compatibility.Error);
+        }
+
         if (!TryGetConnectedSession(switchId, out var switchSession))
         {
             return new DeviceOperationResult(false, DeviceOperationFailure.NotConnected, $"Switch {switchId} is not connected");
@@ -89,13 +107,6 @@ public sealed partial class MatterControllerService
         if (!TryGetConnectedSession(targetId, out var targetSession))
         {
             return new DeviceOperationResult(false, DeviceOperationFailure.NotConnected, $"Target {targetId} is not connected");
-        }
-
-        var switchDevice = Registry.Get(switchId);
-        var targetDevice = Registry.Get(targetId);
-        if (switchDevice is null || targetDevice is null)
-        {
-            return new DeviceOperationResult(false, DeviceOperationFailure.NotFound, "Switch or target device was not found");
         }
 
         var switchNodeId = ToOperationalNodeId(switchDevice.NodeId);
@@ -285,7 +296,7 @@ public sealed partial class MatterControllerService
             using var cts = new CancellationTokenSource(_apiOptions.CommandTimeout);
             var binding = new BindingCluster(session.Session!, request.Endpoint);
             var existingBinding = await binding.ReadBindingAsync(cts.Token) ?? [];
-            var targetIndex = BuildOperationalNodeIndex();
+            var targetIndex = await BuildOperationalNodeIndexForDeviceFabricAsync(device);
             var plan = RemoveBindingEntries(existingBinding, entry => MatchesBindingRemovalRequest(entry, nodeId, request));
 
             if (plan.RequiresWrite)
@@ -358,7 +369,7 @@ public sealed partial class MatterControllerService
             var auxiliaryType = ParseAclAuxiliaryType(request.AuxiliaryType);
             var subjects = ParseAclSubjects(request.Subjects);
             var targets = ParseAclTargets(request.Targets);
-            var targetIndex = BuildOperationalNodeIndex();
+            var targetIndex = await BuildOperationalNodeIndexForDeviceFabricAsync(device);
 
             using var cts = new CancellationTokenSource(_apiOptions.CommandTimeout);
             var accessControl = new AccessControlCluster(session.Session!, endpointId: 0);
@@ -435,7 +446,7 @@ public sealed partial class MatterControllerService
                 device,
                 session.Session!,
                 endpoint,
-                BuildOperationalNodeIndex(),
+                await BuildOperationalNodeIndexForDeviceFabricAsync(device),
                 cts.Token);
 
             return new DeviceBindingQueryResult(true, DeviceOperationFailure.None, response);
@@ -471,7 +482,7 @@ public sealed partial class MatterControllerService
             var response = await ReadAclForEndpointAsync(
                 device,
                 session.Session!,
-                BuildOperationalNodeIndex(),
+                await BuildOperationalNodeIndexForDeviceFabricAsync(device),
                 cts.Token);
 
             return new DeviceAclQueryResult(true, DeviceOperationFailure.None, response);
@@ -505,7 +516,7 @@ public sealed partial class MatterControllerService
             return new FabricBindingQueryResult(false, DeviceOperationFailure.NotFound, null, $"Fabric {requestedFabricName} not found or unreadable: {ex.Message}");
         }
 
-        var targetIndex = BuildOperationalNodeIndex();
+        var targetIndex = await BuildOperationalNodeIndexForCompressedFabricAsync(requestedCompressedFabricId);
         var sourceDevices = new List<DeviceInfo>();
         foreach (var device in Registry.GetAll().OrderBy(static device => device.Id, StringComparer.OrdinalIgnoreCase))
         {
@@ -558,7 +569,7 @@ public sealed partial class MatterControllerService
             return new FabricAclQueryResult(false, DeviceOperationFailure.NotFound, null, $"Fabric {requestedFabricName} not found or unreadable: {ex.Message}");
         }
 
-        var targetIndex = BuildOperationalNodeIndex();
+        var targetIndex = await BuildOperationalNodeIndexForCompressedFabricAsync(requestedCompressedFabricId);
         var sourceResults = new List<DeviceAclListResponse>();
         foreach (var device in Registry.GetAll().OrderBy(static device => device.Id, StringComparer.OrdinalIgnoreCase))
         {
@@ -766,6 +777,61 @@ public sealed partial class MatterControllerService
 
     private IReadOnlyDictionary<ulong, DeviceInfo> BuildOperationalNodeIndex()
         => MatterBindingOperations.BuildOperationalNodeIndex(Registry.GetAll());
+
+    private async Task<IReadOnlyDictionary<ulong, DeviceInfo>> BuildOperationalNodeIndexForDeviceFabricAsync(DeviceInfo device)
+    {
+        try
+        {
+            var fabric = await new FabricDiskStorage(Registry.BasePath).LoadFabricAsync(device.FabricName);
+            return await BuildOperationalNodeIndexForCompressedFabricAsync(fabric.CompressedFabricId);
+        }
+        catch (Exception ex)
+        {
+            Log.LogWarning(ex, "Device {Id}: failed to read fabric {FabricName}", device.Id, device.FabricName);
+            return new Dictionary<ulong, DeviceInfo>();
+        }
+    }
+
+    private async Task<IReadOnlyDictionary<ulong, DeviceInfo>> BuildOperationalNodeIndexForCompressedFabricAsync(string compressedFabricId)
+    {
+        var devices = new List<DeviceInfo>();
+        foreach (var device in Registry.GetAll())
+        {
+            if (await DeviceBelongsToCompressedFabricAsync(device, compressedFabricId))
+            {
+                devices.Add(device);
+            }
+        }
+
+        return MatterBindingOperations.BuildOperationalNodeIndex(devices);
+    }
+
+    private async Task<FabricCompatibilityResult> CheckBindingFabricCompatibilityAsync(
+        DeviceInfo switchDevice,
+        DeviceInfo targetDevice)
+    {
+        try
+        {
+            var storage = new FabricDiskStorage(Registry.BasePath);
+            var switchFabric = await storage.LoadFabricAsync(switchDevice.FabricName);
+            var targetFabric = await storage.LoadFabricAsync(targetDevice.FabricName);
+
+            if (string.Equals(switchFabric.CompressedFabricId, targetFabric.CompressedFabricId, StringComparison.OrdinalIgnoreCase))
+            {
+                return new FabricCompatibilityResult(true, DeviceOperationFailure.None);
+            }
+
+            return new FabricCompatibilityResult(
+                false,
+                DeviceOperationFailure.IncompatibleFabric,
+                $"Switch {switchDevice.Id} and target {targetDevice.Id} are on different Matter fabrics. Delete and recommission one device so both use shared fabric '{_commissioningOptions.SharedFabricName}' before binding.");
+        }
+        catch (Exception ex)
+        {
+            Log.LogWarning(ex, "Failed to compare Matter fabrics for switch {SwitchId} and target {TargetId}", switchDevice.Id, targetDevice.Id);
+            return new FabricCompatibilityResult(false, DeviceOperationFailure.TransportError, ex.Message);
+        }
+    }
 
     private async Task<bool> DeviceBelongsToCompressedFabricAsync(DeviceInfo device, string compressedFabricId)
     {

@@ -147,12 +147,6 @@ public abstract class MatterDeviceHost(
 
                 foreach (var (id, rs) in Sessions.ToArray())
                 {
-                    if (ShouldRecoverDormantConnection(id, rs, utcNow))
-                    {
-                        await OnSessionInactiveAsync(id, rs, token);
-                        continue;
-                    }
-
                     if (!rs.IsConnected || rs.Connection is null)
                     {
                         continue;
@@ -163,6 +157,12 @@ public abstract class MatterDeviceHost(
 
                 foreach (var (id, rs) in Sessions.ToArray())
                 {
+                    if (ShouldRecoverOfflineSession(id, rs))
+                    {
+                        ScheduleOfflineReconnect(id, rs);
+                        continue;
+                    }
+
                     if (ShouldRecoverDormantConnection(id, rs, utcNow))
                     {
                         await OnSessionInactiveAsync(id, rs, token);
@@ -441,19 +441,22 @@ public abstract class MatterDeviceHost(
             return false;
         }
 
+        var staleThreshold = SubscriptionStaleThresholds.TryGetValue(id, out var threshold)
+            ? threshold
+            : _recoveryOptions.SubscriptionStaleThreshold;
+
         if (!Subscriptions.ContainsKey(id))
         {
-            return true;
+            // Avoid launching a duplicate reconnect during the short window between CASE setup and subscription registration.
+            return LastSubscriptionReport.TryGetValue(id, out var lastKnownReport)
+                   && utcNow - lastKnownReport > staleThreshold;
         }
 
         if (!LastSubscriptionReport.TryGetValue(id, out var lastReport))
         {
-            return true;
+            return false;
         }
 
-        var staleThreshold = SubscriptionStaleThresholds.TryGetValue(id, out var threshold)
-            ? threshold
-            : _recoveryOptions.SubscriptionStaleThreshold;
         if (utcNow - lastReport <= staleThreshold)
         {
             return false;
@@ -519,6 +522,25 @@ public abstract class MatterDeviceHost(
         }
 
         return utcNow - lastActivity.Value > staleThreshold;
+    }
+
+    /// <summary>Returns whether an offline commissioned device should keep trying to reconnect.</summary>
+    protected bool ShouldRecoverOfflineSession(string id, ResilientSession rs)
+    {
+        if (rs.IsConnected && rs.Session is not null && rs.Connection is not null)
+        {
+            return false;
+        }
+
+        return SupportsManagedSubscriptions(Registry.Get(id));
+    }
+
+    private void ScheduleOfflineReconnect(string id, ResilientSession rs)
+    {
+        if (TryScheduleManagedReconnect(id, rs))
+        {
+            Log.LogInformation("[MATTER] {Id}: offline session, scheduling managed reconnect", id);
+        }
     }
 
     private static bool SupportsManagedSubscriptions(DeviceInfo? device)
@@ -633,14 +655,20 @@ public abstract class MatterDeviceHost(
         return true;
     }
 
+    /// <summary>Returns the single operation key used for every session establishment path for a device.</summary>
+    protected static string GetSessionConnectionOperationKey(string id) => $"session-connect:{id}";
+
     /// <summary>Schedules a managed reconnect for a device session.</summary>
     protected virtual bool TryScheduleManagedReconnect(string id, ResilientSession rs)
-        => ScheduleOwnedOperation($"reconnect:{id}", async ct =>
+        => ScheduleOwnedOperation(GetSessionConnectionOperationKey(id), async ct =>
         {
             try
             {
                 Log.LogInformation("[MATTER] {Id}: starting managed reconnect", id);
-                await rs.ReconnectAsync(ct);
+                await rs.ReconnectAsync(
+                    ct,
+                    cooldown: _recoveryOptions.ManagedReconnectInitialDelay,
+                    retryInterval: _recoveryOptions.ManagedReconnectRetryInterval);
                 EnsureListenerRunning(id, rs, ct);
             }
             catch (OperationCanceledException)

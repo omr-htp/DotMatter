@@ -1,10 +1,12 @@
 using System.Collections.Concurrent;
 using DotMatter.Core;
 using DotMatter.Core.Clusters;
+using DotMatter.Core.Fabrics;
 using DotMatter.Core.InteractionModel;
 using DotMatter.Hosting.Thread;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Org.BouncyCastle.Math;
 
 namespace DotMatter.Tests;
 
@@ -78,6 +80,19 @@ public class MatterDeviceHostTests
     }
 
     [Test]
+    public void ShouldRefreshSubscription_DoesNotReconnectBeforeInitialSubscriptionWindow()
+    {
+        using var tempDirectory = TestFileSystem.CreateTempDirectoryScope();
+
+        var host = new TestMatterDeviceHost(tempDirectory.Path);
+        host.RegisterManagedSwitch("switch");
+
+        var shouldRefresh = host.IsSubscriptionRefreshDue("switch", DateTime.UtcNow);
+
+        Assert.That(shouldRefresh, Is.False);
+    }
+
+    [Test]
     public void ShouldRefreshSubscription_UsesSubscriptionSpecificThreshold()
     {
         using var tempDirectory = TestFileSystem.CreateTempDirectoryScope();
@@ -118,6 +133,57 @@ public class MatterDeviceHostTests
         await host.TriggerSubscriptionStaleAsync("switch");
 
         Assert.That(host.ReconnectScheduled, Is.True);
+    }
+
+    [Test]
+    public void ShouldRecoverOfflineSession_RecoversManagedOfflineDevice()
+    {
+        using var tempDirectory = TestFileSystem.CreateTempDirectoryScope();
+
+        var host = new TestMatterDeviceHost(tempDirectory.Path);
+        host.RegisterManagedSwitch("switch");
+
+        Assert.That(host.IsOfflineSessionRecoveryDue("switch"), Is.True);
+    }
+
+    [Test]
+    public void ShouldRecoverOfflineSession_IgnoresUnsupportedOfflineDevice()
+    {
+        using var tempDirectory = TestFileSystem.CreateTempDirectoryScope();
+
+        var host = new TestMatterDeviceHost(tempDirectory.Path);
+        host.Registry.Register(new DeviceInfo
+        {
+            Id = "unsupported",
+            Name = "unsupported",
+            NodeId = "1",
+            FabricName = "unsupported",
+            Endpoints = new Dictionary<ushort, List<uint>>
+            {
+                [1] = [0x1234]
+            }
+        });
+
+        Assert.That(host.IsOfflineSessionRecoveryDue("unsupported"), Is.False);
+    }
+
+    [Test]
+    public void ManagedReconnect_DoesNotOverlapExistingSessionConnectionOperation()
+    {
+        using var tempDirectory = TestFileSystem.CreateTempDirectoryScope();
+
+        var host = new TestMatterDeviceHost(tempDirectory.Path);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var firstScheduled = host.ScheduleBlockingSessionConnection("light", release);
+        var reconnectScheduled = host.ScheduleBaseManagedReconnect("light");
+        release.SetResult();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstScheduled, Is.True);
+            Assert.That(reconnectScheduled, Is.False);
+        }
     }
 
     private sealed class TestMatterDeviceHost(string registryPath) : MatterDeviceHost(
@@ -174,6 +240,17 @@ public class MatterDeviceHostTests
         public bool IsSubscriptionRefreshDue(string id, DateTime utcNow)
             => base.ShouldRefreshSubscription(id, utcNow);
 
+        public bool IsOfflineSessionRecoveryDue(string id)
+            => base.ShouldRecoverOfflineSession(id, new StubDisconnectedResilientSession());
+
+        public bool ScheduleBlockingSessionConnection(string id, TaskCompletionSource release)
+            => base.ScheduleOwnedOperation(
+                GetSessionConnectionOperationKey(id),
+                async ct => await release.Task.WaitAsync(TimeSpan.FromSeconds(2), ct));
+
+        public bool ScheduleBaseManagedReconnect(string id)
+            => base.TryScheduleManagedReconnect(id, new StubDisconnectedResilientSession());
+
         protected override Task<bool> TryProcessSubscriptionMessageAsync(string id, byte[] bytes)
             => Task.FromResult(NextSubscriptionMessageResult);
 
@@ -183,6 +260,13 @@ public class MatterDeviceHostTests
             return true;
         }
     }
+
+    private sealed class StubDisconnectedResilientSession() : ResilientSession(
+        new Fabric { CompressedFabricId = "0000000000000001" },
+        BigInteger.One,
+        "0000000000000001",
+        "0000000000000001",
+        System.Net.IPAddress.IPv6Loopback);
 
     private sealed class FakeOtbrService : IOtbrService
     {

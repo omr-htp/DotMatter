@@ -4,6 +4,10 @@ using System.Threading.Channels;
 using DotMatter.Controller.Diagnostics;
 using DotMatter.Core;
 using DotMatter.Core.InteractionModel;
+using DotMatter.Core.Fabrics;
+using DotMatter.Hosting;
+using DotMatter.Hosting.Commissioning;
+using DotMatter.Hosting.Storage;
 using ISession = DotMatter.Core.Sessions.ISession;
 
 namespace DotMatter.Controller;
@@ -97,6 +101,8 @@ public sealed partial class MatterControllerService
     /// <inheritdoc />
     protected override async Task OnStartingAsync(CancellationToken ct)
     {
+        await MigrateSharedFabricDeviceMetadataAsync(ct);
+
         try
         {
             await OtbrService.EnableSrpServerAsync(ct);
@@ -105,6 +111,92 @@ public sealed partial class MatterControllerService
         catch (Exception ex)
         {
             Log.LogWarning(ex, "Failed to enable SRP server.");
+        }
+    }
+
+    private async Task MigrateSharedFabricDeviceMetadataAsync(CancellationToken ct)
+    {
+        if (!Directory.Exists(Registry.BasePath))
+        {
+            return;
+        }
+
+        var sharedFabricName = MatterFabricNames.Normalize(_commissioningOptions.SharedFabricName);
+        var sharedFabricPath = MatterFabricNames.GetFabricPath(Registry.BasePath, sharedFabricName);
+        if (!File.Exists(Path.Combine(sharedFabricPath, "fabric.json")))
+        {
+            return;
+        }
+
+        var fabricStorage = new FabricDiskStorage(Registry.BasePath);
+        Fabric sharedFabric;
+        try
+        {
+            sharedFabric = await fabricStorage.LoadFabricAsync(sharedFabricName);
+        }
+        catch (Exception ex)
+        {
+            Log.LogWarning(ex, "Failed to load shared Matter fabric {FabricName}; skipping legacy metadata migration.", sharedFabricName);
+            return;
+        }
+
+        foreach (var fabricDir in Directory.GetDirectories(Registry.BasePath))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var legacyFabricName = Path.GetFileName(fabricDir);
+            if (string.Equals(legacyFabricName, sharedFabricName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var nodeInfoPath = Path.Combine(fabricDir, "node_info.json");
+            if (!File.Exists(nodeInfoPath) || !File.Exists(Path.Combine(fabricDir, "fabric.json")))
+            {
+                continue;
+            }
+
+            try
+            {
+                var legacyFabric = await fabricStorage.LoadFabricAsync(legacyFabricName);
+                if (!string.Equals(legacyFabric.CompressedFabricId, sharedFabric.CompressedFabricId, StringComparison.OrdinalIgnoreCase))
+                {
+                    Log.LogWarning(
+                        "Skipping legacy fabric directory {FabricName}; compressed fabric {CompressedFabricId} does not match shared fabric {SharedCompressedFabricId}.",
+                        legacyFabricName,
+                        legacyFabric.CompressedFabricId,
+                        sharedFabric.CompressedFabricId);
+                    continue;
+                }
+
+                var nodeInfo = JsonSerializer.Deserialize(
+                    File.ReadAllText(nodeInfoPath).TrimStart('\uFEFF'),
+                    HostingJsonContext.Default.NodeInfoRecord);
+                if (nodeInfo is null || string.IsNullOrWhiteSpace(nodeInfo.NodeId))
+                {
+                    continue;
+                }
+
+                var migrated = nodeInfo with
+                {
+                    FabricName = sharedFabricName,
+                    DeviceName = string.IsNullOrWhiteSpace(nodeInfo.DeviceName) ? legacyFabricName : nodeInfo.DeviceName
+                };
+
+                await MatterCommissioningStorage.WriteDeviceNodeInfoAsync(
+                    Registry.BasePath,
+                    sharedFabricName,
+                    legacyFabricName,
+                    migrated,
+                    ct);
+
+                Directory.Delete(fabricDir, recursive: true);
+                Log.LogInformation("Migrated legacy device {DeviceId} into shared fabric {SharedFabricName}.", legacyFabricName, sharedFabricName);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Log.LogWarning(ex, "Failed to migrate legacy fabric directory {FabricName}.", legacyFabricName);
+            }
         }
     }
 

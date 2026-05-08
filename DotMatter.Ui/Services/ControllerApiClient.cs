@@ -93,6 +93,30 @@ internal sealed class ControllerApiClient(
     public Task<ApiCallResult<JsonNode>> GetJsonAsync(string path, CancellationToken ct = default)
         => GetAsync<JsonNode>(path, ct);
 
+    public async Task<ApiCallResult<T>> PostAsync<T>(
+        string path,
+        JsonNode? body = null,
+        TimeSpan? timeout = null,
+        CancellationToken ct = default)
+        where T : class
+    {
+        var raw = await SendAsync(ApiOperationMethod.Post, path, body, timeout, ct);
+        if (!raw.Success || raw.RawContent is null)
+        {
+            return new ApiCallResult<T>(raw.Success, raw.StatusCode, raw.ErrorMessage, raw.RawContent, raw.Json, null);
+        }
+
+        try
+        {
+            var value = JsonSerializer.Deserialize<T>(raw.RawContent, _serializerOptions);
+            return new ApiCallResult<T>(value is not null, raw.StatusCode, value is null ? "Response body was empty." : null, raw.RawContent, raw.Json, value);
+        }
+        catch (Exception ex)
+        {
+            return new ApiCallResult<T>(false, raw.StatusCode, ex.Message, raw.RawContent, raw.Json, null);
+        }
+    }
+
     public async Task StreamAsync(string path, Action<string> onMessage, CancellationToken ct = default)
         => await StreamAsync(path, (message, _) =>
         {

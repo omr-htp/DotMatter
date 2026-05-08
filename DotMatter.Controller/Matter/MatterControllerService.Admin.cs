@@ -103,20 +103,7 @@ public sealed partial class MatterControllerService
             return new(true, DeviceOperationFailure.None, new DeviceCommissioningStateResponse(
                 id,
                 device?.Name,
-                new DeviceCommissioningState(
-                    state.WindowStatus.ToString(),
-                    state.AdminFabricIndex,
-                    state.AdminVendorId,
-                    state.BasicCommissioningInfo is null
-                        ? null
-                        : new DeviceBasicCommissioningInfo(
-                            state.BasicCommissioningInfo.FailSafeExpiryLengthSeconds,
-                            state.BasicCommissioningInfo.MaxCumulativeFailsafeSeconds),
-                    state.TCAcceptedVersion,
-                    state.TCMinRequiredVersion,
-                    state.TCAcknowledgements,
-                    state.TCAcknowledgementsRequired,
-                    state.TCUpdateDeadline)));
+                MapCommissioningState(state)));
         }
         catch (OperationCanceledException)
         {
@@ -224,4 +211,20 @@ public sealed partial class MatterControllerService
             "RemoveFabric",
             ct => MatterAdministration.RemoveFabricAsync(GetRequiredSessionOwner(id), fabricIndex, endpointId: 0, ct),
             $"fabric {fabricIndex} removed");
+
+    internal static DeviceCommissioningState MapCommissioningState(MatterCommissioningState state)
+        => new(
+            state.WindowStatus.ToString(),
+            state.AdminFabricIndex,
+            state.AdminVendorId,
+            state.BasicCommissioningInfo is null
+                ? null
+                : new DeviceBasicCommissioningInfo(
+                    state.BasicCommissioningInfo.FailSafeExpiryLengthSeconds,
+                    state.BasicCommissioningInfo.MaxCumulativeFailsafeSeconds),
+            state.TCAcceptedVersion,
+            state.TCMinRequiredVersion,
+            state.TCAcknowledgements,
+            state.TCAcknowledgementsRequired,
+            state.TCUpdateDeadline);
 }

@@ -179,7 +179,7 @@ public sealed partial class MatterControllerService(
 
     /// <summary>Connect to a newly commissioned device using an owned background operation.</summary>
     public bool TryScheduleConnectNewDevice(string deviceId)
-        => ScheduleOwnedOperation($"connect-device:{deviceId}", async ct =>
+        => ScheduleOwnedOperation(GetSessionConnectionOperationKey(deviceId), async ct =>
         {
             try
             {

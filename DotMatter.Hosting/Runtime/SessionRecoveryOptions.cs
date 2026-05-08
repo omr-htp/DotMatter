@@ -17,6 +17,10 @@ public sealed class SessionRecoveryOptions
     public TimeSpan SubscriptionSetupTimeout { get; set; } = TimeSpan.FromSeconds(10);
     /// <summary>Gets or sets the delay between host monitoring loop iterations.</summary>
     public TimeSpan MonitoringLoopDelay { get; set; } = TimeSpan.FromSeconds(1);
+    /// <summary>Gets or sets the initial delay before a managed reconnect loop starts.</summary>
+    public TimeSpan ManagedReconnectInitialDelay { get; set; } = TimeSpan.FromSeconds(5);
+    /// <summary>Gets or sets the steady-state retry interval for managed reconnect loops.</summary>
+    public TimeSpan ManagedReconnectRetryInterval { get; set; } = TimeSpan.FromSeconds(30);
     /// <summary>Gets or sets the maximum time to wait for tracked background operations during shutdown.</summary>
     public TimeSpan BackgroundShutdownTimeout { get; set; } = TimeSpan.FromSeconds(10);
 }

@@ -79,6 +79,21 @@ public class CoreProductionReadinessTests
     }
 
     [Test]
+    public async Task FabricStorageIgnoresNonNodeSubdirectories()
+    {
+        using var tempDirectory = TestFileSystem.CreateTempDirectoryScope();
+
+        var storage = new FabricDiskStorage(tempDirectory.Path);
+        var manager = new FabricManager(storage);
+        await manager.GetAsync("DotMatter");
+        Directory.CreateDirectory(Path.Combine(tempDirectory.Path, "DotMatter", "devices"));
+
+        var fabric = await storage.LoadFabricAsync("DotMatter");
+
+        Assert.That(fabric.Nodes, Is.Empty);
+    }
+
+    [Test]
     public void ThreadDatasetWithTruncatedExtendedPanIdReturnsNull()
     {
         var extPanId = MatterCommissioner.ExtractExtendedPanId([0x02, 0x08, 0xAA]);
